@@ -1,0 +1,61 @@
+{
+  "name": "vertex-anthropic",
+  "displayName": "Vertex Anthropic Provider",
+  "description": "VS Code Chat Model Provider for Vertex AI Anthropic",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.110.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languageModelChatProviders": [
+      {
+        "identifier": "vertex-anthropic",
+        "name": "Vertex Claude 4.6 Opus",
+        "displayName": "Vertex Claude 4.6 Opus",
+        "vendor": "Google Cloud Vertex AI"
+      }
+    ],
+    "configuration": {
+      "title": "Vertex Anthropic",
+      "properties": {
+        "vertexAnthropic.projectId": {
+          "type": "string",
+          "default": "",
+          "description": "GCP Project ID to use with Vertex AI"
+        },
+        "vertexAnthropic.region": {
+          "type": "string",
+          "default": "us-central1",
+          "description": "GCP Region for Vertex AI (e.g., us-central1, europe-west1)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.110.0",
+    "@typescript-eslint/eslint-plugin": "^8.42.0",
+    "@typescript-eslint/parser": "^8.42.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^9.34.0",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@anthropic-ai/vertex-sdk": "^0.14.4"
+  }
+}
