@@ -33,6 +33,11 @@
           "type": "string",
           "default": "",
           "description": "GCP Project ID to use with Vertex AI. Models and regions are auto-discovered."
+        },
+        "vertexAnthropic.modelCatalogUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional URL to a remote models.json (e.g. raw.githubusercontent.com). Falls back to the bundled catalog if unavailable."
         }
       }
     }

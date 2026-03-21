@@ -1,7 +1,6 @@
 import { AnthropicVertex } from "@anthropic-ai/vertex-sdk";
-import { GoogleAuth } from "google-auth-library";
 import * as vscode from "vscode";
-import modelCatalog from "./models.json";
+import localCatalog from "./models.json";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -13,6 +12,11 @@ interface ModelSpec {
   maxInputTokens: number;
   maxOutputTokens: number;
   capabilities: { imageInput: boolean; toolCalling: boolean };
+}
+
+interface ModelCatalog {
+  candidateModels: ModelSpec[];
+  regionPriority: string[];
 }
 
 interface DiscoveryResult {
@@ -33,17 +37,55 @@ function log(msg: string): void {
 
 export class VertexAnthropicProvider implements vscode.LanguageModelChatProvider {
   private client!: AnthropicVertex;
-  private readonly auth: GoogleAuth;
   private projectId: string;
   private region = "global";
   private availableModels: ModelSpec[] = [];
   private discoveryDone = false;
 
+
+  /** Fires when the available model list changes — VS Code re-queries provideLanguageModelChatInformation. */
+  private readonly _onDidChange = new vscode.EventEmitter<void>();
+  readonly onDidChangeLanguageModelChatInformation = this._onDidChange.event;
+
   constructor(projectId: string) {
     this.projectId = projectId;
-    this.auth = new GoogleAuth({
-      scopes: ["https://www.googleapis.com/auth/cloud-platform"],
-    });
+  }
+
+  // ── Model catalog loading ─────────────────────────────────────────────
+
+  /**
+   * Load model catalog: try remote URL first (if configured), fall back to bundled JSON.
+   * Remote fetch has a 3-second timeout so it never blocks startup significantly.
+   */
+  private async loadModelCatalog(): Promise<ModelCatalog> {
+    const catalogUrl = vscode.workspace.getConfiguration("vertexAnthropic").get<string>("modelCatalogUrl");
+
+    if (catalogUrl) {
+      try {
+        log(`📡 Fetching remote model catalog: ${catalogUrl}`);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+
+        const response = await fetch(catalogUrl, { signal: controller.signal });
+        clearTimeout(timeout);
+
+        if (response.ok) {
+          const remote = (await response.json()) as ModelCatalog;
+          if (remote.candidateModels?.length > 0 && remote.regionPriority?.length > 0) {
+            log(`✅ Remote catalog loaded — ${remote.candidateModels.length} candidate model(s)`);
+            return remote;
+          }
+          log(`⚠️  Remote catalog has invalid structure, using bundled catalog`);
+        } else {
+          log(`⚠️  Remote catalog returned ${response.status}, using bundled catalog`);
+        }
+      } catch (e) {
+        log(`⚠️  Remote catalog fetch failed: ${e}, using bundled catalog`);
+      }
+    }
+
+    log(`📦 Using bundled model catalog — ${localCatalog.candidateModels.length} candidate model(s)`);
+    return localCatalog as ModelCatalog;
   }
 
   // ── Discovery ───────────────────────────────────────────────────────────
@@ -58,8 +100,9 @@ export class VertexAnthropicProvider implements vscode.LanguageModelChatProvider
    *   3. The first region where ≥1 model responds is used for all inference.
    */
   async discoverModelsAndRegion(): Promise<DiscoveryResult> {
-    const candidates: ModelSpec[] = modelCatalog.candidateModels;
-    const regions = modelCatalog.regionPriority;
+    const catalog = await this.loadModelCatalog();
+    const candidates = catalog.candidateModels;
+    const regions = catalog.regionPriority;
 
     log(`Starting model discovery for project "${this.projectId}"…`);
     log(`Candidate models: ${candidates.map((m) => m.id).join(", ")}`);
@@ -84,11 +127,12 @@ export class VertexAnthropicProvider implements vscode.LanguageModelChatProvider
       if (available.length > 0) {
         log(`✅ Region "${region}" — ${available.length} model(s) available: ${available.map((m) => m.id).join(", ")}`);
 
-        // Commit
+        // Commit and notify VS Code
         this.region = region;
         this.client = client;
         this.availableModels = available;
         this.discoveryDone = true;
+        this._onDidChange.fire();
 
         return { region, availableModels: available };
       }
@@ -100,6 +144,7 @@ export class VertexAnthropicProvider implements vscode.LanguageModelChatProvider
     log("❌ No models available in any region.");
     this.availableModels = [];
     this.discoveryDone = true;
+    this._onDidChange.fire();
 
     return { region: "none", availableModels: [] };
   }
@@ -131,6 +176,7 @@ export class VertexAnthropicProvider implements vscode.LanguageModelChatProvider
   setProjectId(projectId: string): void {
     this.projectId = projectId;
     this.discoveryDone = false;
+
   }
 
   // ── Chat provider interface ───────────────────────────────────────────
@@ -154,70 +200,19 @@ export class VertexAnthropicProvider implements vscode.LanguageModelChatProvider
     }));
   }
 
-  // ── Token counting ────────────────────────────────────────────────────
+  // ── Token counting (heuristic: ~4 chars per token) ─────────────────────
 
-  async provideTokenCount(model: vscode.LanguageModelChatInformation, text: string | vscode.LanguageModelChatRequestMessage, _token: vscode.CancellationToken): Promise<number> {
-    let content: string;
+  async provideTokenCount(_model: vscode.LanguageModelChatInformation, text: string | vscode.LanguageModelChatRequestMessage, _token: vscode.CancellationToken): Promise<number> {
     if (typeof text === "string") {
-      content = text;
-    } else {
-      content = text.content
-        .filter((part): part is vscode.LanguageModelTextPart => part instanceof vscode.LanguageModelTextPart)
-        .map((part) => part.value)
-        .join("");
+      return Math.ceil(text.length / 4);
     }
-
-    try {
-      return await this.countTokensViaApi(model.version, content);
-    } catch (e) {
-      log(`⚠️  Token count API failed, falling back to heuristic: ${e}`);
-      return Math.ceil(content.length / 4);
-    }
-  }
-
-  /**
-   * Calls the Vertex AI :countTokens endpoint.
-   *
-   * The countTokens endpoint is only available on regional endpoints
-   * (us-east5, europe-west1, asia-southeast1), NOT on global.
-   * If we're using the global endpoint for inference we pick the first
-   * supported count-tokens region.
-   */
-  private async countTokensViaApi(modelVersion: string, text: string): Promise<number> {
-    const countTokensRegions = modelCatalog.countTokensRegions;
-    const region = countTokensRegions.includes(this.region) ? this.region : countTokensRegions[0];
-
-    const authClient = await this.auth.getClient();
-    const accessToken = await authClient.getAccessToken();
-
-    const host = `${region}-aiplatform.googleapis.com`;
-    const url = `https://${host}/v1beta1/projects/${this.projectId}/locations/${region}/publishers/anthropic/models/${modelVersion}:countTokens`;
-
-    const body = JSON.stringify({
-      contents: [{ role: "user", parts: [{ text }] }],
-    });
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken.token}`,
-        "Content-Type": "application/json",
-      },
-      body,
-    });
-
-    if (response.ok) {
-      const result = (await response.json()) as { totalTokens?: number };
-      if (result.totalTokens !== undefined) {
-        log(`Token count (${modelVersion}): ${result.totalTokens} tokens`);
-        return result.totalTokens;
+    let length = 0;
+    for (const part of text.content) {
+      if (part instanceof vscode.LanguageModelTextPart) {
+        length += part.value.length;
       }
     }
-
-    // Fallback heuristic
-    const estimate = Math.ceil(text.length / 4);
-    log(`Token count heuristic (${modelVersion}): ${estimate} tokens (${text.length} chars)`);
-    return estimate;
+    return Math.ceil(length / 4);
   }
 
   // ── Chat response (inference) ─────────────────────────────────────────
@@ -230,100 +225,150 @@ export class VertexAnthropicProvider implements vscode.LanguageModelChatProvider
     token: vscode.CancellationToken,
   ): Promise<void> {
     const modelId = model.version;
+    log(`▶ provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, messages: ${messages.length}`);
 
-    const mappedMessages: any[] = [];
-    for (const msg of messages) {
-      if (msg.role !== vscode.LanguageModelChatMessageRole.User && msg.role !== vscode.LanguageModelChatMessageRole.Assistant) {
-        continue;
-      }
-      const role = msg.role === vscode.LanguageModelChatMessageRole.User ? "user" : "assistant";
-      const contentParts: any[] = [];
+    try {
+      // Extract system prompt from System-role messages
+      const systemParts: string[] = [];
+      const mappedMessages: any[] = [];
 
-      for (const part of msg.content) {
-        if (part instanceof vscode.LanguageModelTextPart) {
-          if (part.value.length > 0) {
-            contentParts.push({ type: "text", text: part.value });
+      for (const msg of messages) {
+        const roleNum = msg.role;
+        log(`  Message role=${roleNum}, parts=${msg.content.length}`);
+
+        // System messages → Anthropic "system" parameter
+        if (roleNum !== vscode.LanguageModelChatMessageRole.User && roleNum !== vscode.LanguageModelChatMessageRole.Assistant) {
+          for (const part of msg.content) {
+            if (part instanceof vscode.LanguageModelTextPart && part.value.length > 0) {
+              systemParts.push(part.value);
+            }
           }
-        } else if (part instanceof vscode.LanguageModelToolResultPart) {
-          let toolResultStr = "";
-          if (Array.isArray(part.content)) {
-            toolResultStr = part.content
-              .map((c) => {
-                if (c instanceof vscode.LanguageModelTextPart) {
-                  return c.value;
-                }
-                return JSON.stringify(c);
-              })
-              .join("\n");
-          }
-          contentParts.push({
-            type: "tool_result",
-            tool_use_id: part.callId,
-            content: toolResultStr || " ",
-          });
-        } else if (part instanceof vscode.LanguageModelToolCallPart) {
-          contentParts.push({
-            type: "tool_use",
-            id: part.callId,
-            name: part.name,
-            input: part.input,
-          });
-        }
-      }
-
-      if (contentParts.length === 0) {
-        contentParts.push({ type: "text", text: " " });
-      }
-      mappedMessages.push({ role, content: contentParts });
-    }
-
-    const tools: any[] | undefined = options.tools?.map((t) => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.inputSchema ?? { type: "object", properties: {} },
-    }));
-
-    const spec = this.availableModels.find((m) => m.id === modelId);
-    const maxTokens = spec?.maxOutputTokens ?? 4096;
-
-    const stream = await this.client.messages.create({
-      model: modelId,
-      messages: mappedMessages,
-      max_tokens: maxTokens,
-      stream: true,
-      tools: tools?.length ? tools : undefined,
-    });
-
-    let activeToolCallId = "";
-    let activeToolName = "";
-    let activeToolJson = "";
-
-    for await (const chunk of stream) {
-      if (token.isCancellationRequested) {
-        break;
-      }
-
-      if (chunk.type === "content_block_delta" && chunk.delta.type === "text_delta") {
-        progress.report(new vscode.LanguageModelTextPart(chunk.delta.text));
-      } else if (chunk.type === "content_block_start" && chunk.content_block.type === "tool_use") {
-        activeToolCallId = chunk.content_block.id;
-        activeToolName = chunk.content_block.name;
-        activeToolJson = "";
-      } else if (chunk.type === "content_block_delta" && chunk.delta.type === "input_json_delta") {
-        activeToolJson += chunk.delta.partial_json;
-      } else if (chunk.type === "content_block_stop" && activeToolCallId) {
-        let parsedInput = {};
-        try {
-          parsedInput = JSON.parse(activeToolJson);
-        } catch {
-          // Ignore JSON parse errors
+          continue;
         }
 
-        progress.report(new vscode.LanguageModelToolCallPart(activeToolCallId, activeToolName, parsedInput));
-        activeToolCallId = "";
-        activeToolName = "";
-        activeToolJson = "";
+        const role = roleNum === vscode.LanguageModelChatMessageRole.User ? "user" : "assistant";
+        const contentParts: any[] = [];
+
+        for (const part of msg.content) {
+          if (part instanceof vscode.LanguageModelTextPart) {
+            if (part.value.length > 0) {
+              contentParts.push({ type: "text", text: part.value });
+            }
+          } else if (part instanceof vscode.LanguageModelToolResultPart) {
+            let toolResultStr = "";
+            if (Array.isArray(part.content)) {
+              toolResultStr = part.content
+                .map((c) => {
+                  if (c instanceof vscode.LanguageModelTextPart) {
+                    return c.value;
+                  }
+                  return JSON.stringify(c);
+                })
+                .join("\n");
+            }
+            contentParts.push({
+              type: "tool_result",
+              tool_use_id: part.callId,
+              content: toolResultStr || " ",
+            });
+          } else if (part instanceof vscode.LanguageModelToolCallPart) {
+            contentParts.push({
+              type: "tool_use",
+              id: part.callId,
+              name: part.name,
+              input: part.input,
+            });
+          }
+        }
+
+        if (contentParts.length === 0) {
+          contentParts.push({ type: "text", text: " " });
+        }
+        mappedMessages.push({ role, content: contentParts });
       }
+
+      // Ensure the first message is from the user (Anthropic requirement)
+      if (mappedMessages.length === 0 || mappedMessages[0].role !== "user") {
+        log(`  ⚠️  No user messages — inserting placeholder`);
+        mappedMessages.unshift({ role: "user", content: [{ type: "text", text: " " }] });
+      }
+
+      const tools: any[] | undefined = options.tools?.map((t) => ({
+        name: t.name,
+        description: t.description,
+        input_schema: t.inputSchema ?? { type: "object", properties: {} },
+      }));
+
+      const spec = this.availableModels.find((m) => m.id === modelId);
+      const maxTokens = spec?.maxOutputTokens ?? 4096;
+
+      const systemPrompt = systemParts.length > 0 ? systemParts.join("\n\n") : undefined;
+
+      log(`  Sending: model=${modelId}, max_tokens=${maxTokens}, msgs=${mappedMessages.length}, system=${systemPrompt ? systemPrompt.length + " chars" : "none"}, tools=${tools?.length ?? 0}`);
+
+      const stream = await this.client.messages.create({
+        model: modelId,
+        messages: mappedMessages,
+        max_tokens: maxTokens,
+        stream: true,
+        ...(systemPrompt ? { system: systemPrompt } : {}),
+        ...(tools?.length ? { tools } : {}),
+      });
+
+      log(`  Stream created successfully`);
+
+      let activeToolCallId = "";
+      let activeToolName = "";
+      let activeToolJson = "";
+      let chunkCount = 0;
+
+      for await (const chunk of stream) {
+        chunkCount++;
+        if (chunkCount <= 5) {
+          log(`  Chunk #${chunkCount}: type=${chunk.type}`);
+        }
+
+        if (token.isCancellationRequested) {
+          log(`  Cancelled after ${chunkCount} chunks`);
+          break;
+        }
+
+        if (chunk.type === "message_start") {
+          const usage = (chunk as any).message?.usage;
+          if (usage) {
+            log(`  📊 Input tokens: ${usage.input_tokens ?? "?"}, cache_read: ${usage.cache_read_input_tokens ?? 0}, cache_create: ${usage.cache_creation_input_tokens ?? 0}`);
+          }
+        } else if (chunk.type === "message_delta") {
+          const usage = (chunk as any).usage;
+          if (usage) {
+            log(`  📊 Output tokens: ${usage.output_tokens ?? "?"}`);
+          }
+        } else if (chunk.type === "content_block_delta" && chunk.delta.type === "text_delta") {
+          progress.report(new vscode.LanguageModelTextPart(chunk.delta.text));
+        } else if (chunk.type === "content_block_start" && chunk.content_block.type === "tool_use") {
+          activeToolCallId = chunk.content_block.id;
+          activeToolName = chunk.content_block.name;
+          activeToolJson = "";
+        } else if (chunk.type === "content_block_delta" && chunk.delta.type === "input_json_delta") {
+          activeToolJson += chunk.delta.partial_json;
+        } else if (chunk.type === "content_block_stop" && activeToolCallId) {
+          let parsedInput = {};
+          try {
+            parsedInput = JSON.parse(activeToolJson);
+          } catch {
+            // Ignore JSON parse errors
+          }
+
+          progress.report(new vscode.LanguageModelToolCallPart(activeToolCallId, activeToolName, parsedInput));
+          activeToolCallId = "";
+          activeToolName = "";
+          activeToolJson = "";
+        }
+      }
+      log(`  ✅ Stream finished — ${chunkCount} chunks total`);
+    } catch (e) {
+      log(`  ❌ provideLanguageModelChatResponse error: ${e}`);
+      throw e;
     }
   }
 }
