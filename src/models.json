@@ -73,6 +73,5 @@
       "capabilities": { "imageInput": true, "toolCalling": true }
     }
   ],
-  "regionPriority": ["global", "us-east5", "europe-west1", "asia-southeast1"],
-  "countTokensRegions": ["us-east5", "europe-west1", "asia-southeast1"]
+  "regionPriority": ["global", "us-east5", "europe-west1", "asia-southeast1"]
 }
