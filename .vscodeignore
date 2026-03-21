@@ -13,3 +13,4 @@ implementation-plan.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+out/test/**
