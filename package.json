@@ -2,7 +2,12 @@
   "name": "vertex-anthropic",
   "displayName": "Vertex Anthropic Provider",
   "description": "VS Code Chat Model Provider for Vertex AI Anthropic",
-  "version": "0.0.1",
+  "version": "0.0.2",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jorsm/vertex-anthropic"
+  },
+  "license": "MIT",
   "engines": {
     "vscode": "^1.110.0"
   },
@@ -36,8 +41,8 @@
         },
         "vertexAnthropic.modelCatalogUrl": {
           "type": "string",
-          "default": "",
-          "description": "Optional URL to a remote models.json (e.g. raw.githubusercontent.com). Falls back to the bundled catalog if unavailable."
+          "default": "https://raw.githubusercontent.com/jorsm/vertex-anthropic/refs/heads/develop/src/models.json",
+          "description": "URL to a remote models.json catalog. The extension fetches this on every discovery (with a 3 s timeout) and falls back to the bundled catalog if unavailable. Set to empty to use only the bundled catalog."
         }
       }
     }

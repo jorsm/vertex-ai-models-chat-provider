@@ -26,7 +26,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("vertexAnthropic.refreshModels", () => runDiscovery(provider)),
   );
 
-  // Re-run discovery when the projectId setting changes
+  // Re-run discovery when projectId or modelCatalogUrl settings change
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(async (e) => {
       if (e.affectsConfiguration("vertexAnthropic.projectId")) {
@@ -37,6 +37,15 @@ export function activate(context: vscode.ExtensionContext) {
           provider.setProjectId(newProjectId);
           await runDiscovery(provider);
         }
+      }
+      if (e.affectsConfiguration("vertexAnthropic.modelCatalogUrl")) {
+        const newUrl = vscode.workspace.getConfiguration("vertexAnthropic").get<string>("modelCatalogUrl") || "";
+        vscode.window.showInformationMessage(
+          newUrl
+            ? `Vertex Anthropic: Catalog URL changed. Re-discovering models…`
+            : `Vertex Anthropic: Catalog URL cleared — using bundled catalog. Re-discovering models…`,
+        );
+        await runDiscovery(provider);
       }
     }),
   );

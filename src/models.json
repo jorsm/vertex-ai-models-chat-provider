@@ -26,51 +26,6 @@
       "maxInputTokens": 200000,
       "maxOutputTokens": 64000,
       "capabilities": { "imageInput": true, "toolCalling": true }
-    },
-    {
-      "id": "claude-opus-4-5",
-      "displayName": "Claude Opus 4.5",
-      "family": "claude",
-      "version": "claude-opus-4-5",
-      "maxInputTokens": 200000,
-      "maxOutputTokens": 128000,
-      "capabilities": { "imageInput": true, "toolCalling": true }
-    },
-    {
-      "id": "claude-sonnet-4-5",
-      "displayName": "Claude Sonnet 4.5",
-      "family": "claude",
-      "version": "claude-sonnet-4-5",
-      "maxInputTokens": 200000,
-      "maxOutputTokens": 128000,
-      "capabilities": { "imageInput": true, "toolCalling": true }
-    },
-    {
-      "id": "claude-opus-4-1",
-      "displayName": "Claude Opus 4.1",
-      "family": "claude",
-      "version": "claude-opus-4-1",
-      "maxInputTokens": 200000,
-      "maxOutputTokens": 128000,
-      "capabilities": { "imageInput": true, "toolCalling": true }
-    },
-    {
-      "id": "claude-opus-4",
-      "displayName": "Claude Opus 4",
-      "family": "claude",
-      "version": "claude-opus-4",
-      "maxInputTokens": 200000,
-      "maxOutputTokens": 128000,
-      "capabilities": { "imageInput": true, "toolCalling": true }
-    },
-    {
-      "id": "claude-sonnet-4",
-      "displayName": "Claude Sonnet 4",
-      "family": "claude",
-      "version": "claude-sonnet-4",
-      "maxInputTokens": 1000000,
-      "maxOutputTokens": 128000,
-      "capabilities": { "imageInput": true, "toolCalling": true }
     }
   ],
   "regionPriority": ["global", "us-east5", "europe-west1", "asia-southeast1"]

@@ -42,7 +42,6 @@ export class VertexAnthropicProvider implements vscode.LanguageModelChatProvider
   private availableModels: ModelSpec[] = [];
   private discoveryDone = false;
 
-
   /** Fires when the available model list changes — VS Code re-queries provideLanguageModelChatInformation. */
   private readonly _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChangeLanguageModelChatInformation = this._onDidChange.event;
@@ -62,29 +61,54 @@ export class VertexAnthropicProvider implements vscode.LanguageModelChatProvider
 
     if (catalogUrl) {
       try {
-        log(`📡 Fetching remote model catalog: ${catalogUrl}`);
+        log(`📡 Fetching remote model catalog…`);
+        log(`   URL: ${catalogUrl}`);
+        const t0 = Date.now();
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 3000);
 
         const response = await fetch(catalogUrl, { signal: controller.signal });
         clearTimeout(timeout);
+        const elapsed = Date.now() - t0;
 
         if (response.ok) {
           const remote = (await response.json()) as ModelCatalog;
           if (remote.candidateModels?.length > 0 && remote.regionPriority?.length > 0) {
-            log(`✅ Remote catalog loaded — ${remote.candidateModels.length} candidate model(s)`);
+            log(`✅ Remote catalog loaded in ${elapsed} ms — ${remote.candidateModels.length} candidate model(s)`);
+            log(`   Remote models: ${remote.candidateModels.map((m) => m.id).join(", ")}`);
+            log(`   Remote regions: ${remote.regionPriority.join(", ")}`);
+
+            // Compare with bundled catalog
+            const bundledIds = new Set(localCatalog.candidateModels.map((m) => m.id));
+            const remoteIds = new Set(remote.candidateModels.map((m) => m.id));
+            const added = remote.candidateModels.filter((m) => !bundledIds.has(m.id));
+            const removed = localCatalog.candidateModels.filter((m) => !remoteIds.has(m.id));
+            if (added.length > 0) {
+              log(`   🆕 New in remote (not in bundled): ${added.map((m) => m.id).join(", ")}`);
+            }
+            if (removed.length > 0) {
+              log(`   🗑️  In bundled but not in remote: ${removed.map((m) => m.id).join(", ")}`);
+            }
+            if (added.length === 0 && removed.length === 0) {
+              log(`   📋 Remote and bundled catalogs have the same models`);
+            }
             return remote;
           }
-          log(`⚠️  Remote catalog has invalid structure, using bundled catalog`);
+          log(`⚠️  Remote catalog has invalid structure (${elapsed} ms), using bundled catalog`);
+          log(`   candidateModels: ${remote.candidateModels?.length ?? "missing"}, regionPriority: ${remote.regionPriority?.length ?? "missing"}`);
         } else {
-          log(`⚠️  Remote catalog returned ${response.status}, using bundled catalog`);
+          log(`⚠️  Remote catalog returned HTTP ${response.status} ${response.statusText} (${elapsed} ms), using bundled catalog`);
         }
       } catch (e) {
-        log(`⚠️  Remote catalog fetch failed: ${e}, using bundled catalog`);
+        const errMsg = e instanceof Error && e.name === "AbortError" ? "timed out after 3 s" : String(e);
+        log(`⚠️  Remote catalog fetch failed: ${errMsg}, using bundled catalog`);
       }
+    } else {
+      log(`ℹ️  No remote catalog URL configured (vertexAnthropic.modelCatalogUrl is empty)`);
     }
 
     log(`📦 Using bundled model catalog — ${localCatalog.candidateModels.length} candidate model(s)`);
+    log(`   Bundled models: ${localCatalog.candidateModels.map((m) => m.id).join(", ")}`);
     return localCatalog as ModelCatalog;
   }
 
@@ -176,7 +200,6 @@ export class VertexAnthropicProvider implements vscode.LanguageModelChatProvider
   setProjectId(projectId: string): void {
     this.projectId = projectId;
     this.discoveryDone = false;
-
   }
 
   // ── Chat provider interface ───────────────────────────────────────────
@@ -232,9 +255,38 @@ export class VertexAnthropicProvider implements vscode.LanguageModelChatProvider
       const systemParts: string[] = [];
       const mappedMessages: any[] = [];
 
-      for (const msg of messages) {
+      for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
         const roleNum = msg.role;
-        log(`  Message role=${roleNum}, parts=${msg.content.length}`);
+        const roleName = roleNum === vscode.LanguageModelChatMessageRole.User ? "User" : roleNum === vscode.LanguageModelChatMessageRole.Assistant ? "Assistant" : "System";
+        log(`  ── Message [${i}] role=${roleName} (${roleNum}), ${msg.content.length} part(s)`);
+
+        for (let p = 0; p < msg.content.length; p++) {
+          const part = msg.content[p];
+          if (part instanceof vscode.LanguageModelTextPart) {
+            const preview = part.value.length > 300 ? "…" + part.value.slice(-300) : part.value;
+            log(`     Part [${p}] TextPart (${part.value.length} chars): ${preview}`);
+          } else if (part instanceof vscode.LanguageModelToolResultPart) {
+            const contentPreview = Array.isArray(part.content)
+              ? part.content.map((c) => (c instanceof vscode.LanguageModelTextPart ? (c.value.length > 100 ? "…" + c.value.slice(-100) : c.value) : JSON.stringify(c).slice(-100))).join(", ")
+              : String(part.content).length > 100
+                ? "…" + String(part.content).slice(-100)
+                : String(part.content);
+            log(`     Part [${p}] ToolResultPart callId=${part.callId}, content: ${contentPreview}`);
+          } else if (part instanceof vscode.LanguageModelToolCallPart) {
+            const inputStr = JSON.stringify(part.input);
+            const inputPreview = inputStr.length > 200 ? "…" + inputStr.slice(-200) : inputStr;
+            log(`     Part [${p}] ToolCallPart callId=${part.callId}, name=${part.name}, input=${inputPreview}`);
+          } else if (part instanceof vscode.LanguageModelDataPart) {
+            const size = part.data?.byteLength ?? 0;
+            log(`     Part [${p}] DataPart mime=${part.mimeType}, size=${size} bytes`);
+          } else {
+            // Log all enumerable properties so we can identify unknown part types
+            const keys = Object.keys(part as any);
+            const snapshot = keys.slice(0, 5).map((k) => `${k}=${String((part as any)[k]).slice(0, 50)}`).join(", ");
+            log(`     Part [${p}] Unknown part type: ${Object.getPrototypeOf(part)?.constructor?.name ?? typeof part} — keys: [${keys.join(", ")}] ${snapshot}`);
+          }
+        }
 
         // System messages → Anthropic "system" parameter
         if (roleNum !== vscode.LanguageModelChatMessageRole.User && roleNum !== vscode.LanguageModelChatMessageRole.Assistant) {
@@ -243,6 +295,7 @@ export class VertexAnthropicProvider implements vscode.LanguageModelChatProvider
               systemParts.push(part.value);
             }
           }
+          log(`     → Extracted as system prompt (${systemParts.length} part(s) so far, ${systemParts.reduce((a, s) => a + s.length, 0)} chars total)`);
           continue;
         }
 
@@ -278,6 +331,31 @@ export class VertexAnthropicProvider implements vscode.LanguageModelChatProvider
               name: part.name,
               input: part.input,
             });
+          } else if (part instanceof vscode.LanguageModelDataPart) {
+            // Image data → Anthropic base64 image content block
+            if (part.mimeType?.startsWith("image/")) {
+              const base64 = Buffer.from(part.data).toString("base64");
+              contentParts.push({
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: part.mimeType,
+                  data: base64,
+                },
+              });
+              log(`     🖼️  Mapped image: ${part.mimeType}, ${part.data.byteLength} bytes → base64 (${base64.length} chars)`);
+            } else {
+              // Non-image data part — try to include as text
+              try {
+                const text = new TextDecoder().decode(part.data);
+                if (text.length > 0) {
+                  contentParts.push({ type: "text", text });
+                  log(`     📎 Mapped non-image DataPart (${part.mimeType}) as text (${text.length} chars)`);
+                }
+              } catch {
+                log(`     ⚠️  Skipped non-image DataPart (${part.mimeType}, ${part.data.byteLength} bytes) — could not decode`);
+              }
+            }
           }
         }
 
@@ -299,11 +377,39 @@ export class VertexAnthropicProvider implements vscode.LanguageModelChatProvider
         input_schema: t.inputSchema ?? { type: "object", properties: {} },
       }));
 
+      if (tools?.length) {
+        log(`  🔧 Tools provided: ${tools.map((t) => t.name).join(", ")}`);
+      }
+
       const spec = this.availableModels.find((m) => m.id === modelId);
       const maxTokens = spec?.maxOutputTokens ?? 4096;
 
       const systemPrompt = systemParts.length > 0 ? systemParts.join("\n\n") : undefined;
 
+      // Log final mapped messages summary
+      log(`  ── Mapped messages summary ──`);
+      for (let i = 0; i < mappedMessages.length; i++) {
+        const mm = mappedMessages[i];
+        const partsDesc = mm.content
+          .map((p: any) => {
+            if (p.type === "text") {
+              return `text(${p.text.length} chars)`;
+            }
+            if (p.type === "tool_use") {
+              return `tool_use(${p.name})`;
+            }
+            if (p.type === "tool_result") {
+              return `tool_result(${p.tool_use_id})`;
+            }
+            return p.type;
+          })
+          .join(", ");
+        log(`     [${i}] ${mm.role}: ${partsDesc}`);
+      }
+      if (systemPrompt) {
+        const sysPreview = systemPrompt.length > 300 ? "…" + systemPrompt.slice(-300) : systemPrompt;
+        log(`     system (${systemPrompt.length} chars): ${sysPreview}`);
+      }
       log(`  Sending: model=${modelId}, max_tokens=${maxTokens}, msgs=${mappedMessages.length}, system=${systemPrompt ? systemPrompt.length + " chars" : "none"}, tools=${tools?.length ?? 0}`);
 
       const stream = await this.client.messages.create({
