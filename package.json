@@ -2,7 +2,9 @@
   "name": "vertex-anthropic",
   "displayName": "Vertex Anthropic Provider",
   "description": "VS Code Chat Model Provider for Vertex AI Anthropic",
+  "publisher": "jorsm",
   "version": "0.0.2",
+  "icon": "images/logo.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/jorsm/vertex-anthropic"
