@@ -11,6 +11,9 @@ The extension implements the `vscode.LanguageModelChatProvider` API to bridge VS
 - **Dynamic model discovery** — pings candidate models on activation and registers only the ones available in your project.
 - **Auto region detection** — tries `global` first, then regional endpoints (`us-east5`, `europe-west1`, `asia-southeast1`).
 - **Remote model catalog** — fetches the candidate model list from a configurable URL so your team can add models without rebuilding.
+- **Interactive Usage Dashboard** — Native VS Code Webview dashboard tracking daily costs, cached tokens, and payload diagnostics via Apache ECharts.
+- **API Payload Character Tracking** — Automatically computes literal byte sizing across User Text, System rules, Base64 Images, and Tool JSON calls.
+- **Intelligent Prompt Caching** — Automatically injects `ephemeral` caching on systemic boundaries reducing token costs for repeating conversational setups.
 - **Message mapping** — translates VS Code chat messages (user, assistant, system, tool results, tool calls) into Anthropic’s API format.
 - **Image / vision support** — images pasted into chat are sent to Claude as base64 image content blocks.
 - **Streaming responses** — streams tokens back to the Chat UI in real time via the Vertex AI SDK.
@@ -22,7 +25,7 @@ The extension implements the `vscode.LanguageModelChatProvider` API to bridge VS
 ### From `.vsix` (pre-built)
 
 1. Download the `.vsix` file from the repository:  
-   [`vertex-anthropic-0.0.2.vsix`](https://github.com/jorsm/vertex-anthropic/blob/develop/vertex-anthropic-0.0.2.vsix)
+   [`vertex-anthropic-0.0.4.vsix`](https://github.com/jorsm/vertex-anthropic/blob/develop/vertex-anthropic-0.0.4.vsix)
 
 2. Install it in VS Code using one of the following methods:
 
@@ -33,7 +36,7 @@ The extension implements the `vscode.LanguageModelChatProvider` API to bridge VS
 
    **Option B — Command line:**
    ```bash
-   code --install-extension vertex-anthropic-0.0.2.vsix
+   code --install-extension vertex-anthropic-0.0.4.vsix
    ```
 
 3. Reload VS Code when prompted.
@@ -99,6 +102,11 @@ The models support tool calling, so they work with VS Code’s built-in agent to
 ### Commands
 
 - **Vertex Anthropic: Refresh Models** (`Ctrl+Shift+P`) — re-runs model discovery.
+
+### Status Bar & Dashboard
+
+- An interactive **Cost Tracker** exists in native VS Code Status bar updating on the fly when tokens resolve.
+- Click the Status Bar or Run `Vertex Anthropic: Show Usage Dashboard` to open the local Cost Tracking Webview filtering all Usage & Payload metrics.
 
 ### Diagnostics
 
