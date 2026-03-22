@@ -22,25 +22,6 @@ The extension implements the `vscode.LanguageModelChatProvider` API to bridge VS
 
 ## Installation
 
-### From `.vsix` (pre-built)
-
-1. Download the `.vsix` file from the repository:  
-   [`vertex-anthropic-0.0.4.vsix`](https://github.com/jorsm/vertex-anthropic/blob/develop/vertex-anthropic-0.0.4.vsix)
-
-2. Install it in VS Code using one of the following methods:
-
-   **Option A — VS Code UI:**
-   - Open the Extensions view (`Ctrl+Shift+X`)
-   - Click the `···` menu (top-right of the Extensions sidebar) → **Install from VSIX…**
-   - Select the downloaded `.vsix` file
-
-   **Option B — Command line:**
-   ```bash
-   code --install-extension vertex-anthropic-0.0.4.vsix
-   ```
-
-3. Reload VS Code when prompted.
-
 ### From Source
 
 ```bash
