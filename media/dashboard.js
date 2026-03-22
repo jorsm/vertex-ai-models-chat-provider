@@ -24,6 +24,7 @@ const endDateInput = document.getElementById("end-date");
 const modelSelect = document.getElementById("model-select");
 
 let rawLogsCache = []; // Store logs for fast re-rendering on model filter switch
+let minDate = null; // Will be populated from backend
 
 const dismissBtn = document.getElementById("dismiss-warning-btn");
 if (dismissBtn) {
@@ -37,18 +38,20 @@ if (dismissBtn) {
 function populateModelDropdown(logs) {
   const currentVal = modelSelect.value;
   const uniqueModels = new Set();
-  logs.forEach(l => uniqueModels.add(l.model));
-  
+  logs.forEach((l) => uniqueModels.add(l.model));
+
   let html = `<option value="all">All Models</option>`;
-  Array.from(uniqueModels).sort().forEach(m => {
+  Array.from(uniqueModels)
+    .sort()
+    .forEach((m) => {
       html += `<option value="${m}">${m}</option>`;
-  });
-  
+    });
+
   modelSelect.innerHTML = html;
-  
+
   // Keep same model selected if it still exists in the new date range
   if (currentVal !== "all" && uniqueModels.has(currentVal)) {
-      modelSelect.value = currentVal;
+    modelSelect.value = currentVal;
   }
 }
 
@@ -104,7 +107,22 @@ document.getElementById("btn-month").addEventListener("click", () => {
   requestData();
 });
 document.getElementById("btn-all").addEventListener("click", () => {
-  startDateInput.value = "2020-01-01"; // Arbitrary old date
+  if (minDate) {
+    startDateInput.value = minDate;
+  } else {
+    // Fallback: request min date from backend if not yet loaded
+    vscode.postMessage({ command: "getMinDate" });
+    setTimeout(() => {
+      if (minDate) {
+        startDateInput.value = minDate;
+      } else {
+        startDateInput.value = formatDate(new Date()); // Fallback: today
+      }
+      endDateInput.value = formatDate(new Date());
+      requestData();
+    }, 200);
+    return;
+  }
   endDateInput.value = formatDate(new Date());
   requestData();
 });
@@ -121,6 +139,9 @@ window.addEventListener("message", (event) => {
       populateModelDropdown(rawLogsCache);
       renderDashboard(rawLogsCache);
       break;
+    case "MIN_DATE":
+      minDate = message.payload;
+      break;
     case "UPDATE_SIGNAL": // backend pushed a refresh ping
       requestData();
       break;
@@ -130,7 +151,7 @@ window.addEventListener("message", (event) => {
 function renderDashboard(logs) {
   const selectedModel = modelSelect.value;
   if (selectedModel !== "all") {
-      logs = logs.filter(log => log.model === selectedModel);
+    logs = logs.filter((log) => log.model === selectedModel);
   }
 
   let totalCost = 0;
@@ -194,7 +215,7 @@ function renderDashboard(logs) {
     tokenSeriesMap[dayStr].output += log.tokens.output;
     tokenSeriesMap[dayStr].cache_read += log.tokens.cache_read;
     tokenSeriesMap[dayStr].cache_create += log.tokens.cache_create;
-    
+
     const chars = log.tokens.characters || { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
     payloadSeriesMap[dayStr].system += chars.system || 0;
     payloadSeriesMap[dayStr].user_text += chars.user_text || 0;
@@ -248,34 +269,40 @@ function renderCharts(datesMap, tokenSeriesMap, costByModel, payloadSeriesMap) {
     };
   });
 
-  costChart.setOption({
-    tooltip: {
-      trigger: "axis",
-      valueFormatter: (value) => Number(value).toFixed(2) + " $",
+  costChart.setOption(
+    {
+      tooltip: {
+        trigger: "axis",
+        valueFormatter: (value) => Number(value).toFixed(2) + " $",
+      },
+      legend: { data: models, textStyle: { color: textColor } },
+      xAxis: { type: "category", boundaryGap: false, data: dates, axisLabel: { color: textColor } },
+      yAxis: { type: "value", axisLabel: { color: textColor } },
+      series: costSeries,
+      backgroundColor: "transparent",
     },
-    legend: { data: models, textStyle: { color: textColor } },
-    xAxis: { type: "category", boundaryGap: false, data: dates, axisLabel: { color: textColor } },
-    yAxis: { type: "value", axisLabel: { color: textColor } },
-    series: costSeries,
-    backgroundColor: "transparent",
-  }, true);
+    true,
+  );
 
   // Cost Pie
-  costPie.setOption({
-    tooltip: {
-      trigger: "item",
-      valueFormatter: (value) => Number(value).toFixed(2) + " $",
-    },
-    series: [
-      {
-        type: "pie",
-        radius: "50%",
-        data: models.map((m) => ({ value: costByModel[m], name: m })),
-        label: { color: textColor },
+  costPie.setOption(
+    {
+      tooltip: {
+        trigger: "item",
+        valueFormatter: (value) => Number(value).toFixed(2) + " $",
       },
-    ],
-    backgroundColor: "transparent",
-  }, true);
+      series: [
+        {
+          type: "pie",
+          radius: "50%",
+          data: models.map((m) => ({ value: costByModel[m], name: m })),
+          label: { color: textColor },
+        },
+      ],
+      backgroundColor: "transparent",
+    },
+    true,
+  );
 
   // Token Chart
   const tokenSeriesProps = ["input", "output", "cache_read", "cache_create"];
@@ -286,14 +313,17 @@ function renderCharts(datesMap, tokenSeriesMap, costByModel, payloadSeriesMap) {
     data: dates.map((d) => tokenSeriesMap[d][prop]),
   }));
 
-  tokenChart.setOption({
-    tooltip: { trigger: "axis" },
-    legend: { data: tokenSeriesProps, textStyle: { color: textColor } },
-    xAxis: { type: "category", data: dates, axisLabel: { color: textColor } },
-    yAxis: { type: "value", axisLabel: { color: textColor } },
-    series: tokenSeries,
-    backgroundColor: "transparent",
-  }, true);
+  tokenChart.setOption(
+    {
+      tooltip: { trigger: "axis" },
+      legend: { data: tokenSeriesProps, textStyle: { color: textColor } },
+      xAxis: { type: "category", data: dates, axisLabel: { color: textColor } },
+      yAxis: { type: "value", axisLabel: { color: textColor } },
+      series: tokenSeries,
+      backgroundColor: "transparent",
+    },
+    true,
+  );
 
   // Token Pie
   let totalInput = 0,
@@ -307,67 +337,78 @@ function renderCharts(datesMap, tokenSeriesMap, costByModel, payloadSeriesMap) {
     totalCC += tokenSeriesMap[d].cache_create;
   });
 
-  tokenPie.setOption({
-    tooltip: { trigger: "item" },
-    series: [
-      {
-        type: "pie",
-        radius: "50%",
-        data: [
-          { name: "Input", value: totalInput },
-          { name: "Output", value: totalOut },
-          { name: "Cache Read", value: totalCR },
-          { name: "Cache Create", value: totalCC },
-        ],
-        label: { color: textColor },
-      },
-    ],
-    backgroundColor: "transparent",
-  }, true);
+  tokenPie.setOption(
+    {
+      tooltip: { trigger: "item" },
+      series: [
+        {
+          type: "pie",
+          radius: "50%",
+          data: [
+            { name: "Input", value: totalInput },
+            { name: "Output", value: totalOut },
+            { name: "Cache Read", value: totalCR },
+            { name: "Cache Create", value: totalCC },
+          ],
+          label: { color: textColor },
+        },
+      ],
+      backgroundColor: "transparent",
+    },
+    true,
+  );
 
   // Payload Chart
   const payloadSeriesProps = ["system", "user_text", "assistant_text", "image", "tool_use", "tool_result"];
   const payloadSeries = payloadSeriesProps.map((prop) => ({
-    name: prop.replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    name: prop.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()),
     type: "bar",
     stack: "total",
     data: dates.map((d) => payloadSeriesMap[d][prop]),
   }));
 
-  payloadChart.setOption({
-    tooltip: { trigger: "axis" },
-    legend: { data: payloadSeries.map(s => s.name), textStyle: { color: textColor } },
-    xAxis: { type: "category", data: dates, axisLabel: { color: textColor } },
-    yAxis: { type: "value", axisLabel: { color: textColor } },
-    series: payloadSeries,
-    backgroundColor: "transparent",
-  }, true);
+  payloadChart.setOption(
+    {
+      tooltip: { trigger: "axis" },
+      legend: { data: payloadSeries.map((s) => s.name), textStyle: { color: textColor } },
+      xAxis: { type: "category", data: dates, axisLabel: { color: textColor } },
+      yAxis: { type: "value", axisLabel: { color: textColor } },
+      series: payloadSeries,
+      backgroundColor: "transparent",
+    },
+    true,
+  );
 
   // Payload Pie
   let totalPayload = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
   dates.forEach((d) => {
-    payloadSeriesProps.forEach(p => totalPayload[p] += payloadSeriesMap[d][p]);
+    payloadSeriesProps.forEach((p) => (totalPayload[p] += payloadSeriesMap[d][p]));
   });
 
-  payloadPie.setOption({
-    tooltip: { 
+  payloadPie.setOption(
+    {
+      tooltip: {
         trigger: "item",
-        formatter: '{a} <br/>{b}: {c} chars ({d}%)'
-    },
-    series: [
-      {
-        name: 'Characters Payload',
-        type: "pie",
-        radius: "50%",
-        data: payloadSeriesProps.map(p => ({
-            name: p.replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase()),
-            value: totalPayload[p]
-        })).filter(d => d.value > 0),
-        label: { formatter: '{b}\n{d}%', color: textColor },
+        formatter: "{a} <br/>{b}: {c} chars ({d}%)",
       },
-    ],
-    backgroundColor: "transparent",
-  }, true);
+      series: [
+        {
+          name: "Characters Payload",
+          type: "pie",
+          radius: "50%",
+          data: payloadSeriesProps
+            .map((p) => ({
+              name: p.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+              value: totalPayload[p],
+            }))
+            .filter((d) => d.value > 0),
+          label: { formatter: "{b}\n{d}%", color: textColor },
+        },
+      ],
+      backgroundColor: "transparent",
+    },
+    true,
+  );
 }
 
 function renderTable(modelStats) {
@@ -392,5 +433,7 @@ function renderTable(modelStats) {
 }
 
 // Initial fetch
+// Request minimum date from backend
+vscode.postMessage({ command: "getMinDate" });
 // Give small delay for UI
 setTimeout(requestData, 50);

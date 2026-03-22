@@ -42,12 +42,19 @@ export class DashboardWebview {
           this._fetchData(message.startDate, message.endDate).catch((err) => console.error(err));
           return;
         }
+        if (message.command === "getMinDate") {
+          this._sendMinDate().catch((err) => console.error(err));
+          return;
+        }
         if (message.command === "dismissWarning") {
           console.log("[VertexAnthropic] Received dismissWarning command from Dashboard.");
-          vscode.workspace.getConfiguration("vertexAnthropic").update("hideBillingWarning", true, vscode.ConfigurationTarget.Global).then(
-            () => console.log("[VertexAnthropic] hideBillingWarning saved securely to global settings."),
-            (err) => console.error("[VertexAnthropic] Error saving global settings:", err)
-          );
+          vscode.workspace
+            .getConfiguration("vertexAnthropic")
+            .update("hideBillingWarning", true, vscode.ConfigurationTarget.Global)
+            .then(
+              () => console.log("[VertexAnthropic] hideBillingWarning saved securely to global settings."),
+              (err) => console.error("[VertexAnthropic] Error saving global settings:", err),
+            );
           return;
         }
       },
@@ -71,6 +78,11 @@ export class DashboardWebview {
 
     const logs = await this._usageTracker.getUsageInRange(start, end);
     this._panel.webview.postMessage({ type: "RENDER_DATA", payload: logs });
+  }
+
+  private async _sendMinDate() {
+    const minDate = await this._usageTracker.getMinDateFromLogs();
+    this._panel.webview.postMessage({ type: "MIN_DATE", payload: minDate });
   }
 
   public dispose() {
@@ -112,7 +124,10 @@ export class DashboardWebview {
                 <script src="${echartsUri}"></script>
             </head>
             <body>
-                ${hideWarning ? "" : `
+                ${
+                  hideWarning
+                    ? ""
+                    : `
                 <div id="billing-warning" class="billing-warning">
                     <div class="warning-icon">⚠️</div>
                     <div class="warning-content">
@@ -124,7 +139,8 @@ export class DashboardWebview {
                     </div>
                     <button id="dismiss-warning-btn" class="dismiss-btn" title="Dismiss this alert permanently">✕</button>
                 </div>
-                `}
+                `
+                }
 
                 <div class="control-bar">
                     <div class="presets">
