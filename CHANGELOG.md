@@ -4,10 +4,29 @@ All notable changes to the **Vertex Anthropic Provider** extension will be docum
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.0.4] — 2026-03-22
+### Added
+
+- **Interactive Webview Dashboard** — Native VS Code Webview dashboard tracking daily costs, cached tokens, and payload diagnostics via Apache ECharts.
+- **API Payload Character Tracking** — Automatically computes literal byte sizing across User Text, System rules, Base64 Images, and Tool JSON calls.
+- **Intelligent Prompt Caching** — Automatically injects `ephemeral` caching on systemic boundaries reducing token costs for repeating conversational setups.
+- **Native Status Bar Item** — A persistent status bar icon displaying global live inference costs.
+- **Local Persistence layer** — Native filesystem `YYYYMMDD.json` batching engine safely persisting AI costs mapped tightly to Local Timezones.
+- **Webview Model Selector** — ECharts natively filters usage metrics via dropdown mapping to invoked Model histories.
+
+## [0.0.3] — 2026-03-22
+
+### Added
+
+- **Extension Icon** — Added official Vertex Anthropic branding image to extension via `images/` folder.
+
 ## [0.0.2] — 2026-03-21
 
 ### Added
 
+## [0.0.2] — 2026-03-21
+
+### Added
 - **Dynamic model discovery** — models are no longer hardcoded. On activation the extension pings each candidate model with a minimal `max_tokens: 1` request and registers only the ones that respond.
 - **Auto region detection** — tries the `global` endpoint first, then falls back through `us-east5`, `europe-west1`, `asia-southeast1` until a working region is found. The `vertexAnthropic.region` setting has been removed.
 - **Remote model catalog** — the extension fetches a JSON model catalog from a configurable URL (`vertexAnthropic.modelCatalogUrl`) with a 3-second timeout, falling back to the bundled catalog. This allows updating the model list without rebuilding the extension.
