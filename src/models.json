@@ -40,20 +40,20 @@
       "family": "gemini",
       "version": "gemini-3-flash-preview",
       "maxInputTokens": 1048576,
-      "maxOutputTokens": 8192,
+      "maxOutputTokens": 65536,
       "capabilities": { "imageInput": true, "toolCalling": true },
-      "pricing": { "input": 0.075, "output": 0.3, "cache_read": 0.01875, "cache_create": 0.075 }
+      "pricing": { "input": 0.5, "output": 3.0, "cache_read": 0.5, "cache_create": 0.05 }
     },
     {
       "id": "gemini-3-flash-preview-high",
       "vendor": "google",
-      "displayName": "Google Gemini 3 Flash (High)",
+      "displayName": "Google Gemini 3 Flash (High Thinking)",
       "family": "gemini",
       "version": "gemini-3-flash-preview-high",
       "maxInputTokens": 1048576,
-      "maxOutputTokens": 8192,
+      "maxOutputTokens": 65536,
       "capabilities": { "imageInput": true, "toolCalling": true },
-      "pricing": { "input": 0.075, "output": 0.3, "cache_read": 0.01875, "cache_create": 0.075 }
+      "pricing": { "input": 0.5, "output": 3.0, "cache_read": 0.5, "cache_create": 0.05 }
     },
     {
       "id": "gemini-3.1-pro-preview-high",
@@ -61,10 +61,10 @@
       "displayName": "Google Gemini 3.1 Pro (High Thinking)",
       "family": "gemini",
       "version": "gemini-3.1-pro-preview-high",
-      "maxInputTokens": 2097152,
-      "maxOutputTokens": 8192,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
       "capabilities": { "imageInput": true, "toolCalling": true },
-      "pricing": { "input": 1.25, "output": 5.0, "cache_read": 0.3125, "cache_create": 1.25 }
+      "pricing": { "input": 3.0, "output": 15.0, "cache_read": 0.4, "cache_create": 3.0 }
     },
     {
       "id": "gemini-3.1-pro-preview",
@@ -72,10 +72,10 @@
       "displayName": "Google Gemini 3.1 Pro",
       "family": "gemini",
       "version": "gemini-3.1-pro-preview",
-      "maxInputTokens": 2097152,
-      "maxOutputTokens": 8192,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
       "capabilities": { "imageInput": true, "toolCalling": true },
-      "pricing": { "input": 1.25, "output": 5.0, "cache_read": 0.3125, "cache_create": 1.25 }
+      "pricing": { "input": 3.0, "output": 15.0, "cache_read": 0.4, "cache_create": 3.0 }
     }
   ],
   "regionPriority": ["global", "us-east5", "europe-west1", "asia-southeast1"]
