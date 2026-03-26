@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
 
-const outputChannel = vscode.window.createOutputChannel("Vertex Google Plugin");
+const outputChannel = vscode.window.createOutputChannel("Vertex Google Provider");
 
 function log(msg: string): void {
   const ts = new Date().toISOString();
@@ -13,6 +13,14 @@ export class VertexGoogleProvider implements VertexModelProvider {
   private client: any;
   private projectId!: string;
   private region!: string;
+  /**
+   * Cache of thought signatures keyed by tool call ID.
+   * When a thinking model returns thought parts before function calls, the
+   * thought signatures must be echoed back in subsequent turns. VS Code doesn't
+   * preserve these, so we cache them here and re-inject them when we see the
+   * corresponding tool call replayed as history.
+   */
+  private readonly thoughtSignatureCache = new Map<string, string>();
 
   initialize(projectId: string, region: string): void {
     this.projectId = projectId;
@@ -23,14 +31,12 @@ export class VertexGoogleProvider implements VertexModelProvider {
     if (!this.client) {
       // Use dynamic import to support ESM-only @google/genai in a CommonJS context
       const genai = await import("@google/genai");
-      
+
       this.client = new genai.GoogleGenAI({
-        // Type definition restricts this to boolean, but docs require project/location object for Vertex
-        // @ts-ignore
-        vertexai: {
-          project: this.projectId,
-          location: this.region,
-        }
+        // @ts-ignore - type definition restricts vertexai to boolean, but project/location are top-level
+        vertexai: true,
+        project: this.projectId,
+        location: this.region,
       });
     }
     return this.client;
@@ -41,8 +47,8 @@ export class VertexGoogleProvider implements VertexModelProvider {
    */
   private resolveModelId(modelId: string): { actualId: string; config?: any } {
     if (modelId.endsWith("-high")) {
-       return { actualId: modelId.replace("-high", ""), config: { thinkingConfig: { thinkingLevel: "HIGH" } } };
-    } 
+      return { actualId: modelId.replace("-high", ""), config: { thinkingConfig: { thinkingLevel: "HIGH" } } };
+    }
     return { actualId: modelId };
   }
 
@@ -53,7 +59,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
       await client.models.generateContent({
         model: actualId,
         contents: "ping",
-        config: { maxOutputTokens: 1 }
+        config: { maxOutputTokens: 1 },
       });
       log(`    🏓 Google ${modelId} -> ${actualId} → ✅`);
       return true;
@@ -64,117 +70,126 @@ export class VertexGoogleProvider implements VertexModelProvider {
   }
 
   async provideTokenCount(text: string | vscode.LanguageModelChatRequestMessage, _token: vscode.CancellationToken): Promise<number> {
-      if (typeof text === "string") {
-        return Math.ceil(text.length / 4);
+    if (typeof text === "string") {
+      return Math.ceil(text.length / 4);
+    }
+    let length = 0;
+    for (const part of text.content) {
+      if (part instanceof vscode.LanguageModelTextPart) {
+        length += part.value.length;
       }
-      let length = 0;
-      for (const part of text.content) {
-        if (part instanceof vscode.LanguageModelTextPart) {
-          length += part.value.length;
-        }
-      }
-      return Math.ceil(length / 4);
+    }
+    return Math.ceil(length / 4);
   }
 
   private mapRole(roleNum: number): string {
-      if (roleNum === vscode.LanguageModelChatMessageRole.User) {
-        return "user";
-      }
-      if (roleNum === vscode.LanguageModelChatMessageRole.Assistant) {
-        return "model";
-      }
-      return "system";
+    if (roleNum === vscode.LanguageModelChatMessageRole.User) {
+      return "user";
+    }
+    if (roleNum === vscode.LanguageModelChatMessageRole.Assistant) {
+      return "model";
+    }
+    return "system";
   }
 
   private mapToolResult(p: vscode.LanguageModelToolResultPart): any {
-      let resStr = "{}";
-      if (Array.isArray(p.content)) {
-          resStr = p.content.map(c => {
-             if (c instanceof vscode.LanguageModelTextPart) {
-               return c.value;
-             }
-             return JSON.stringify(c);
-          }).join("\n");
-      } else {
-          resStr = String(p.content);
-      }
-      
-      try {
-          return { functionResponse: { name: p.callId, response: JSON.parse(resStr) } };
-      } catch {
-          return { functionResponse: { name: p.callId, response: { result: resStr } } };
-      }
+    let resStr = "{}";
+    if (Array.isArray(p.content)) {
+      resStr = p.content
+        .map((c) => {
+          if (c instanceof vscode.LanguageModelTextPart) {
+            return c.value;
+          }
+          return JSON.stringify(c);
+        })
+        .join("\n");
+    } else {
+      resStr = String(p.content);
+    }
+
+    try {
+      return { functionResponse: { name: p.callId, response: JSON.parse(resStr) } };
+    } catch {
+      return { functionResponse: { name: p.callId, response: { result: resStr } } };
+    }
   }
 
   private extractMessages(messages: readonly vscode.LanguageModelChatRequestMessage[], charCount: any): { mappedContents: any[]; systemInstruction: string } {
-      const mappedContents: any[] = [];
-      let systemInstruction = "";
+    const mappedContents: any[] = [];
+    let systemInstruction = "";
 
-      for (const msg of messages) {
-          const roleName = this.mapRole(msg.role);
+    for (const msg of messages) {
+      const roleName = this.mapRole(msg.role);
 
-          if (roleName === "system") {
-             for (const p of msg.content) {
-                if (p instanceof vscode.LanguageModelTextPart) {
-                   systemInstruction += p.value + "\n";
-                   charCount.system += p.value.length;
-                }
-             }
-             continue; // System instructions are passed separately in Gemini
+      if (roleName === "system") {
+        for (const p of msg.content) {
+          if (p instanceof vscode.LanguageModelTextPart) {
+            systemInstruction += p.value + "\n";
+            charCount.system += p.value.length;
           }
+        }
+        continue; // System instructions are passed separately in Gemini
+      }
 
-          const parts: any[] = [];
-          for (const p of msg.content) {
-            if (p instanceof vscode.LanguageModelTextPart) {
-                if (p.value.length > 0) {
-                    parts.push({ text: p.value });
-                    if (roleName === "user") {
-                       charCount.user_text += p.value.length;
-                    } else {
-                       charCount.assistant_text += p.value.length;
-                    }
-                }
-            } else if (p instanceof vscode.LanguageModelToolCallPart) {
-                parts.push({
-                    functionCall: { name: p.name, args: p.input }
-                });
-                charCount.tool_use += JSON.stringify(p.input).length + p.name.length;
-            } else if (p instanceof vscode.LanguageModelToolResultPart) {
-                parts.push(this.mapToolResult(p));
-                charCount.tool_result += 1;
-            } else if (p instanceof vscode.LanguageModelDataPart) {
-                if (p.mimeType?.startsWith("image/")) {
-                    parts.push({
-                        inlineData: { mimeType: p.mimeType, data: Buffer.from(p.data).toString("base64") }
-                    });
-                    charCount.image += p.data.byteLength;
-                } else {
-                    try {
-                        const text = new TextDecoder().decode(p.data);
-                        if (text.length > 0) {
-                            parts.push({ text });
-                        }
-                    } catch (e) {
-                        // ignore unparseable data part
-                        log(`⚠️  Unparseable data part: ${e}`);
-                    }
-                }
+      const parts: any[] = [];
+      for (const p of msg.content) {
+        if (p instanceof vscode.LanguageModelTextPart) {
+          if (p.value.length > 0) {
+            parts.push({ text: p.value });
+            if (roleName === "user") {
+              charCount.user_text += p.value.length;
+            } else {
+              charCount.assistant_text += p.value.length;
             }
           }
-          
-          if (parts.length > 0) {
-              mappedContents.push({ role: roleName, parts });
-          } else {
-              mappedContents.push({ role: roleName, parts: [{ text: " " }] });
+        } else if (p instanceof vscode.LanguageModelToolCallPart) {
+          // Re-inject thought signature if we cached one for this tool call.
+          // Thinking models require the thought part (with its signature) to be
+          // present before its associated function call in subsequent turns.
+          const cachedSig = this.thoughtSignatureCache.get(p.callId);
+          if (cachedSig) {
+            parts.push({ thought: true, thoughtSignature: cachedSig });
           }
+          parts.push({
+            functionCall: { name: p.name, args: p.input },
+          });
+          charCount.tool_use += JSON.stringify(p.input).length + p.name.length;
+        } else if (p instanceof vscode.LanguageModelToolResultPart) {
+          parts.push(this.mapToolResult(p));
+          charCount.tool_result += 1;
+        } else if (p instanceof vscode.LanguageModelDataPart) {
+          if (p.mimeType?.startsWith("image/")) {
+            parts.push({
+              inlineData: { mimeType: p.mimeType, data: Buffer.from(p.data).toString("base64") },
+            });
+            charCount.image += p.data.byteLength;
+          } else {
+            try {
+              const text = new TextDecoder().decode(p.data);
+              if (text.length > 0) {
+                parts.push({ text });
+              }
+            } catch (e) {
+              // ignore unparseable data part
+              log(`⚠️  Unparseable data part: ${e}`);
+            }
+          }
+        }
       }
 
-      // Make sure first non-system message is from user
-      if (mappedContents.length === 0 || mappedContents[0].role !== "user") {
-         mappedContents.unshift({ role: "user", parts: [{ text: " " }] });
+      if (parts.length > 0) {
+        mappedContents.push({ role: roleName, parts });
+      } else {
+        mappedContents.push({ role: roleName, parts: [{ text: " " }] });
       }
+    }
 
-      return { mappedContents, systemInstruction };
+    // Make sure first non-system message is from user
+    if (mappedContents.length === 0 || mappedContents[0].role !== "user") {
+      mappedContents.unshift({ role: "user", parts: [{ text: " " }] });
+    }
+
+    return { mappedContents, systemInstruction };
   }
 
   async provideLanguageModelChatResponse(
@@ -188,68 +203,91 @@ export class VertexGoogleProvider implements VertexModelProvider {
     log(`▶ Google provideLanguageModelChatResponse called — requested: ${modelId} -> executed: ${actualId}, msgs: ${messages.length}`);
 
     const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
-    let inputTokens = 0, outputTokens = 0, cacheRead = 0, cacheCreate = 0;
+    let inputTokens = 0,
+      outputTokens = 0,
+      cacheRead = 0,
+      cacheCreate = 0;
 
     try {
-       const { mappedContents, systemInstruction } = this.extractMessages(messages, charCount);
+      const { mappedContents, systemInstruction } = this.extractMessages(messages, charCount);
 
-       const generationConfig: any = { ...config };
+      const generationConfig: any = { ...config };
 
-       if (systemInstruction.trim().length > 0) {
-           generationConfig.systemInstruction = systemInstruction.trim();
-       }
+      if (systemInstruction.trim().length > 0) {
+        generationConfig.systemInstruction = systemInstruction.trim();
+      }
 
-       if (options.tools && options.tools.length > 0) {
-           const declarations = options.tools.map(t => ({
-               name: t.name,
-               description: t.description,
-               parameters: t.inputSchema || { type: "object", properties: {} }
-           }));
-           generationConfig.tools = [{ functionDeclarations: declarations }];
-           log(`  🔧 Provided ${declarations.length} tools`);
-       }
+      if (options.tools && options.tools.length > 0) {
+        const declarations = options.tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          parameters: t.inputSchema || { type: "object", properties: {} },
+        }));
+        generationConfig.tools = [{ functionDeclarations: declarations }];
+        log(`  🔧 Provided ${declarations.length} tools`);
+      }
 
-       const client = await this.getClient();
-       const stream = await client.models.generateContentStream({
-           model: actualId,
-           contents: mappedContents,
-           config: generationConfig,
-       });
+      const client = await this.getClient();
+      const stream = await client.models.generateContentStream({
+        model: actualId,
+        contents: mappedContents,
+        config: generationConfig,
+      });
 
-       for await (const chunk of stream) {
-           if (token.isCancellationRequested) {
-               break;
-           }
+      // Accumulate thought signatures from this turn so they can be associated
+      // with any function calls that follow them in the same response.
+      let pendingThoughtSignature: string | undefined;
 
-           const functionCalls = chunk.functionCalls;
-           if (functionCalls && functionCalls.length > 0) {
-               for (const fc of functionCalls) {
-                   const callName = fc.name || "unknown";
-                   progress.report(new vscode.LanguageModelToolCallPart(callName, callName, fc.args || {}));
-               }
-           }
+      for await (const chunk of stream) {
+        if (token.isCancellationRequested) {
+          break;
+        }
 
-           if (chunk.text) {
-               charCount.assistant_text += chunk.text.length;
-               progress.report(new vscode.LanguageModelTextPart(chunk.text));
-           }
+        // Collect thought parts (with signatures) from raw candidate parts.
+        // These must not be forwarded as text but must be cached for re-use.
+        const rawParts: any[] | undefined = chunk.candidates?.[0]?.content?.parts;
+        if (rawParts) {
+          for (const part of rawParts) {
+            if (part.thought === true && part.thoughtSignature) {
+              pendingThoughtSignature = part.thoughtSignature;
+            }
+          }
+        }
 
-           if (chunk.usageMetadata) {
-                inputTokens = chunk.usageMetadata.promptTokenCount ?? inputTokens;
-                outputTokens = chunk.usageMetadata.candidatesTokenCount ?? outputTokens;
-           }
-       }
+        const functionCalls = chunk.functionCalls;
+        if (functionCalls && functionCalls.length > 0) {
+          for (const fc of functionCalls) {
+            const callName = fc.name || "unknown";
+            // Associate the accumulated thought signature with this tool call ID.
+            if (pendingThoughtSignature) {
+              this.thoughtSignatureCache.set(callName, pendingThoughtSignature);
+              pendingThoughtSignature = undefined;
+            }
+            progress.report(new vscode.LanguageModelToolCallPart(callName, callName, fc.args || {}));
+          }
+        }
 
-       log(`  ✅ Stream finished successfully`);
+        // chunk.text already strips thought parts, so it is safe to forward.
+        if (chunk.text) {
+          charCount.assistant_text += chunk.text.length;
+          progress.report(new vscode.LanguageModelTextPart(chunk.text));
+        }
 
-       return {
-           usage: { input: inputTokens, output: outputTokens, cache_read: cacheRead, cache_create: cacheCreate },
-           charCount
-       };
+        if (chunk.usageMetadata) {
+          inputTokens = chunk.usageMetadata.promptTokenCount ?? inputTokens;
+          outputTokens = chunk.usageMetadata.candidatesTokenCount ?? outputTokens;
+        }
+      }
 
+      log(`  ✅ Stream finished successfully`);
+
+      return {
+        usage: { input: inputTokens, output: outputTokens, cache_read: cacheRead, cache_create: cacheCreate },
+        charCount,
+      };
     } catch (e) {
-       log(`  ❌ Google provideLanguageModelChatResponse error: ${e}`);
-       throw e;
+      log(`  ❌ Google provideLanguageModelChatResponse error: ${e}`);
+      throw e;
     }
   }
 }
