@@ -161,6 +161,8 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
   };
   const token = new vscode.CancellationTokenSource().token;
 
+  repo.inputBox.value = "⏳ Generating commit message…";
+
   // Accumulate streamed text parts
   let commitMessage = "";
   const progress: vscode.Progress<vscode.LanguageModelResponsePart> = {
@@ -190,6 +192,7 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
     }
   } catch (e) {
     log(`❌ LLM call failed: ${e}`);
+    repo.inputBox.value = "";
     vscode.window.showErrorMessage(`Vertex Anthropic: Failed to generate commit message — ${e}`);
   }
 }
