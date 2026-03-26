@@ -149,6 +149,10 @@ export class DashboardWebview {
                         <button id="btn-month">This Month</button>
                         <button id="btn-all">All Time</button>
                     </div>
+                    <a id="billing-btn" href="${billingUrl}" target="_blank" title="Open Google Cloud Billing Console">
+                        <span class="btn-icon">☁️</span>
+                        <span class="btn-text">Google Cloud Billing</span>
+                    </a>
                     <div class="date-range">
                         <label style="margin-right: 15px; font-weight: bold; font-size: 0.9em; opacity: 0.9;">
                              Model: <select id="model-select" class="model-dropdown"><option value="all">All Models</option></select>

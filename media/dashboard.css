@@ -66,9 +66,47 @@ body {
 .control-bar {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     margin-bottom: 20px;
     padding-bottom: 15px;
     border-bottom: 1px solid var(--border-color);
+}
+
+#billing-btn {
+    display: inline-flex;
+    align-items: center;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border-radius: 5px;
+    border: 1px solid var(--border-color);
+    box-shadow: 1px 1px 1px rgba(0,0,0,0.2);
+    white-space: nowrap;
+    cursor: pointer;
+    text-decoration: none;
+    overflow: hidden;
+    height: 36px;
+}
+#billing-btn:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+    box-shadow: 1px 2px 4px rgba(0,0,0,0.3);
+}
+#billing-btn .btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-right: 1px solid var(--border-color);
+    flex-shrink: 0;
+    font-size: 16px;
+}
+#billing-btn .btn-text {
+    display: inline-block;
+    padding: 0 16px;
+    font-size: 13px;
+    font-weight: bold;
+    font-family: 'Roboto', Arial, sans-serif;
+    color: var(--vscode-button-secondaryForeground);
 }
 
 .presets button {
