@@ -4,6 +4,31 @@ All notable changes to the **Vertex Anthropic Provider** extension will be docum
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.1] — 2026-03-27
+
+### Added
+
+- **Gemini 3 Thinking Support** — Support for `gemini-2.0-flash-thinking-exp-01-21` with high thinking depth.
+- **Thought Block Rendering** — Native support for thought signatures, allowing the model to "think" before generating an answer.
+- **Parallel Tool Calling** — Support for concurrent tool execution in Gemini-based models.
+
+## [0.1.0] — 2026-03-26
+
+### Added
+
+- **Multi-Vendor Dispatcher** — New `VertexChatModelDispatcher` architecture allowing the extension to support both Anthropic and Google native models.
+- **Google GenAI Provider** — Integrated `VertexGoogleProvider` for native Gemini model support.
+- **AI-Powered Commit Messages** — Automated commit message generation from staged git changes via `Vertex Anthropic: Generate Commit Message`.
+- **In-Input Generation Status** — Visual progress indicator in the VS Code chat input box during active generations.
+- **Dashboard Billing Link** — Added a direct button to the Google Cloud Console billing dashboard for easier cost management.
+- **Dynamic Log Filtering** — The dashboard now automatically detects the earliest available log date for usage metrics.
+
+### Changed
+
+- **Model Registry Refactor** — Switched from remote JSON fetching to a more robust internal provider registry.
+- **Updated Pricing Catalog** — Refreshed `models.json` with the latest token pricing and context window limits for all Gemini and Claude models.
+- **Enhanced Provider Logging** — More detailed message mapping and diagnostic output for multi-vendor requests.
+
 ## [0.0.4] — 2026-03-22
 ### Added
 
@@ -19,10 +44,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 
 - **Extension Icon** — Added official Vertex Anthropic branding image to extension via `images/` folder.
-
-## [0.0.2] — 2026-03-21
-
-### Added
 
 ## [0.0.2] — 2026-03-21
 

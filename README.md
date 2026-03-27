@@ -1,23 +1,23 @@
-# Vertex Anthropic Provider for VS Code
+# Vertex AI Provider for VS Code
 
-A VS Code extension that registers **Anthropic Claude models** (via Google Cloud Vertex AI) as native language model chat providers. Once installed, the models appear alongside other models in the VS Code Copilot Chat view — no separate UI, no extra windows.
+A VS Code extension that registers **Anthropic Claude** and **Google Gemini** models (via Google Cloud Vertex AI) as native language model chat providers. Once installed, the models appear alongside other models in the VS Code Copilot Chat view — no separate UI, no extra windows.
 
-The extension automatically discovers which Claude models are available in your project and picks the best region, so there’s nothing to configure beyond your GCP Project ID.
+The extension automatically discovers which models are available in your project and picks the best region, so there’s nothing to configure beyond your GCP Project ID.
 
 ## How It Works
 
-The extension implements the `vscode.LanguageModelChatProvider` API to bridge VS Code's built-in Chat UI with Anthropic Claude models hosted on [Google Cloud Vertex AI Model Garden](https://cloud.google.com/vertex-ai/docs/start/explore-models). It handles:
+The extension implements the `vscode.LanguageModelChatProvider` API to bridge VS Code's built-in Chat UI with high-performance models hosted on [Google Cloud Vertex AI](https://cloud.google.com/vertex-ai/docs/start/explore-models). It handles:
 
+- **Multi-Vendor Dispatching** — A unified architecture supporting both Anthropic Claude (via `VertexAnthropicProvider`) and native Google Gemini models (via `VertexGoogleProvider`).
 - **Dynamic model discovery** — pings candidate models on activation and registers only the ones available in your project.
 - **Auto region detection** — tries `global` first, then regional endpoints (`us-east5`, `europe-west1`, `asia-southeast1`).
-- **Remote model catalog** — fetches the candidate model list from a configurable URL so your team can add models without rebuilding.
+- **Gemini 3 Thinking Support** — Full support for "High Thinking" models with thought block rendering and signature processing.
+- **AI-Powered Commit Messages** — Generates descriptive commit messages from staged changes directly from the SCM view.
 - **Interactive Usage Dashboard** — Native VS Code Webview dashboard tracking daily costs, cached tokens, and payload diagnostics via Apache ECharts.
 - **API Payload Character Tracking** — Automatically computes literal byte sizing across User Text, System rules, Base64 Images, and Tool JSON calls.
 - **Intelligent Prompt Caching** — Automatically injects `ephemeral` caching on systemic boundaries reducing token costs for repeating conversational setups.
-- **Message mapping** — translates VS Code chat messages (user, assistant, system, tool results, tool calls) into Anthropic’s API format.
-- **Image / vision support** — images pasted into chat are sent to Claude as base64 image content blocks.
-- **Streaming responses** — streams tokens back to the Chat UI in real time via the Vertex AI SDK.
-- **Tool calling** — supports VS Code's native tool-calling flow, forwarding tool definitions and parsing streamed tool-use responses.
+- **Image / vision support** — images pasted into chat are sent to models as base64 image content blocks.
+- **Streaming & Parallel Tool Calling** — streams tokens in real time and supports concurrent tool execution for Gemini models.
 - **Authentication** — delegates to Google Cloud Application Default Credentials (ADC), so there are no API keys to manage.
 
 ## Installation
@@ -82,28 +82,34 @@ The models support tool calling, so they work with VS Code’s built-in agent to
 
 ### Commands
 
-- **Vertex Anthropic: Refresh Models** (`Ctrl+Shift+P`) — re-runs model discovery.
+- **Vertex Anthropic: Refresh Models** (`Ctrl+Shift+P`) — Re-runs model discovery across all providers.
+- **Vertex Anthropic: Generate Commit Message** — Uses the selected model to generate an AI-powered commit message for staged Git changes.
+- **Click Status Bar Cost** — Opens the interactive cost tracking webview.
 
 ### Status Bar & Dashboard
 
-- An interactive **Cost Tracker** exists in native VS Code Status bar updating on the fly when tokens resolve.
-- Click the Status Bar or Run `Vertex Anthropic: Show Usage Dashboard` to open the local Cost Tracking Webview filtering all Usage & Payload metrics.
+- An interactive **Cost Tracker** in the VS Code Status Bar updates in real time as tokens are consumed.
+- The dashboard includes a direct link to the **Google Cloud Billing Console** and dynamically filters logs based on available history.
 
 ### Diagnostics
 
-Open the **Output** panel and select **Vertex Anthropic** to see detailed logs: catalog loading, region probing, message mapping, token usage, and stream lifecycle.
+Open the **Output** panel and select **Vertex Anthropic** to see detailed logs: vendor-specific message mapping, region probing, token usage, and stream lifecycle.
 
 ## Candidate Models
 
-The extension discovers models from a JSON catalog. The default bundled catalog includes:
+The extension discovers models from an internal registry (with an optional remote fallback). The default catalog includes:
 
-| Model ID             | Display Name        | Max Input | Max Output | Vision | Tools |
-|----------------------|---------------------|-----------|------------|--------|-------|
-| `claude-opus-4-6`    | Claude Opus 4.6     | 1M        | 128K       | ✅     | ✅    |
-| `claude-sonnet-4-6`  | Claude Sonnet 4.6   | 1M        | 128K       | ✅     | ✅    |
-| `claude-haiku-4-5`   | Claude Haiku 4.5    | 200K      | 64K        | ✅     | ✅    |
+| Vendor      | Model Name                    | Context | Vision | Tools | Features             |
+|-------------|-------------------------------|---------|--------|-------|----------------------|
+| Anthropic   | Claude Opus 4.6               | 1M      | ✅     | ✅    | Caching, Images      |
+| Anthropic   | Claude Sonnet 4.6             | 1M      | ✅     | ✅    | Caching, Images      |
+| Anthropic   | Claude Haiku 4.5              | 200K    | ✅     | ✅    | Caching, Low-latency |
+| Google      | Gemini 3 Flash                | 1M      | ✅     | ✅    | Parallel Tools       |
+| Google      | Gemini 3 Flash (High Thinking)| 1M      | ✅     | ✅    | High Thinking        |
+| Google      | Gemini 3.1 Pro (High Thinking)| 1M      | ✅     | ✅    | High Thinking        |
+| Google      | Gemini 3.1 Pro                | 1M      | ✅     | ✅    | Parallel Tools       |
 
-Only models that respond to a ping in your project are registered. Update the list by pointing `vertexAnthropic.modelCatalogUrl` to your own `models.json`.
+Only models that respond to a ping in your project are registered.
 
 ## Development
 
