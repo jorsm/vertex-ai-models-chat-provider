@@ -13,5 +13,11 @@ implementation-plan.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
-out/test/**
-/docs
+out/**
+!out/extension.js
+docs/**
+node_modules/**
+TODO.MD
+CHANGELOG.md
+eslint.config.mjs
+tsconfig.json

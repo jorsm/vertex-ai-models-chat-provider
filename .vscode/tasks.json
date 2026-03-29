@@ -15,6 +15,21 @@
 				"kind": "build",
 				"isDefault": true
 			}
+		},
+		{
+			"label": "npm: bundle-dev",
+			"type": "npm",
+			"script": "bundle-dev",
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "npm: watch-bundle",
+			"type": "npm",
+			"script": "watch-bundle",
+			"isBackground": true,
+			"group": "build",
+			"problemMatcher": []
 		}
 	]
 }

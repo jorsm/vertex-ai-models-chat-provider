@@ -15,7 +15,19 @@
 			"outFiles": [
 				"${workspaceFolder}/out/**/*.js"
 			],
-			"preLaunchTask": "${defaultBuildTask}"
+			"preLaunchTask": "npm: watch"
+		},
+		{
+			"name": "Run Extension (Bundled)",
+			"type": "extensionHost",
+			"request": "launch",
+			"args": [
+				"--extensionDevelopmentPath=${workspaceFolder}"
+			],
+			"outFiles": [
+				"${workspaceFolder}/out/extension.js"
+			],
+			"preLaunchTask": "npm: bundle-dev"
 		}
 	]
 }
