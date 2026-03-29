@@ -121,7 +121,6 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
     return fullPath.startsWith(workspaceRoot) ? fullPath.slice(workspaceRoot.length).replace(/^[\\/]/, "") : fullPath;
   });
 
-  outputChannel.show(true);
   log(`▶ generateCommitMessage — ${stagedChanges.length} staged file(s): ${stagedPaths.join(", ")}`);
 
   // Collect all staged diffs
