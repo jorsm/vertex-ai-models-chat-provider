@@ -120,10 +120,17 @@ export class VertexGoogleProvider implements VertexModelProvider {
     // is not available (e.g. non-thinking models where callId === name).
     const responseName = callName ?? p.callId;
     try {
-      return { functionResponse: { name: responseName, response: JSON.parse(resStr) } };
+      const parsed = JSON.parse(resStr);
+      // Gemini expects 'response' to be a google.protobuf.Struct, which is a JSON object (map).
+      // If the parsed JSON is not a plain object (e.g. it's a string, number, or array),
+      // we must wrap it in an object to satisfy the Struct requirement.
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        return { functionResponse: { name: responseName, response: parsed } };
+      }
     } catch {
-      return { functionResponse: { name: responseName, response: { result: resStr } } };
+      // ignore
     }
+    return { functionResponse: { name: responseName, response: { result: resStr } } };
   }
 
   private extractMessages(messages: readonly vscode.LanguageModelChatRequestMessage[], charCount: any): { mappedContents: any[]; systemInstruction: string } {

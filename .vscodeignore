@@ -14,3 +14,4 @@ implementation-plan.md
 **/*.ts
 **/.vscode-test.*
 out/test/**
+/docs

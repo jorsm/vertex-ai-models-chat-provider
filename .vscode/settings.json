@@ -11,4 +11,30 @@
 	"chat.tools.terminal.autoApprove": {
 		"npx tsx": true
 	},
+	"autodoc.contextFiles": [
+		"README.md",
+		"package.json"
+	],
+	"autodoc.mappings": [
+		{
+			"name": "Core Architecture",
+			"source": "src/{extension.ts,VertexChatModelDispatcher.ts}",
+			"doc": "docs/architecture.md"
+		},
+		{
+			"name": "Model Providers",
+			"source": "src/providers/**/*.ts",
+			"doc": "docs/providers.md"
+		},
+		{
+			"name": "Usage & Billing",
+			"source": "src/{UsageTrackerService.ts,CostStatusBar.ts,DashboardWebview.ts}",
+			"doc": "docs/usage-and-billing.md"
+		},
+		{
+			"name": "Features",
+			"source": "src/CommitMessage.ts",
+			"doc": "docs/features.md"
+		}
+	]
 }

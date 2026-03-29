@@ -36,7 +36,7 @@
     {
       "id": "gemini-3-flash-preview",
       "vendor": "google",
-      "displayName": "Google Gemini 3 Flash",
+      "displayName": "Gemini 3 Flash",
       "family": "gemini",
       "version": "gemini-3-flash-preview",
       "maxInputTokens": 1048576,
@@ -47,7 +47,7 @@
     {
       "id": "gemini-3-flash-preview-high",
       "vendor": "google",
-      "displayName": "Google Gemini 3 Flash (High Thinking)",
+      "displayName": "Gemini 3 Flash (High)",
       "family": "gemini",
       "version": "gemini-3-flash-preview-high",
       "maxInputTokens": 1048576,
@@ -58,7 +58,7 @@
     {
       "id": "gemini-3.1-pro-preview-high",
       "vendor": "google",
-      "displayName": "Google Gemini 3.1 Pro (High Thinking)",
+      "displayName": "Gemini 3.1 Pro (High)",
       "family": "gemini",
       "version": "gemini-3.1-pro-preview-high",
       "maxInputTokens": 1048576,
@@ -69,7 +69,7 @@
     {
       "id": "gemini-3.1-pro-preview",
       "vendor": "google",
-      "displayName": "Google Gemini 3.1 Pro",
+      "displayName": "Gemini 3.1 Pro",
       "family": "gemini",
       "version": "gemini-3.1-pro-preview",
       "maxInputTokens": 1048576,
