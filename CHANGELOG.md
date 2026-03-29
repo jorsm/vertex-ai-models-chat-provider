@@ -4,6 +4,16 @@ All notable changes to the **Vertex Anthropic Provider** extension will be docum
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.2] — 2026-03-29
+
+### Added
+
+- **New Documentation** — Added comprehensive documentation for extension features and model providers.
+
+### Changed
+- **User Interface** — Refactored output channel behavior to avoid forced focus during active generations.
+- **Documentation Update** — Enhanced details on multi-vendor architecture and Gemini integration.
+
 ## [0.1.1] — 2026-03-27
 
 ### Added
