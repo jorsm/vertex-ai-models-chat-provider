@@ -4,6 +4,16 @@ All notable changes to the **Vertex Anthropic Provider** extension will be docum
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.3] — 2026-03-29
+
+### Added
+- **Extension Bundling** — Integrated `esbuild` to bundle the extension into a single file, significantly reducing the package size.
+- **Improved Launch Configurations** — Added "Run Extension (Bundled)" launch target for easier testing of the production-ready bundle.
+
+### Changed
+- **Optimized Output** — Reduced the extension's installation size from ~22MB to ~2MB by excluding unnecessary `node_modules` and source files from the final package.
+- **Developer Workflow** — Added `bundle`, `bundle-dev`, and `watch-bundle` scripts for faster and more reliable development.
+
 ## [0.1.2] — 2026-03-29
 
 ### Added
