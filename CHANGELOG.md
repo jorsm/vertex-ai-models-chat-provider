@@ -4,6 +4,14 @@ All notable changes to the **Vertex AI Models Chat Provider** extension will be 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.2] — 2026-04-15
+
+### Added
+- **Windows Compatibility** — Verified extension functionality on Windows VM.
+
+### Changed
+- **Tool Schema Sanitization** — Improved recursive removal of unsupported keys (like `enumDescriptions` and `examples`) from tool definitions to ensure compatibility with the Vertex AI Gemini API.
+
 ## [0.2.1] — 2026-04-15
 
 ### Fixed
