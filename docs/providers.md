@@ -96,13 +96,13 @@ Provides a rough estimation of token usage. For text or message objects, it comp
 
 Main entry point for chat inference. This method:
 1. Maps VS Code messages to the Gemini `contents` format, including support for multimodal `LanguageModelDataPart` (images and non-image data decoding).
-2. **Sanitizes tool input schemas** by filtering for fields supported by the Vertex AI Gemini API (e.g., `type`, `properties`, `required`, `enum`, `items`) to ensure schema compatibility.
-3. Re-injects cached thought signatures into the conversation history to preserve reasoning quality.
+2. **Sanitizes tool input schemas** by recursively removing unsupported keys like `enumDescriptions` and `examples` from tool definitions to ensure compatibility with the Vertex AI Gemini API.
+3. Re-injects cached thought signatures into the conversation history for both **assistant text parts** and **tool call parts** to preserve reasoning quality.
 4. Merges consecutive tool result messages into a single user turn to satisfy Gemini API requirements for parallel tool calls.
 5. **Normalizes tool results** into JSON objects, wrapping primitive return values to comply with Gemini's `google.protobuf.Struct` requirement for function responses.
 6. Handles streaming responses, capturing text, tool calls, and capturing `thoughtSignature` from chunk metadata (supporting both legacy Gemini 2.x and inline Gemini 3 forms).
 7. Buffers parallel tool calls across the stream to ensure they are emitted to VS Code as a single atomic step, preventing turn-mismatch errors.
-8. Updates internal signature caches for both text reasoning and tool calls.
+8. Updates internal signature caches for both text reasoning (using a text-prefix key) and tool calls (using unique call IDs).
 9. Tracks and returns detailed usage statistics including character counts and token usage metadata (input, output, and cache metrics). For Gemini, it correctly adjusts input tokens by subtracting cached content tokens to ensure accurate usage tracking.
 
 ## Examples
