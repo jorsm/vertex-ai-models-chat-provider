@@ -47,7 +47,7 @@ Sets the GCP Project ID and regional endpoint for the Anthropic Vertex client.
 [source](../src/providers/VertexAnthropicProvider.ts)
 `pingModel(modelId: string): Promise<boolean>`
 
-Sends a minimal "ping" message with `max_tokens: 1` to verify the availability of the specified Claude model in the configured project and region.
+Sends a minimal "ping" message with `max_tokens: 1` to verify the availability of the specified Claude model in the configured project and region. It handles transient rate-limiting errors (429) gracefully, treating them as confirmation that the model is reachable and available.
 
 #### provideTokenCount
 [source](../src/providers/VertexAnthropicProvider.ts)
@@ -60,12 +60,12 @@ Estimates token usage using a 4-characters-per-token heuristic for text strings 
 `provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken): Promise<ChatInferenceResult>`
 
 Handles chat inference for Anthropic models. This method:
-1. Maps VS Code messages to the Anthropic `messages` format, including support for `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart`, and `LanguageModelDataPart` (images and non-image data decoding).
+1. Maps VS Code messages to the Anthropic `messages` format, including support for `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart`, and `LanguageModelDataPart` (handling both base64 images and UTF-8 decoding for non-image data).
 2. Extracts system instructions from the message history to pass as top-level `system` blocks.
 3. Automatically applies cache control strategies:
     - **Static Prefix Caching**: Applies `ephemeral` caching to the system blocks or tool definitions.
     - **Chat History Caching**: Applies `ephemeral` caching to the second-to-last message in the history if the total history exceeds 1024 tokens.
-4. Manages streaming responses, reporting text deltas and tool call progress to VS Code.
+4. Manages streaming responses, reporting text deltas and tool call progress to VS Code after parsing partial JSON tool inputs.
 5. Captures and returns detailed usage statistics, including `input`, `output`, `cache_read`, and `cache_create` token metrics, alongside character-level consumption for different part types.
 
 ### VertexGoogleProvider
@@ -82,7 +82,7 @@ Sets the GCP Project ID and regional endpoint (e.g., `us-central1`) for the prov
 [source](../src/providers/VertexGoogleProvider.ts)
 `pingModel(modelId: string): Promise<boolean>`
 
-Attempts a minimal request to the specified model ID to verify availability and permissions in the current GCP project. It automatically resolves high-thinking model IDs to their base counterparts for the ping.
+Attempts a minimal request to the specified model ID to verify availability and permissions in the current GCP project. It automatically resolves high-thinking model IDs to their base counterparts and handles transient rate-limiting errors gracefully during discovery.
 
 #### provideTokenCount
 [source](../src/providers/VertexGoogleProvider.ts)
@@ -95,14 +95,14 @@ Provides a rough estimation of token usage. For text or message objects, it comp
 `provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken): Promise<ChatInferenceResult>`
 
 Main entry point for chat inference. This method:
-1. Maps VS Code messages to the Gemini `contents` format, including support for multimodal `LanguageModelDataPart` (images and non-image data decoding).
+1. Maps VS Code messages to the Gemini `contents` format, including support for multimodal `LanguageModelDataPart` (images and non-image data decoding), and ensures the conversation starts with a user message as required by the Gemini API.
 2. **Sanitizes tool input schemas** by recursively removing unsupported keys like `enumDescriptions` and `examples` from tool definitions to ensure compatibility with the Vertex AI Gemini API.
 3. Re-injects cached thought signatures into the conversation history for both **assistant text parts** and **tool call parts** to preserve reasoning quality.
 4. Merges consecutive tool result messages into a single user turn to satisfy Gemini API requirements for parallel tool calls.
-5. **Normalizes tool results** into JSON objects, wrapping primitive return values to comply with Gemini's `google.protobuf.Struct` requirement for function responses.
-6. Handles streaming responses, capturing text, tool calls, and capturing `thoughtSignature` from chunk metadata (supporting both legacy Gemini 2.x and inline Gemini 3 forms).
+5. **Normalizes tool results** into JSON objects, wrapping primitive return values to comply with Gemini's `google.protobuf.Struct` requirement for function responses, and ensuring the function name is correctly associated with the response.
+6. Handles streaming responses with **automatic retries**, capturing text, tool calls, and `thoughtSignature` metadata (supporting both legacy Gemini 2.x separate thought parts and Gemini 3 inline fields).
 7. Buffers parallel tool calls across the stream to ensure they are emitted to VS Code as a single atomic step, preventing turn-mismatch errors.
-8. Updates internal signature caches for both text reasoning (using a text-prefix key) and tool calls (using unique call IDs).
+8. Updates internal signature caches for both text reasoning (using a text-prefix key based on the first 120 characters) and tool calls (using unique call IDs).
 9. Tracks and returns detailed usage statistics including character counts and token usage metadata (input, output, and cache metrics). For Gemini, it correctly adjusts input tokens by subtracting cached content tokens to ensure accurate usage tracking.
 
 ## Examples
