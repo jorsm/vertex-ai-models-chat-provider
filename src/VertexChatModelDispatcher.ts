@@ -30,7 +30,7 @@ export interface DiscoveryResult {
 
 // ─── Output channel for diagnostics ─────────────────────────────────────────
 
-const outputChannel = vscode.window.createOutputChannel("Vertex AI Models Chat Provider");
+const outputChannel = vscode.window.createOutputChannel("Vertex AI Models: Dispatcher");
 
 function log(msg: string): void {
   const ts = new Date().toISOString();
@@ -141,7 +141,8 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     return this.availableModels.map((m) => ({
       id: m.id,
-      name: `Vertex ${m.displayName}`,
+      name: m.displayName,
+      detail: "Vertex AI",
       family: m.family,
       version: m.version,
       maxInputTokens: m.maxInputTokens,

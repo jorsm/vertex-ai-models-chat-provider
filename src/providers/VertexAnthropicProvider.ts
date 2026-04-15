@@ -4,7 +4,7 @@ import { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider"
 
 // ─── Output channel for diagnostics ─────────────────────────────────────────
 
-const outputChannel = vscode.window.createOutputChannel("Vertex AI Models Chat Provider");
+const outputChannel = vscode.window.createOutputChannel("Vertex AI Models: Anthropic Provider");
 
 function log(msg: string): void {
   const ts = new Date().toISOString();

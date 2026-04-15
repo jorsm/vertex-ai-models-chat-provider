@@ -71,7 +71,7 @@ CRITICAL: Output ONLY the raw commit message text. Do NOT wrap your response in 
 Git Diff:
 ${diffString}`;
 
-const outputChannel = vscode.window.createOutputChannel("Vertex AI Models Chat Provider");
+const outputChannel = vscode.window.createOutputChannel("Vertex AI Models: Commit Message");
 
 function log(msg: string): void {
   const ts = new Date().toISOString();
