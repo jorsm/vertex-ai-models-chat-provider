@@ -4,6 +4,12 @@ All notable changes to the **Vertex AI Models Chat Provider** extension will be 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.3] — 2026-04-16
+
+### Added
+- **Automatic Retry with Exponential Backoff** — Implemented automatic retries for transient errors like `429 Too Many Requests` and `503 Service Unavailable` to improve reliability during high usage.
+- **Detailed Retry Logging** — Added structured logging of retry attempts and backoff delays in the output channel for better transparency.
+
 ## [0.2.2] — 2026-04-15
 
 ### Added
