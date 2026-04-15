@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { isRetryableError, withRetry } from "../utils/retry";
 import { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
 
 const outputChannel = vscode.window.createOutputChannel("Vertex AI Models: Google Provider");
@@ -71,7 +72,11 @@ export class VertexGoogleProvider implements VertexModelProvider {
       });
       log(`    🏓 Google ${modelId} -> ${actualId} → ✅`);
       return true;
-    } catch (e) {
+    } catch (e: any) {
+      if (isRetryableError(e)) {
+        log(`    🏓 Google ${modelId} -> ${actualId} → ✅ (rate limited, but available)`);
+        return true;
+      }
       log(`    🏓 Google ${modelId} -> ${actualId} → ❌ ${e}`);
       return false;
     }
@@ -308,11 +313,18 @@ export class VertexGoogleProvider implements VertexModelProvider {
       }
 
       const client = await this.getClient();
-      const stream = await client.models.generateContentStream({
-        model: actualId,
-        contents: mappedContents,
-        config: generationConfig,
-      });
+      const stream = await withRetry(
+        () =>
+          client.models.generateContentStream({
+            model: actualId,
+            contents: mappedContents,
+            config: generationConfig,
+          }),
+        {
+          log: log,
+          token: token,
+        },
+      );
 
       // Buffer all function calls across the entire stream before emitting any.
       // Parallel tool calls (e.g. FC1+sig, FC2) can arrive in separate chunks;

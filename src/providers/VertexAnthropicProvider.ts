@@ -1,5 +1,6 @@
 import { AnthropicVertex } from "@anthropic-ai/vertex-sdk";
 import * as vscode from "vscode";
+import { isRetryableError, withRetry } from "../utils/retry";
 import { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
 
 // ─── Output channel for diagnostics ─────────────────────────────────────────
@@ -37,7 +38,11 @@ export class VertexAnthropicProvider implements VertexModelProvider {
       });
       log(`    🏓 Anthropic ${modelId} → ✅`);
       return true;
-    } catch {
+    } catch (e: any) {
+      if (isRetryableError(e)) {
+        log(`    🏓 Anthropic ${modelId} → ✅ (rate limited, but available)`);
+        return true;
+      }
       log(`    🏓 Anthropic ${modelId} → ❌`);
       return false;
     }
@@ -80,14 +85,21 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
       this.logMappedMessages(modelId, mappedMessages, systemBlocks, tools);
 
-      const stream = await this.client.messages.create({
-        model: modelId,
-        messages: mappedMessages,
-        max_tokens: 4096,
-        stream: true,
-        ...(systemBlocks ? { system: systemBlocks } : {}),
-        ...(tools?.length ? { tools } : {}),
-      });
+      const stream = await withRetry(
+        () =>
+          this.client.messages.create({
+            model: modelId,
+            messages: mappedMessages,
+            max_tokens: 4096,
+            stream: true,
+            ...(systemBlocks ? { system: systemBlocks } : {}),
+            ...(tools?.length ? { tools } : {}),
+          }),
+        {
+          log: log,
+          token: token,
+        },
+      );
 
       log(`  Stream created successfully`);
 
