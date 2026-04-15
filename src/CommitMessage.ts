@@ -71,7 +71,7 @@ CRITICAL: Output ONLY the raw commit message text. Do NOT wrap your response in 
 Git Diff:
 ${diffString}`;
 
-const outputChannel = vscode.window.createOutputChannel("Vertex Commit Message");
+const outputChannel = vscode.window.createOutputChannel("Vertex AI Models Chat Provider");
 
 function log(msg: string): void {
   const ts = new Date().toISOString();
@@ -91,7 +91,7 @@ function resolveRepository(git: any, resourceUri?: vscode.Uri): any {
 }
 
 /**
- * Command handler for "vertexAnthropic.generateCommitMessage".
+ * Command handler for "vertexAiChat.generateCommitMessage".
  *
  * Collects staged diffs, sends them to the LLM, and writes the generated
  * commit message into the SCM input box.
@@ -99,19 +99,19 @@ function resolveRepository(git: any, resourceUri?: vscode.Uri): any {
 export async function generateCommitMessage(provider: VertexGoogleProvider, usageTracker: UsageTrackerService, resourceUri?: vscode.Uri): Promise<void> {
   const git = getGitAPI();
   if (!git) {
-    vscode.window.showWarningMessage("Vertex Anthropic: Git extension is not available.");
+    vscode.window.showWarningMessage("Vertex AI Models Chat Provider: Git extension is not available.");
     return;
   }
 
   const repo = resolveRepository(git, resourceUri);
   if (!repo) {
-    vscode.window.showWarningMessage("Vertex Anthropic: No Git repository found.");
+    vscode.window.showWarningMessage("Vertex AI Models Chat Provider: No Git repository found.");
     return;
   }
 
   const stagedChanges: any[] = repo.state.indexChanges;
   if (stagedChanges.length === 0) {
-    vscode.window.showInformationMessage("Vertex Anthropic: No staged changes found. Please stage files before generating a commit message.");
+    vscode.window.showInformationMessage("Vertex AI Models Chat Provider: No staged changes found. Please stage files before generating a commit message.");
     return;
   }
 
@@ -140,7 +140,7 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
   }
 
   if (diffParts.length === 0) {
-    vscode.window.showInformationMessage("Vertex Anthropic: All staged diffs are empty.");
+    vscode.window.showInformationMessage("Vertex AI Models Chat Provider: All staged diffs are empty.");
     return;
   }
 
@@ -192,6 +192,6 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
   } catch (e) {
     log(`❌ LLM call failed: ${e}`);
     repo.inputBox.value = "";
-    vscode.window.showErrorMessage(`Vertex Anthropic: Failed to generate commit message — ${e}`);
+    vscode.window.showErrorMessage(`Vertex AI Models Chat Provider: Failed to generate commit message — ${e}`);
   }
 }

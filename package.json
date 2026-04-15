@@ -1,7 +1,7 @@
 {
   "name": "vertex-anthropic",
-  "displayName": "Vertex Anthropic Provider",
-  "description": "VS Code Chat Model Provider for Vertex AI Anthropic",
+  "displayName": "Vertex AI Models Chat Provider",
+  "description": "VS Code Chat Model Provider for Google Cloud Vertex AI (Gemini & Claude)",
   "publisher": "jorsm",
   "version": "0.1.3",
   "icon": "images/logo.png",
@@ -21,12 +21,12 @@
   "contributes": {
     "commands": [
       {
-        "command": "vertexAnthropic.refreshModels",
-        "title": "Vertex Anthropic: Refresh Models"
+        "command": "vertexAiChat.refreshModels",
+        "title": "Vertex AI Models Chat Provider: Refresh Models"
       },
       {
-        "command": "vertexAnthropic.generateCommitMessage",
-        "title": "Vertex Anthropic: Generate Commit Message",
+        "command": "vertexAiChat.generateCommitMessage",
+        "title": "Vertex AI Models Chat Provider: Generate Commit Message",
         "shortTitle": "Generate Commit Message",
         "icon": "$(wand)"
       }
@@ -34,7 +34,7 @@
     "menus": {
       "scm/title": [
         {
-          "command": "vertexAnthropic.generateCommitMessage",
+          "command": "vertexAiChat.generateCommitMessage",
           "when": "scmProvider == 'git'",
           "group": "navigation"
         }
@@ -43,20 +43,20 @@
     "languageModelChatProviders": [
       {
         "identifier": "vertex-anthropic",
-        "name": "Vertex Claude (Anthropic)",
-        "displayName": "Vertex Claude (Anthropic)",
+        "name": "Vertex AI Models Chat Provider",
+        "displayName": "Vertex AI Models Chat Provider",
         "vendor": "Google Cloud Vertex AI"
       }
     ],
     "configuration": {
-      "title": "Vertex Anthropic",
+      "title": "Vertex AI Models Chat Provider",
       "properties": {
-        "vertexAnthropic.projectId": {
+        "vertexAiChat.projectId": {
           "type": "string",
           "default": "",
           "description": "GCP Project ID to use with Vertex AI. Models and regions are auto-discovered."
         },
-        "vertexAnthropic.hideBillingWarning": {
+        "vertexAiChat.hideBillingWarning": {
           "type": "boolean",
           "default": false,
           "description": "Hide the Estimated Costs warning banner on the Usage Dashboard."

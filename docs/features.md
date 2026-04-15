@@ -31,7 +31,7 @@ Key aspects of the generation logic include:
 
 ### generateCommitMessage
 [source](../src/CommitMessage.ts)
-This function acts as the command handler for `vertexAnthropic.generateCommitMessage`. It facilitates the end-to-end workflow of converting staged code changes into a structured commit message.
+This function acts as the command handler for `vertexAiChat.generateCommitMessage`. It facilitates the end-to-end workflow of converting staged code changes into a structured commit message.
 
 **Workflow:**
 1. **Repository Resolution**: Detects the relevant Git repository based on the provided `resourceUri` or active workspace.

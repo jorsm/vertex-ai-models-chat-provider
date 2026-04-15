@@ -30,7 +30,7 @@ export interface DiscoveryResult {
 
 // ─── Output channel for diagnostics ─────────────────────────────────────────
 
-const outputChannel = vscode.window.createOutputChannel("Vertex AI Models");
+const outputChannel = vscode.window.createOutputChannel("Vertex AI Models Chat Provider");
 
 function log(msg: string): void {
   const ts = new Date().toISOString();

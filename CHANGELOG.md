@@ -1,8 +1,14 @@
 # Changelog
 
-All notable changes to the **Vertex Anthropic Provider** extension will be documented in this file.
+All notable changes to the **Vertex AI Models Chat Provider** extension will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
+
+## [Unreleased]
+
+### Changed
+- **Extension Renamed** — "Vertex Anthropic" has been renamed to "Vertex AI Models Chat Provider" to better reflect the deep integration with Google Gemini and its multi-provider support.
+- **Settings Migration** — The setting keys have changed from `vertexAnthropic.*` to `vertexAiChat.*`. Existing configuration values will automatically migrate on the first launch.
 
 ## [0.1.3] — 2026-03-29
 
@@ -38,7 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - **Multi-Vendor Dispatcher** — New `VertexChatModelDispatcher` architecture allowing the extension to support both Anthropic and Google native models.
 - **Google GenAI Provider** — Integrated `VertexGoogleProvider` for native Gemini model support.
-- **AI-Powered Commit Messages** — Automated commit message generation from staged git changes via `Vertex Anthropic: Generate Commit Message`.
+- **AI-Powered Commit Messages** — Automated commit message generation from staged git changes via `Vertex AI Models Chat Provider: Generate Commit Message`.
 - **In-Input Generation Status** — Visual progress indicator in the VS Code chat input box during active generations.
 - **Dashboard Billing Link** — Added a direct button to the Google Cloud Console billing dashboard for easier cost management.
 - **Dynamic Log Filtering** — The dashboard now automatically detects the earliest available log date for usage metrics.
@@ -63,20 +69,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- **Extension Icon** — Added official Vertex Anthropic branding image to extension via `images/` folder.
+- **Extension Icon** — Added official Vertex AI Models Chat Provider branding image to extension via `images/` folder.
 
 ## [0.0.2] — 2026-03-21
 
 ### Added
 - **Dynamic model discovery** — models are no longer hardcoded. On activation the extension pings each candidate model with a minimal `max_tokens: 1` request and registers only the ones that respond.
-- **Auto region detection** — tries the `global` endpoint first, then falls back through `us-east5`, `europe-west1`, `asia-southeast1` until a working region is found. The `vertexAnthropic.region` setting has been removed.
-- **Remote model catalog** — the extension fetches a JSON model catalog from a configurable URL (`vertexAnthropic.modelCatalogUrl`) with a 3-second timeout, falling back to the bundled catalog. This allows updating the model list without rebuilding the extension.
+- **Auto region detection** — tries the `global` endpoint first, then falls back through `us-east5`, `europe-west1`, `asia-southeast1` until a working region is found. The `vertexAiChat.region` setting has been removed.
+- **Remote model catalog** — the extension fetched a JSON model catalog from a remote URL. (Note: This has been replaced by a more robust internal provider registry).
 - **Image / vision support** — `LanguageModelDataPart` (images pasted into chat) are now converted to Anthropic base64 image content blocks and sent to Claude for vision analysis.
 - **System message extraction** — VS Code system-role messages are properly extracted and passed as the Anthropic `system` parameter instead of being silently dropped.
 - **`onDidChangeLanguageModelChatInformation` event** — notifies VS Code when the available model list changes so the model picker updates dynamically.
-- **Refresh Models command** — `Vertex Anthropic: Refresh Models` (Ctrl+Shift+P) re-runs discovery on demand.
-- **Config change listeners** — re-runs discovery automatically when `vertexAnthropic.projectId` or `vertexAnthropic.modelCatalogUrl` settings change.
-- **Comprehensive diagnostics** — "Vertex Anthropic" output channel with detailed logging:
+- **Refresh Models command** — `Vertex AI Models Chat Provider: Refresh Models` (Ctrl+Shift+P) re-runs discovery on demand.
+- **Config change listeners** — re-runs discovery automatically when `vertexAiChat.projectId` settings change.
+- **Comprehensive diagnostics** — "Vertex AI Models Chat Provider" output channel with detailed logging:
   - Remote catalog fetch timing and diff against bundled catalog (new/removed models)
   - Per-region ping results for every candidate model
   - Full message dump before inference: role, part type, content preview (tail-truncated), tool call details
@@ -88,7 +94,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
-- **Removed `vertexAnthropic.region` setting** — region is now fully auto-detected.
+- **Removed `vertexAiChat.region` setting** — region is now fully auto-detected.
 - **Provider vendor** changed from `"Anthropic"` to `"Google Cloud Vertex AI"`.
 - **Model names** in the picker now prefixed with `Vertex` (e.g. "Vertex Claude Opus 4.6").
 
@@ -109,4 +115,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Streaming responses via `@anthropic-ai/vertex-sdk`.
 - Tool calling support (tool definitions, streamed tool-use responses).
 - Authentication via Google Cloud Application Default Credentials (ADC).
-- `vertexAnthropic.projectId` and `vertexAnthropic.region` settings.
+- `vertexAiChat.projectId` and `vertexAiChat.region` settings.

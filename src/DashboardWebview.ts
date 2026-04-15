@@ -47,13 +47,13 @@ export class DashboardWebview {
           return;
         }
         if (message.command === "dismissWarning") {
-          console.log("[VertexAnthropic] Received dismissWarning command from Dashboard.");
+          console.log("[VertexAiModels] Received dismissWarning command from Dashboard.");
           vscode.workspace
-            .getConfiguration("vertexAnthropic")
+            .getConfiguration("vertexAiChat")
             .update("hideBillingWarning", true, vscode.ConfigurationTarget.Global)
             .then(
-              () => console.log("[VertexAnthropic] hideBillingWarning saved securely to global settings."),
-              (err) => console.error("[VertexAnthropic] Error saving global settings:", err),
+              () => console.log("[VertexAiModels] hideBillingWarning saved securely to global settings."),
+              (err) => console.error("[VertexAiModels] Error saving global settings:", err),
             );
           return;
         }
@@ -106,9 +106,9 @@ export class DashboardWebview {
     const echartsUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "media", "echarts.min.js"));
     const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "media", "dashboard.css"));
 
-    const projectId = vscode.workspace.getConfiguration("vertexAnthropic").get<string>("projectId", "UNKNOWN_PROJECT");
+    const projectId = vscode.workspace.getConfiguration("vertexAiChat").get<string>("projectId", "UNKNOWN_PROJECT");
     const billingUrl = `https://console.cloud.google.com/billing?project=${projectId}`;
-    const hideWarning = vscode.workspace.getConfiguration("vertexAnthropic").get<boolean>("hideBillingWarning", false);
+    const hideWarning = vscode.workspace.getConfiguration("vertexAiChat").get<boolean>("hideBillingWarning", false);
 
     const nonce = getNonce();
 

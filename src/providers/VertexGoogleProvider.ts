@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
 
-const outputChannel = vscode.window.createOutputChannel("Vertex Google Provider");
+const outputChannel = vscode.window.createOutputChannel("Vertex AI Models Chat Provider");
 
 function log(msg: string): void {
   const ts = new Date().toISOString();
