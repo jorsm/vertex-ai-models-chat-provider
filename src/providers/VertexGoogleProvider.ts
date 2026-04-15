@@ -374,6 +374,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
         if (chunk.usageMetadata) {
           inputTokens = chunk.usageMetadata.promptTokenCount ?? inputTokens;
           outputTokens = chunk.usageMetadata.candidatesTokenCount ?? outputTokens;
+          cacheRead = chunk.usageMetadata.cachedContentTokenCount ?? cacheRead;
         }
       }
 
@@ -394,8 +395,13 @@ export class VertexGoogleProvider implements VertexModelProvider {
 
       log(`  ✅ Stream finished successfully`);
 
+      // For Gemini, promptTokenCount includes cachedContentTokenCount.
+      // To correctly record usage in our tracker, we subtract cached tokens from
+      // input tokens so that each category is billed once (standard vs. discounted).
+      const newTokens = Math.max(0, inputTokens - cacheRead);
+
       return {
-        usage: { input: inputTokens, output: outputTokens, cache_read: cacheRead, cache_create: cacheCreate },
+        usage: { input: newTokens, output: outputTokens, cache_read: cacheRead, cache_create: cacheCreate },
         charCount,
       };
     } catch (e) {
