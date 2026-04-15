@@ -21,6 +21,10 @@
   "contributes": {
     "commands": [
       {
+        "command": "vertexAiChat.dumpTools",
+        "title": "Vertex AI Models Chat Provider: Dump Installed Tools Schema"
+      },
+      {
         "command": "vertexAiChat.refreshModels",
         "title": "Vertex AI Models Chat Provider: Refresh Models"
       },
@@ -94,6 +98,8 @@
   "dependencies": {
     "@anthropic-ai/vertex-sdk": "^0.14.4",
     "@google/genai": "^1.46.0",
-    "@modelcontextprotocol/sdk": "^1.27.1"
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^4.3.6",
+    "zod-to-json-schema": "^3.25.2"
   }
 }
