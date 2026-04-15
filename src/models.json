@@ -42,7 +42,7 @@
       "maxInputTokens": 1048576,
       "maxOutputTokens": 65536,
       "capabilities": { "imageInput": true, "toolCalling": true },
-      "pricing": { "input": 0.5, "output": 3.0, "cache_read": 0.5, "cache_create": 0.05 }
+      "pricing": { "input": 0.5, "output": 3.0, "cache_read": 0.05, "cache_create": 0.0 }
     },
     {
       "id": "gemini-3-flash-preview-high",
@@ -53,7 +53,7 @@
       "maxInputTokens": 1048576,
       "maxOutputTokens": 65536,
       "capabilities": { "imageInput": true, "toolCalling": true },
-      "pricing": { "input": 0.5, "output": 3.0, "cache_read": 0.5, "cache_create": 0.05 }
+      "pricing": { "input": 0.5, "output": 3.0, "cache_read": 0.05, "cache_create": 0.0 }
     },
     {
       "id": "gemini-3.1-pro-preview-high",
@@ -64,7 +64,7 @@
       "maxInputTokens": 1048576,
       "maxOutputTokens": 65536,
       "capabilities": { "imageInput": true, "toolCalling": true },
-      "pricing": { "input": 3.0, "output": 15.0, "cache_read": 0.4, "cache_create": 3.0 }
+      "pricing": { "input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_create": 0.0 }
     },
     {
       "id": "gemini-3.1-pro-preview",
@@ -75,7 +75,7 @@
       "maxInputTokens": 1048576,
       "maxOutputTokens": 65536,
       "capabilities": { "imageInput": true, "toolCalling": true },
-      "pricing": { "input": 3.0, "output": 15.0, "cache_read": 0.4, "cache_create": 3.0 }
+      "pricing": { "input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_create": 0.0 }
     }
   ],
   "regionPriority": ["global", "us-east5", "europe-west1", "asia-southeast1"]
