@@ -3,7 +3,7 @@
   "displayName": "Vertex AI Models Chat Provider",
   "description": "VS Code Chat Model Provider for Google Cloud Vertex AI (Gemini & Claude)",
   "publisher": "jorsm",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "icon": "images/logo.png",
   "repository": {
     "type": "git",
