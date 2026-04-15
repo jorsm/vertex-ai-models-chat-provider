@@ -51,6 +51,30 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register the "Refresh Models" command (Ctrl+Shift+P → Vertex AI Models Chat Provider: Refresh Models)
   context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.refreshModels", () => runDiscovery(provider)));
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand("vertexAiChat.dumpTools", () => {
+      const outputChannel = vscode.window.createOutputChannel("Vertex AI Models Chat Provider: Tools Dump");
+      outputChannel.show();
+      outputChannel.appendLine("=== Installed Language Model Tools ===");
+
+      const tools = vscode.lm.tools;
+      if (!tools || tools.length === 0) {
+        outputChannel.appendLine("No tools found in vscode.lm.tools.");
+        return;
+      }
+
+      for (const [index, tool] of tools.entries()) {
+        outputChannel.appendLine(`\n[${index}] Tool Name: ${tool.name}`);
+        outputChannel.appendLine(`Description: ${tool.description}`);
+        outputChannel.appendLine(`Tags: ${tool.tags?.join(", ") ?? "none"}`);
+        outputChannel.appendLine("Input Schema:");
+        outputChannel.appendLine(JSON.stringify(tool.inputSchema, null, 2));
+      }
+
+      outputChannel.appendLine("\n=== End of Dump ===");
+    }),
+  );
+
   // Register command for SCM "Generate Commit Message" button in the CHANGES toolbar
   context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.generateCommitMessage", (resourceUri?: vscode.Uri) => generateCommitMessage(provider.getGoogleProvider(), usageTracker, resourceUri)));
 
