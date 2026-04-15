@@ -309,7 +309,6 @@ export class VertexGoogleProvider implements VertexModelProvider {
         }));
         generationConfig.tools = [{ functionDeclarations: declarations }];
         log(`  🔧 Provided ${declarations.length} tools: ${declarations.map((d) => d.name).join(", ")}`);
-        log(`  🔧 Tool Schemas: ${JSON.stringify(declarations, null, 2)}`);
       }
 
       const client = await this.getClient();

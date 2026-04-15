@@ -29,7 +29,7 @@ export interface RetryOptions {
  * @returns The result of the operation if successful.
  */
 export async function withRetry<T>(operation: () => Promise<T>, options?: RetryOptions): Promise<T> {
-  const maxRetries = options?.maxRetries ?? 3;
+  const maxRetries = options?.maxRetries ?? 5;
   const baseDelayMs = options?.baseDelayMs ?? 2000;
   const maxDelayMs = options?.maxDelayMs ?? 20000;
 
