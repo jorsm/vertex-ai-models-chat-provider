@@ -4,11 +4,14 @@ All notable changes to the **Vertex AI Models Chat Provider** extension will be 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.2.0] — 2026-04-15
 
 ### Changed
 - **Extension Renamed** — "Vertex Anthropic" has been renamed to "Vertex AI Models Chat Provider" to better reflect the deep integration with Google Gemini and its multi-provider support.
 - **Settings Migration** — The setting keys have changed from `vertexAnthropic.*` to `vertexAiChat.*`. Existing configuration values will automatically migrate on the first launch.
+- **Improved UI** — The model picker now uses the native `detail` field to show "Vertex AI" instead of prefixing model names, matching the VS Code native look.
+- **Refined Output Channels** — Differentiated output channel names (Dispatcher, Google Provider, Anthropic Provider, etc.) to improve troubleshooting.
+- **Enhanced Documentation** — Complete README rewrite focusing on professional usage and the benefits of Project-based authentication.
 
 ## [0.1.3] — 2026-03-29
 
