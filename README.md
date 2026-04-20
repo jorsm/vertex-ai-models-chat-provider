@@ -4,8 +4,13 @@
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.110.0%2B-blue)](https://code.visualstudio.com/)
 
 ### **Native Gemini & Claude, powered by Vertex AI.**
+Experience enterprise-grade AI directly within the **standard VS Code Chat panel**. 
 
-Experience enterprise-grade AI directly within the **standard VS Code Chat panel**. This extension registers **Google Gemini** and **Anthropic Claude** as first-class providers—**no separate UI, no extra windows, no friction.**
+<p align="center">
+  <img src="images/demo.gif" alt="Vertex AI Chat Demo" width="800">
+</p>
+
+This extension registers **Google Gemini** and **Anthropic Claude** as first-class providers—**no separate UI, no extra windows, no friction.**
 
 - **🔒 Zero API Keys** — Securely uses your native Google Cloud identity.
 - **🏢 Automatic Billing** — Costs follow your project settings as you switch workspaces.
