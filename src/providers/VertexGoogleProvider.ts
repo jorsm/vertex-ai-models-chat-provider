@@ -312,7 +312,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
       }
 
       const client = await this.getClient();
-      const stream = await withRetry(
+      const stream = await withRetry<AsyncIterable<any>>(
         () =>
           client.models.generateContentStream({
             model: actualId,
