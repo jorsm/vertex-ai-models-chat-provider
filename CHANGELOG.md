@@ -4,6 +4,11 @@ All notable changes to the **Vertex AI Models Chat Provider** extension will be 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.5] — 2026-04-21
+
+### Added
+- **Demo Visuals** — Added a demonstration GIF to the README to better illustrate the setup and authentication workflow.
+
 ## [0.2.4] — 2026-04-20
 
 ### Added
