@@ -1,7 +1,7 @@
+import * as https from "https";
 import * as vscode from "vscode";
 import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
 import { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
-
 const outputChannel = vscode.window.createOutputChannel("Vertex AI Models: Google Provider");
 
 function log(msg: string): void {
@@ -31,9 +31,49 @@ export class VertexGoogleProvider implements VertexModelProvider {
    */
   private readonly textSignatureCache = new Map<string, string>();
 
+  // Safe minimal start list for JSON schema properties supported by Google Cloud AI.
+  private allowedSchemaKeys = new Set<string>([
+    "type", "format", "description", "nullable", "enum", 
+    "properties", "required", "items"
+  ]);
+  private discoveryCompleted = false;
+
+  private discoverVertexSchemaKeys() {
+    if (this.discoveryCompleted) {
+      return;
+    }
+    const url = "https://aiplatform.googleapis.com/$discovery/rest?version=v1";
+    https.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        return;
+      }
+      let data = '';
+      response.on('data', (chunk) => data += chunk);
+      response.on('end', () => {
+        try {
+          const doc = JSON.parse(data);
+          const schemaDef = doc.schemas?.GoogleCloudAiplatformV1Schema;
+          if (schemaDef?.properties) {
+            const keys = Object.keys(schemaDef.properties);
+            if (keys.length > 0) {
+              this.allowedSchemaKeys = new Set(keys);
+              this.discoveryCompleted = true;
+              log(`🌐 Vertex Schema Discovery completed: populated ${keys.length} allowed properties.`);
+            }
+          }
+        } catch (e) {
+          log(`⚠️ Vertex Schema Discovery parse error, falling back to safe list: ${e}`);
+        }
+      });
+    }).on('error', (e) => {
+      log(`⚠️ Vertex Schema Discovery network error, falling back to safe list: ${e}`);
+    });
+  }
+
   initialize(projectId: string, region: string): void {
     this.projectId = projectId;
     this.region = region;
+    this.discoverVertexSchemaKeys();
   }
 
   private async getClient() {
@@ -281,9 +321,6 @@ export class VertexGoogleProvider implements VertexModelProvider {
       }
 
       if (options.tools && options.tools.length > 0) {
-        // Define a Set of known unsupported keys for O(1) lookups
-        const UNSUPPORTED_KEYS = new Set(["enumDescriptions", "examples"]);
-
         const sanitizeSchemaForVertex = (schema: any): any => {
           if (!schema || typeof schema !== "object") {
             return schema;
@@ -294,11 +331,10 @@ export class VertexGoogleProvider implements VertexModelProvider {
 
           const result: any = {};
           for (const [key, value] of Object.entries(schema)) {
-            // Strip any key that Vertex rejects
-            if (UNSUPPORTED_KEYS.has(key)) {
-              continue;
+            // Only strictly allow keys natively supported by Google's API Open API 3.0 schema representation
+            if (this.allowedSchemaKeys.has(key)) {
+              result[key] = sanitizeSchemaForVertex(value);
             }
-            result[key] = sanitizeSchemaForVertex(value);
           }
           return result;
         };
