@@ -58,7 +58,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
             if (keys.length > 0) {
               this.allowedSchemaKeys = new Set(keys);
               this.discoveryCompleted = true;
-              log(`🌐 Vertex Schema Discovery completed: populated ${keys.length} allowed properties.`);
+              log(`🌐 Vertex Schema Discovery completed: populated ${keys.length} allowed properties. ${JSON.stringify(keys)}`);
             }
           }
         } catch (e) {
@@ -295,6 +295,65 @@ export class VertexGoogleProvider implements VertexModelProvider {
     return { mappedContents: merged, systemInstruction };
   }
 
+  /**
+   * Sanitizes a dynamic JSON schema to strictly conform to Vertex AI's OpenAPI 3.0 requirements.
+   * Vertex AI tightly validates tool schemas. If tools contain arbitrary or non-standard metadata keys
+   * (such as \`$comment\` from Playwright, or \`enumDescriptions\`), the generation request will crash
+   * with a \`400 INVALID_ARGUMENT\` response.
+   *
+   * This function acts as a deep-recursive positive filter. It only preserves schema properties that
+   * explicitly exist in \`this.allowedSchemaKeys\`.
+   *
+   * @param schema The raw arbitrary JSON schema object.
+   * @param isPropertiesMap Internal flag indicating if the current depth is inside a schema's \`properties\`
+   *        object. Since the keys of a \`properties\` object represent argument names (not schema keywords),
+   *        they are preserved as-is.
+   * @returns A sanitized schema safe for Vertex AI \`generateContent\` payloads.
+   *
+   * @example
+   * ```json
+   * // Input schema payload with arbitrary/invalid metadata
+   * {
+   *   "type": "object",
+   *   "properties": {
+   *     "pageId": { "type": "string", "$comment": "A comment to strip" }
+   *   },
+   *   "required": ["pageId"]
+   * }
+   *
+   * // Sanitized output (safe for Vertex AI)
+   * {
+   *   "type": "object",
+   *   "properties": {
+   *     "pageId": { "type": "string" }
+   *   },
+   *   "required": ["pageId"]
+   * }
+   * ```
+   */
+  private sanitizeSchemaForVertex(schema: any, isPropertiesMap = false): any {
+    if (!schema || typeof schema !== "object") {
+      return schema;
+    }
+    if (Array.isArray(schema)) {
+      return schema.map(item => this.sanitizeSchemaForVertex(item));
+    }
+
+    const result: any = {};
+    for (const [key, value] of Object.entries(schema)) {
+      if (isPropertiesMap) {
+        // The keys here are tool argument names, keep them as is and sanitize their schemas
+        result[key] = this.sanitizeSchemaForVertex(value, false);
+      } else {
+        // Only strictly allow keys natively supported by Google's API Open API 3.0 schema representation
+        if (this.allowedSchemaKeys.has(key)) {
+          result[key] = this.sanitizeSchemaForVertex(value, key === "properties");
+        }
+      }
+    }
+    return result;
+  }
+
   async provideLanguageModelChatResponse(
     modelId: string,
     messages: readonly vscode.LanguageModelChatRequestMessage[],
@@ -321,31 +380,14 @@ export class VertexGoogleProvider implements VertexModelProvider {
       }
 
       if (options.tools && options.tools.length > 0) {
-        const sanitizeSchemaForVertex = (schema: any): any => {
-          if (!schema || typeof schema !== "object") {
-            return schema;
-          }
-          if (Array.isArray(schema)) {
-            return schema.map(sanitizeSchemaForVertex);
-          }
-
-          const result: any = {};
-          for (const [key, value] of Object.entries(schema)) {
-            // Only strictly allow keys natively supported by Google's API Open API 3.0 schema representation
-            if (this.allowedSchemaKeys.has(key)) {
-              result[key] = sanitizeSchemaForVertex(value);
-            }
-          }
-          return result;
-        };
-
         const declarations = options.tools.map((t) => ({
           name: t.name,
           description: t.description,
-          parameters: sanitizeSchemaForVertex(t.inputSchema || { type: "object", properties: {} }),
+          parameters: this.sanitizeSchemaForVertex(t.inputSchema || { type: "object", properties: {} }),
         }));
         generationConfig.tools = [{ functionDeclarations: declarations }];
         log(`  🔧 Provided ${declarations.length} tools: ${declarations.map((d) => d.name).join(", ")}`);
+        log(`  🔧 Sanitized Tool Schemas: ${JSON.stringify(declarations)}`);
       }
 
       const client = await this.getClient();
