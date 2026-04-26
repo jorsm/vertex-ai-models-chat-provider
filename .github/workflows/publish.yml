@@ -1,0 +1,32 @@
+name: Publish to VS Marketplace
+
+# Only trigger this workflow when a new tag is pushed that starts with 'v' (e.g., v1.0.0).
+on:
+    push:
+        tags:
+            - "v*"
+
+jobs:
+    build-and-publish:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v4
+
+            # Lock the build to a LTS Node version and caches NPM modules to make the pipeline run faster.
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "24"
+                  cache: "npm"
+
+            # Strict Installation: 'npm ci' (clean install) is safer than 'npm i' for CI/CD. 
+            - name: Install Dependencies
+              run: npm ci
+
+            - name: Compile Extension
+              run: npm run compile
+
+            # Use npx to run vsce without needing to globally install it on the runner.
+            - name: Publish to Marketplace
+              run: npx @vscode/vsce publish -p ${{ secrets.VSCE_PAT }}

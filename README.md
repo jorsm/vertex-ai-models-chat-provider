@@ -4,7 +4,8 @@
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.110.0%2B-blue)](https://code.visualstudio.com/)
 
 ### **Native Gemini & Claude, powered by Vertex AI.**
-Experience enterprise-grade AI directly within the **standard VS Code Chat panel**. 
+
+Experience enterprise-grade AI directly within the **standard VS Code Chat panel**.
 
 <p align="center">
   <img src="images/demo.gif" alt="Vertex AI Chat Demo" width="800">
@@ -19,12 +20,13 @@ This extension registers **Google Gemini** and **Anthropic Claude** as first-cla
 
 ---
 
-> [!IMPORTANT]
-> **Google Cloud Prerequisites**
-> Before using this extension, ensure your GCP project is properly configured:
-> 1. **Enable APIs**: Enable the **Vertex AI API** (`aiplatform.googleapis.com`) in the Google Cloud Console ([Docs](https://cloud.google.com/vertex-ai/docs/start/cloud-environment)).
-> 2. **IAM Roles**: Your authenticated user/service account requires the **Vertex AI User** (`roles/aiplatform.user`) role ([Docs](https://cloud.google.com/vertex-ai/docs/general/access-control)).
-> 3. **Model Access**: To use Anthropic Claude models, you must manually find them in the **Vertex AI Model Garden** and click **Enable** to accept the terms of service ([Docs](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/use-claude)).
+## ☁️ Google Cloud Prerequisites
+
+> ⚠️ **Important:** Before using this extension, ensure your Google Cloud project is properly configured to avoid authentication or permission errors.
+>
+> 1. **Enable APIs**: Enable the **Vertex AI API** (`aiplatform.googleapis.com`) in the Cloud Console ([Docs](https://cloud.google.com/vertex-ai/docs/start/cloud-environment)).
+> 2. **IAM Roles**: Your account requires the **Vertex AI User** (`roles/aiplatform.user`) role ([Docs](https://cloud.google.com/vertex-ai/docs/general/access-control)).
+> 3. **Model Access**: For Anthropic Claude models, find them in the **Vertex AI Model Garden** and click **Enable** ([Docs](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/use-claude)).
 
 ## 🚀 Quick Start
 
