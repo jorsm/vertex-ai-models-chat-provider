@@ -4,9 +4,20 @@ All notable changes to the **Vertex AI Models Chat Provider** extension will be 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.1] — 2026-04-27
+
+### Added
+
+- **Enhanced Retry Logic** — Added support for retrying common network errors (ECONNRESET, ETIMEDOUT, etc.) and specific transient error messages from Google APIs.
+
+### Improved
+
+- **Code Maintainability** — Refactored the internal retry mechanism to reduce cognitive complexity and improve logging transparency.
+
 ## [0.3.0] — 2026-04-26
 
 ### Added
+
 - **ID Migration** — The extension has been officially renamed and expanded under a new identifier (`jorsm.vertex-ai-models-chat-provider`). The old `jorsm.vertex-anthropic` extension is now deprecated.
 
 ## [0.2.6] — 2026-04-23
