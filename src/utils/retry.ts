@@ -110,13 +110,39 @@ export function isRetryableError(e: any): boolean {
     return true;
   }
 
-  // 503 Service Unavailable
+  // 503 Service Unavailable / 502 Bad Gateway
   if (msg.includes("503") || msg.includes("service unavailable") || msg.includes("overloaded") || msg.includes("502") || msg.includes("bad gateway")) {
+    return true;
+  }
+
+  // 1. GESTIONE ERRORI DI RETE (dal messaggio) e messaggi generici
+  if (
+    msg.includes("fetch failed") ||
+    msg.includes("network error") ||
+    msg.includes("socket hang up") ||
+    msg.includes("timeout") ||
+    msg.includes("sorry, your request failed") // Cattura l'errore specifico che vedi nei log
+  ) {
     return true;
   }
 
   // Check HTTP status codes
   if (e.status === 429 || e.status === 503 || e.status === 502 || e.status === "RESOURCE_EXHAUSTED" || e.code === 429 || e.code === 503 || e.code === 502) {
+    return true;
+  }
+
+  // 2. GESTIONE ERRORI DI RETE (dai codici di errore nativi di Node.js / Fetch)
+  const networkErrorCodes = [
+    "ECONNRESET",    // Connessione resettata dal peer
+    "ETIMEDOUT",     // Timeout dell'operazione
+    "ECONNREFUSED",  // Connessione rifiutata (es. server giù)
+    "ENOTFOUND",     // Impossibile risolvere il DNS
+    "EAI_AGAIN",     // Errore DNS temporaneo
+    "UND_ERR_CONNECT_TIMEOUT" // Timeout specifico di undici (usato da Node.js fetch)
+  ];
+
+  // Controlla l'error code principale o il cause (se l'errore è incapsulato)
+  if (networkErrorCodes.includes(e.code) || (e.cause && networkErrorCodes.includes(e.cause.code))) {
     return true;
   }
 
