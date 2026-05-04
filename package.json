@@ -60,6 +60,12 @@
           "default": "",
           "description": "GCP Project ID to use with Vertex AI. Models and regions are auto-discovered."
         },
+        "vertexAiChat.retryMaxDurationMinutes": {
+          "type": "integer",
+          "default": 30,
+          "minimum": 1,
+          "description": "Maximum retry duration in minutes for transient API failures such as 429 or 503."
+        },
         "vertexAiChat.hideBillingWarning": {
           "type": "boolean",
           "default": false,

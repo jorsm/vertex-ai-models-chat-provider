@@ -15,16 +15,18 @@ export interface RetryLogEntry {
 }
 
 export interface RetryOptions {
-  /** Maximum number of retries before giving up (default: 3) */
+  /** Maximum number of retries before giving up (default: unlimited when duration-based retry is enabled) */
   maxRetries?: number;
   /** Base delay in milliseconds for exponential backoff (default: 2000) */
   baseDelayMs?: number;
-  /** Maximum delay in milliseconds between retries (default: 20000) */
+  /** Maximum delay in milliseconds between retries (default: 30000) */
   maxDelayMs?: number;
   /** Optional logger function to output messages */
   log?: (msg: string) => void;
   /** Cancellation token to abort the retry loop early */
   token?: vscode.CancellationToken;
+  /** Maximum total retry duration in milliseconds (default from settings or 30 minutes) */
+  maxRetryDurationMs?: number;
 }
 
 /**
@@ -36,34 +38,78 @@ export interface RetryOptions {
  * @returns The result of the operation if successful.
  */
 export async function withRetry<T>(operation: () => Promise<T>, options?: RetryOptions): Promise<T> {
-  const maxRetries = options?.maxRetries ?? 5;
+  const maxRetries = options?.maxRetries ?? Number.MAX_SAFE_INTEGER;
   const baseDelayMs = options?.baseDelayMs ?? 2000;
-  const maxDelayMs = options?.maxDelayMs ?? 20000;
+  const maxDelayMs = options?.maxDelayMs ?? 30000;
+  const maxRetryDurationMs = options?.maxRetryDurationMs ?? getRetryMaxDurationMsFromSettings();
 
   let attempt = 0;
   const retryLog: RetryLogEntry[] = [];
+  const startTime = Date.now();
+  let longRetryNotificationTimer: ReturnType<typeof setTimeout> | undefined;
+  let finished = false;
+
+  const cleanupTimer = () => {
+    if (longRetryNotificationTimer) {
+      clearTimeout(longRetryNotificationTimer);
+      longRetryNotificationTimer = undefined;
+    }
+  };
+
+  longRetryNotificationTimer = setTimeout(() => {
+    if (finished || options?.token?.isCancellationRequested) {
+      return;
+    }
+
+    const elapsedMs = Date.now() - startTime;
+    if (elapsedMs >= 60000) {
+      const remainingMinutes = Math.max(0, Math.round((maxRetryDurationMs - elapsedMs) / 60000));
+      vscode.window.showWarningMessage(
+        `Vertex AI Models Chat Provider: la chiamata sta fallendo per un tempo prolungato. L'estensione ha già provato nuovi tentativi per 1 minuto ma il servizio sta ancora dando problemi. Senza toccare nulla continuerà a ritentare per i successivi ${remainingMinutes} minuti (in base alla configurazione). Se vuoi fermare la richiesta, usa il pulsante Stop/Cancel nella chat dell'agente.`,
+      );
+    }
+  }, 60000);
 
   while (true) {
     if (options?.token?.isCancellationRequested) {
+      cleanupTimer();
       throw new Error("Cancelled by user");
     }
 
     try {
       const result = await operation();
+      finished = true;
+      cleanupTimer();
       logRetrySummary(true, attempt, retryLog, undefined, options?.log);
       return result;
     } catch (e: any) {
-      if (!isRetryableError(e) || attempt >= maxRetries) {
+      const elapsedMs = Date.now() - startTime;
+      if (!isRetryableError(e) || attempt >= maxRetries || elapsedMs >= maxRetryDurationMs) {
+        cleanupTimer();
         logRetrySummary(false, attempt, retryLog, e, options?.log);
         throw e;
       }
 
       attempt++;
       const delayMs = calculateDelay(attempt, baseDelayMs, maxDelayMs);
-      handleRetryAttempt(attempt, maxRetries, delayMs, e, retryLog, options?.log);
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      const timeLeftMs = Math.max(0, maxRetryDurationMs - elapsedMs);
+      const actualDelayMs = Math.min(delayMs, timeLeftMs);
+
+      if (actualDelayMs <= 0) {
+        cleanupTimer();
+        logRetrySummary(false, attempt, retryLog, e, options?.log);
+        throw e;
+      }
+
+      handleRetryAttempt(attempt, maxRetries, actualDelayMs, e, retryLog, options?.log);
+      await new Promise((resolve) => setTimeout(resolve, actualDelayMs));
     }
   }
+}
+
+function getRetryMaxDurationMsFromSettings(): number {
+  const durationMinutes = vscode.workspace.getConfiguration("vertexAiChat").get<number>("retryMaxDurationMinutes", 30);
+  return Math.max(1, durationMinutes) * 60_000;
 }
 
 function calculateDelay(attempt: number, baseDelayMs: number, maxDelayMs: number): number {
