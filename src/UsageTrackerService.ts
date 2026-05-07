@@ -157,22 +157,25 @@ export class UsageTrackerService {
         return d >= startStr && d <= endStr;
       });
 
-      const allLogs: UsageLogEntry[] = [];
-      for (const file of targetFiles) {
-        const content = await fs.readFile(path.join(this.storageDir, file), "utf8");
-        const lines = content.split("\n").filter((l) => l.trim().length > 0);
-        for (const line of lines) {
-          try {
-            const obj = JSON.parse(line);
-            // Ensure it fits date range fully just in case the file timestamp isn't perfectly mapped
-            const logDate = new Date(obj.timestamp);
-            if (logDate >= startDate && logDate <= inclusiveEndDate) {
-              allLogs.push(obj);
-            }
-          } catch {}
-        }
-      }
-      return allLogs;
+      const results = await Promise.all(
+        targetFiles.map(async (file) => {
+          const fileLogs: UsageLogEntry[] = [];
+          const content = await fs.readFile(path.join(this.storageDir, file), "utf8");
+          const lines = content.split("\n").filter((l) => l.trim().length > 0);
+          for (const line of lines) {
+            try {
+              const obj = JSON.parse(line);
+              // Ensure it fits date range fully just in case the file timestamp isn't perfectly mapped
+              const logDate = new Date(obj.timestamp);
+              if (logDate >= startDate && logDate <= inclusiveEndDate) {
+                fileLogs.push(obj);
+              }
+            } catch {}
+          }
+          return fileLogs;
+        }),
+      );
+      return results.flat();
     } catch (error) {
       return [];
     }
