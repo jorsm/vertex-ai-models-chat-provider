@@ -145,26 +145,20 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
   // ── Chat provider interface ───────────────────────────────────────────
 
-  provideLanguageModelChatInformation(options: { silent: boolean }, _token: vscode.CancellationToken): vscode.ProviderResult<vscode.LanguageModelChatInformation[]> {
-    if (options.silent) {
-      return this.availableModels.length > 0 ? this.mapModels() : [];
-    }
-
-    if (!this.discoveryDone || this.availableModels.length === 0) {
-      return [];
-    }
-
+  provideLanguageModelChatInformation(_options: vscode.PrepareLanguageModelChatModelOptions, _token: vscode.CancellationToken): vscode.ProviderResult<vscode.LanguageModelChatInformation[]> {
     return this.mapModels();
   }
 
   private mapModels(): vscode.LanguageModelChatInformation[] {
-    return this.availableModels.map((m) => ({
+    const models = this.availableModels.length > 0 ? this.availableModels : (localCatalog as ModelCatalog).candidateModels;
+    
+    return models.map((m) => ({
       id: m.id,
-      name: m.displayName,
-      detail: `Vertex AI (${this.region})`,
-      tooltip: `${m.displayName} via Google Cloud Vertex AI (${this.region})`,
-      family: m.family === "claude" ? "claude-3" : (m.family === "gemini" ? "gemini-1.5" : m.family),
-      version: "1.0.0",
+      name: `${m.displayName} (Vertex AI)`,
+      detail: `Vertex AI in ${this.region}`,
+      tooltip: `${m.displayName} provided via Google Cloud Vertex AI (${this.region})`,
+      family: m.family,
+      version: m.version,
       maxInputTokens: m.maxInputTokens,
       maxOutputTokens: m.maxOutputTokens,
       capabilities: {
@@ -205,7 +199,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     token: vscode.CancellationToken,
   ): Promise<void> {
     const modelId = model.id;
-    const spec = this.availableModels.find((m) => m.id === modelId);
+    const spec = (this.availableModels.length > 0 ? this.availableModels : (localCatalog as ModelCatalog).candidateModels).find((m) => m.id === modelId);
 
     log(`▶ provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, vendor: ${spec?.vendor}, messages: ${messages.length}`);
 

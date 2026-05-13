@@ -46,7 +46,7 @@
     },
     "languageModelChatProviders": [
       {
-        "vendor": "google-vertex-ai",
+        "vendor": "google-vertex",
         "displayName": "Google Cloud Vertex AI",
         "managementCommand": "vertexAiChat.refreshModels"
       }

@@ -38,7 +38,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   // Register the chat provider
-  const disposable = vscode.lm.registerLanguageModelChatProvider("google-vertex-ai", provider);
+  const disposable = vscode.lm.registerLanguageModelChatProvider("google-vertex", provider);
   context.subscriptions.push(disposable);
 
   // Register the "Refresh Models" command (Ctrl+Shift+P → Vertex AI Models Chat Provider: Refresh Models)
