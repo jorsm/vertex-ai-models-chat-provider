@@ -8,6 +8,8 @@
 - [Core Concepts](#core-concepts)
 - [API Reference](#api-reference)
   - [DashboardWebview](#dashboardwebview)
+  - [UsageTrackerService](#usagetrackerservice)
+  - [Data Structures](#data-structures)
 - [Examples](#examples)
 
 ---
@@ -19,7 +21,7 @@ The usage and billing module is centered around the `DashboardWebview`, which pr
 - **Cost Estimation**: Calculates raw token estimates based on standard publicly documented pricing for Gemini and Claude models. Users are warned that the Google Cloud Billing Console remains the final source of truth.
 - **Project Context**: Automatically generates deep links to the specific Google Cloud Billing page using the configured `vertexAiChat.projectId`.
 - **Filtering**: Supports date range selection, model-specific filtering, and quick presets (Today, Last 7 Days, This Month).
-- **Persistence**: Usage logs are tracked by the `UsageTrackerService`, and the dashboard can permanently dismiss cost warnings by updating the `vertexAiChat.hideBillingWarning` global configuration.
+- **Persistence**: Usage logs are tracked by the `UsageTrackerService`, which stores daily logs in `.jsonl` format within the extension's global storage directory. The dashboard can permanently dismiss cost warnings by updating the `vertexAiChat.hideBillingWarning` global configuration.
 
 ## API Reference
 
@@ -43,6 +45,78 @@ Reveals the existing dashboard panel or creates a new one if it doesn't exist.
 [source](../src/DashboardWebview.ts)
 `public dispose()`
 Cleans up the webview panel and disposes of all internal event listeners and subscriptions.
+
+### UsageTrackerService
+[source](../src/UsageTrackerService.ts)
+A backend service dedicated to persisting token usage and calculating costs for every LLM interaction. It manages local JSONL files in the extension's global storage.
+
+#### onUsageUpdated
+[source](../src/UsageTrackerService.ts)
+`public readonly onUsageUpdated: vscode.Event<void>`
+An event that fires whenever a new usage entry is successfully recorded, allowing the UI to refresh in real-time.
+
+#### calculateCost
+[source](../src/UsageTrackerService.ts)
+`public calculateCost(model: string, tokens: Required<TokenUsage>): number`
+Calculates the total cost for a specific request by mapping the model ID to its pricing definitions in `models.json`.
+- `model`: The model identifier (e.g., `claude-3-5-sonnet-v2`).
+- `tokens`: A breakdown including input, output, cache_read, and cache_create counts.
+
+#### recordUsage
+[source](../src/UsageTrackerService.ts)
+`public async recordUsage(model: string, usage: TokenUsage): Promise<void>`
+Records a single usage entry. It calculates the cost, standardizes the payload (including characters for system, user text, assistant text, images, tool use, and tool results), and appends it to a daily log file (`YYYYMMDD.jsonl`).
+
+#### getUsageForDate
+[source](../src/UsageTrackerService.ts)
+`public async getUsageForDate(dateStr: string): Promise<UsageLogEntry[]>`
+Retrieves all logs for a specific date provided in `YYYYMMDD` format.
+
+#### getUsageInRange
+[source](../src/UsageTrackerService.ts)
+`public async getUsageInRange(startDate: Date, endDate: Date): Promise<UsageLogEntry[]>`
+Scans the storage directory for files falling within the specified date range and returns a flattened array of entries, ensuring the coverage of the full end date in local time.
+
+#### getTodayTotalCost
+[source](../src/UsageTrackerService.ts)
+`public async getTodayTotalCost(): Promise<number>`
+A convenience method to calculate the cumulative cost of all interactions recorded today in local time.
+
+#### getMinDateFromLogs
+[source](../src/UsageTrackerService.ts)
+`public async getMinDateFromLogs(): Promise<string | null>`
+Identifies the earliest date for which usage logs exist. Returns a string in `YYYY-MM-DD` format or `null` if no logs are found.
+
+### Data Structures
+[source](../src/UsageTrackerService.ts)
+Definitions of the internal types used for usage logging and cost calculation.
+
+#### UsageLogEntry
+[source](../src/UsageTrackerService.ts)
+A single log record stored in the daily `.jsonl` files.
+- `timestamp`: ISO-8601 UTC timestamp.
+- `model`: Model ID.
+- `tokens`: A `Required<TokenUsage>` object.
+- `cost`: Total calculated cost for this entry.
+
+#### TokenUsage
+[source](../src/UsageTrackerService.ts)
+Represents the token consumption for a request.
+- `input`: Standard input tokens.
+- `output`: Generated output tokens.
+- `cache_read`: (Optional) Count of tokens served from cache.
+- `cache_create`: (Optional) Count of tokens used to populate a cache.
+- `characters`: (Optional) A `PayloadCharacters` breakdown.
+
+#### PayloadCharacters
+[source](../src/UsageTrackerService.ts)
+Detailed character counts used to analyze payload footprints:
+- `system`: System instructions characters.
+- `user_text`: User input text characters.
+- `assistant_text`: Model response text characters.
+- `image`: Image related character or pixel equivalents.
+- `tool_use`: Characters in tool call definitions.
+- `tool_result`: Characters in tool execution results.
 
 ## Examples
 
