@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - **VS Code 1.120 Compatibility** — Implemented polymorphic metadata mapping to ensure seamless integration with the new organized Chat Model Picker introduced in VS Code 1.120.
 - **Cross-Platform Build Support** — Switched the `clean` script to use `rimraf`, resolving "command not found" errors on Windows environments.
+- **Duration-Based Retries** — Transitioned the retry utility from attempt-based limits to a duration-based approach (defaulting to 30 minutes).
+- **Retry Notifications** — Added user notifications when failures persist beyond one minute, informing users of the estimated remaining retry time.
 
 ### Improved
 
