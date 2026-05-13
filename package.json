@@ -11,7 +11,7 @@
   },
   "license": "MIT",
   "engines": {
-    "vscode": "^1.110.0"
+    "vscode": "^1.120.0"
   },
   "categories": [
     "Other"
@@ -48,7 +48,16 @@
       {
         "vendor": "google-vertex",
         "displayName": "Google Cloud Vertex AI",
-        "managementCommand": "vertexAiChat.refreshModels"
+        "managementCommand": "vertexAiChat.refreshModels",
+        "configurationSchema": {
+          "type": "object",
+          "properties": {
+            "endpoint": {
+              "type": "string",
+              "description": "Custom Vertex AI Endpoint URL (optional)"
+            }
+          }
+        }
       }
     ],
     "configuration": {
@@ -82,7 +91,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "@types/vscode": "^1.110.0",
+    "@types/vscode": "^1.120.0",
     "@typescript-eslint/eslint-plugin": "^8.42.0",
     "@typescript-eslint/parser": "^8.42.0",
     "@vscode/test-cli": "^0.0.11",
