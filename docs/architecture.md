@@ -36,7 +36,7 @@ The central class that implements `vscode.LanguageModelChatProvider`. It manages
 - `discoverModelsAndRegion()`: Probes GCP regions to find available models based on the local catalog. Returns a `DiscoveryResult`.
 - `setProjectId(projectId: string)`: Updates the active GCP project and resets discovery state.
 - `clearModels()`: Clears all available models and notifies VS Code of the change. Useful when authentication fails to prevent stale models from being used.
-- `provideLanguageModelChatInformation(...)`: Returns the list of discovered models to VS Code.
+- `provideLanguageModelChatInformation(...)`: Returns the list of discovered models to VS Code. It returns the set of models found during the discovery process, falling back to the full set of candidate models from the local catalog if discovery is not yet complete or has not identified specific regional availability.
 - `provideTokenCount(...)`: Calculates or estimates token counts for messages. It uses provider-specific counting logic if available, falling back to a heuristic of ~4 characters per token (supporting both raw strings and `LanguageModelChatRequestMessage` with `LanguageModelTextPart` content).
 - `provideLanguageModelChatResponse(...)`: Streams the chat response from the appropriate vendor provider and records detailed usage (input, output, cache_read, cache_create, and character counts) via the `UsageTrackerService`.
 - `getAnthropicProvider()`: Returns the registered `VertexAnthropicProvider` instance.
@@ -75,9 +75,9 @@ The result of a region discovery operation, containing the successful `region` a
 ### activate
 [source](../src/extension.ts)
 The main entry point for the VS Code extension. It handles:
-- Configuration migration from legacy settings (`vertexAnthropic` to `vertexAiChat`).
+- Configuration migration from legacy settings (`vertexAnthropic` to `vertexAiChat`), including Project ID and billing warning preferences.
 - Initializing the `UsageTrackerService` and `CostStatusBar`.
-- Registering the `VertexChatModelDispatcher` as a language model chat provider for the `google-vertex-ai` vendor.
+- Registering the `VertexChatModelDispatcher` as a language model chat provider for the `google-vertex` vendor.
 - Registering extension commands including:
     - `claudeBilling.showDashboard`: Opens the usage dashboard webview.
     - `vertexAiChat.refreshModels`: Manually triggers the model discovery process.
@@ -89,10 +89,10 @@ The main entry point for the VS Code extension. It handles:
 [source](../src/extension.ts)
 A helper function that triggers the model discovery process on the dispatcher and provides UI feedback (Information, Warning, or Error messages) to the user based on the results.
 
-In the event of a `VertexAuthenticationError`, it provides a specialized workflow that:
+In the event of a `VertexAuthenticationError`, it clears stale models and provides a specialized workflow that:
 - Prompts the user to login via the Google Cloud SDK (`gcloud`).
-- Automatically opens a terminal and executes the `gcloud auth application-default login` command with the current project ID.
-- Uses VS Code's shell integration to monitor terminal output in real-time, automatically re-triggering discovery as soon as successful credential storage is detected.
+- Automatically opens a terminal and executes the `gcloud auth application-default login` command with the current project ID and `--quiet` flag.
+- Uses VS Code's shell integration to monitor terminal output in real-time via `onDidStartTerminalShellExecution`, automatically re-triggering discovery as soon as "Credentials saved to file" is detected in the terminal stream.
 
 ---
 
