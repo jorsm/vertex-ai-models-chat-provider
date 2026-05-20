@@ -16,6 +16,12 @@ export interface ModelSpec {
   maxInputTokens: number;
   maxOutputTokens: number;
   capabilities: { imageInput: boolean; toolCalling: boolean };
+  pricing: {
+    input: number;
+    output: number;
+    cache_read?: number;
+    cache_create?: number;
+  };
 }
 
 export interface ModelCatalog {
@@ -167,11 +173,12 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const isV120OrHigher = Number.parseInt(versionParts[0]) > 1 || (Number.parseInt(versionParts[0]) === 1 && Number.parseInt(versionParts[1]) >= 120);
 
     return models.map((m) => {
+      const pricingInfo = `$${m.pricing.input}/1M in, $${m.pricing.output}/1M out`;
       const info: any = {
         id: m.id,
         name: m.displayName,
-        detail: `Vertex AI (${this.region})`,
-        tooltip: `${m.displayName} via Google Cloud Vertex AI (${this.region})`,
+        detail: `Vertex AI (${this.region}) • ${pricingInfo}`,
+        tooltip: `${m.displayName} via Google Cloud Vertex AI (${this.region})\n${pricingInfo}`,
         family: m.family,
         version: m.version,
         maxInputTokens: m.maxInputTokens,
