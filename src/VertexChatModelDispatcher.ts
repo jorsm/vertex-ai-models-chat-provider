@@ -1,9 +1,13 @@
 import * as vscode from "vscode";
+import * as child_process from "child_process";
+import * as util from "util";
 import localCatalog from "./models.json";
 import { VertexAnthropicProvider } from "./providers/VertexAnthropicProvider";
 import { VertexGoogleProvider } from "./providers/VertexGoogleProvider";
 import { VertexModelProvider } from "./providers/VertexModelProvider";
 import { UsageTrackerService } from "./UsageTrackerService";
+
+const execAsync = util.promisify(child_process.exec);
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -110,18 +114,14 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   }
 
   private async getUserEmail(): Promise<string | undefined> {
-    // Try common authentication providers
-    const providers = ["github", "microsoft"];
-    for (const providerId of providers) {
-      try {
-        // Note: we use silent=true to avoid prompting the user if not logged in
-        const session = await vscode.authentication.getSession(providerId, [], { createIfNone: false });
-        if (session?.account.label) {
-          return session.account.label;
-        }
-      } catch (e) {
-        // ignore
+    try {
+      const { stdout } = await execAsync("gcloud config get-value account");
+      const email = stdout.trim();
+      if (email && email !== "(unset)") {
+        return email;
       }
+    } catch (e) {
+      log(`  ⚠️  Failed to get gcloud account email: ${e}`);
     }
     return undefined;
   }
