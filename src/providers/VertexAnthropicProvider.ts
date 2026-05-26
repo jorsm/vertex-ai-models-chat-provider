@@ -19,6 +19,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
   private client!: AnthropicVertex;
   private projectId!: string;
   private region!: string;
+  private labels: Record<string, string> = {};
 
   initialize(projectId: string, region: string): void {
     this.projectId = projectId;
@@ -29,13 +30,18 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     });
   }
 
+  setLabels(labels: Record<string, string>): void {
+    this.labels = labels;
+  }
+
   async pingModel(modelId: string): Promise<boolean> {
     try {
       await this.client.messages.create({
         model: modelId,
         messages: [{ role: "user", content: "ping" }],
         max_tokens: 1,
-      });
+        ...(Object.keys(this.labels).length > 0 ? { labels: this.labels } : {}),
+      } as any);
       log(`    🏓 Anthropic ${modelId} → ✅`);
       return true;
     } catch (e: any) {
@@ -95,7 +101,8 @@ export class VertexAnthropicProvider implements VertexModelProvider {
             stream: true,
             ...(systemBlocks ? { system: systemBlocks } : {}),
             ...(tools?.length ? { tools } : {}),
-          }),
+            ...(Object.keys(this.labels).length > 0 ? { labels: this.labels } : {}),
+          } as any),
         {
           log: log,
           token: token,

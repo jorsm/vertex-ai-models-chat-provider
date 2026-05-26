@@ -100,6 +100,9 @@ export async function activate(context: vscode.ExtensionContext) {
           await runDiscovery(provider);
         }
       }
+      if (e.affectsConfiguration("vertexAiChat.enableUserLabel") || e.affectsConfiguration("vertexAiChat.enableProjectLabel")) {
+        await provider.updateLabels();
+      }
     }),
   );
 }

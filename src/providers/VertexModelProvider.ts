@@ -28,6 +28,9 @@ export interface VertexModelProvider {
   /** Configure the provider with project and region */
   initialize(projectId: string, region: string): void;
 
+  /** Update labels to be sent with every request */
+  setLabels(labels: Record<string, string>): void;
+
   /** Send a minimal ping to verify model availability */
   pingModel(modelId: string): Promise<boolean>;
 

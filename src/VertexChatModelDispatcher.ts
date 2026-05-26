@@ -53,6 +53,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   private discoveryDone = false;
   private readonly usageTracker: UsageTrackerService;
   private _discoveryPromise: Promise<DiscoveryResult> | null = null;
+  private _labelsPromise: Promise<void> | null = null;
 
   /** Fires when the available model list changes — VS Code re-queries provideLanguageModelChatInformation. */
   private readonly _onDidChange = new vscode.EventEmitter<void>();
@@ -62,6 +63,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     this.projectId = projectId;
     this.usageTracker = usageTracker;
     this.registerProviders();
+    this._labelsPromise = this.updateLabels();
   }
 
   private registerProviders() {
@@ -73,6 +75,66 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const googleProvider = new VertexGoogleProvider();
     log(`Registered plugin for vendor: ${googleProvider.vendor}`);
     this.activeProviders.set(googleProvider.vendor, googleProvider);
+  }
+
+  public updateLabels(): Promise<void> {
+    this._labelsPromise = this._updateLabelsImpl();
+    return this._labelsPromise;
+  }
+
+  private async _updateLabelsImpl(): Promise<void> {
+    const config = vscode.workspace.getConfiguration("vertexAiChat");
+    const enableUser = config.get<boolean>("enableUserLabel");
+    const enableProject = config.get<boolean>("enableProjectLabel");
+
+    const labels: Record<string, string> = {};
+
+    if (enableUser) {
+      const email = await this.getUserEmail();
+      if (email) {
+        labels["user"] = this.sanitizeLabelValue(email);
+      }
+    }
+
+    if (enableProject) {
+      const projectName = vscode.workspace.name;
+      if (projectName) {
+        labels["project"] = this.sanitizeLabelValue(projectName);
+      }
+    }
+
+    log(`Updating labels for providers: ${JSON.stringify(labels)}`);
+    for (const provider of this.activeProviders.values()) {
+      provider.setLabels(labels);
+    }
+  }
+
+  private async getUserEmail(): Promise<string | undefined> {
+    // Try common authentication providers
+    const providers = ["github", "microsoft"];
+    for (const providerId of providers) {
+      try {
+        // Note: we use silent=true to avoid prompting the user if not logged in
+        const session = await vscode.authentication.getSession(providerId, [], { createIfNone: false });
+        if (session?.account.label) {
+          return session.account.label;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    return undefined;
+  }
+
+  private sanitizeLabelValue(value: string): string {
+    // GCP labels: lowercase letters, numbers, hyphens, underscores. Max 63 chars.
+    // Must start with a lowercase letter or international character (we stick to a-z).
+    let sanitized = value.toLowerCase().replace(/[^a-z0-9_-]/g, "_");
+    // Ensure it starts with a letter (if it doesn't, prepend 'v_')
+    if (sanitized.length > 0 && !/^[a-z]/.test(sanitized)) {
+      sanitized = "v_" + sanitized;
+    }
+    return sanitized.substring(0, 63);
   }
 
   getAnthropicProvider(): VertexAnthropicProvider {
@@ -232,6 +294,9 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     if (this._discoveryPromise) {
       log(`  ⏳ Waiting for model discovery to complete before inference...`);
       await this._discoveryPromise;
+    }
+    if (this._labelsPromise) {
+      await this._labelsPromise;
     }
 
     const modelId = model.id;

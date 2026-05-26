@@ -69,6 +69,16 @@
           "type": "boolean",
           "default": false,
           "description": "Hide the Estimated Costs warning banner on the Usage Dashboard."
+        },
+        "vertexAiChat.enableUserLabel": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include the logged-in user's email as a 'user' label in Vertex AI calls for cost tracking."
+        },
+        "vertexAiChat.enableProjectLabel": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include the current VS Code project name as a 'project' label in Vertex AI calls for cost tracking."
         }
       }
     }

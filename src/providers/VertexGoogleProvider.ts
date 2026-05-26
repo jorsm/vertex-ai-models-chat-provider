@@ -14,6 +14,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
   private client: any;
   private projectId!: string;
   private region!: string;
+  private labels: Record<string, string> = {};
   /**
    * Cache of thought signatures keyed by unique tool call ID.
    * Gemini 3 embeds the thought_signature inline on the functionCall part;
@@ -76,6 +77,10 @@ export class VertexGoogleProvider implements VertexModelProvider {
     this.discoverVertexSchemaKeys();
   }
 
+  setLabels(labels: Record<string, string>): void {
+    this.labels = labels;
+  }
+
   private async getClient() {
     if (!this.client) {
       // Use dynamic import to support ESM-only @google/genai in a CommonJS context
@@ -109,6 +114,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
         model: actualId,
         contents: "ping",
         config: { maxOutputTokens: 1 },
+        ...(Object.keys(this.labels).length > 0 ? { labels: this.labels } : {}),
       });
       log(`    🏓 Google ${modelId} -> ${actualId} → ✅`);
       return true;
@@ -397,6 +403,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
             model: actualId,
             contents: mappedContents,
             config: generationConfig,
+            ...(Object.keys(this.labels).length > 0 ? { labels: this.labels } : {}),
           }),
         {
           log: log,
