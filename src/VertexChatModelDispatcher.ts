@@ -58,6 +58,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   private readonly usageTracker: UsageTrackerService;
   private _discoveryPromise: Promise<DiscoveryResult> | null = null;
   private _labelsPromise: Promise<void> | null = null;
+  private cachedUserEmail: string | undefined;
 
   /** Fires when the available model list changes — VS Code re-queries provideLanguageModelChatInformation. */
   private readonly _onDidChange = new vscode.EventEmitter<void>();
@@ -89,25 +90,19 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   private async _updateLabelsImpl(): Promise<void> {
     const config = vscode.workspace.getConfiguration("vertexAiChat");
     const enableUser = config.get<boolean>("enableUserLabel");
-    const enableProject = config.get<boolean>("enableProjectLabel");
 
-    const labels: Record<string, string> = {};
-
+    this.cachedUserEmail = undefined;
     if (enableUser) {
-      const email = await this.getUserEmail();
-      if (email) {
-        labels["user"] = this.sanitizeLabelValue(email);
-      }
+      this.cachedUserEmail = await this.getUserEmail();
     }
 
-    if (enableProject) {
-      const projectName = vscode.workspace.name;
-      if (projectName) {
-        labels["project"] = this.sanitizeLabelValue(projectName);
-      }
+    // Still push the user label to providers as a baseline
+    const labels: Record<string, string> = {};
+    if (this.cachedUserEmail) {
+      labels["user"] = this.sanitizeLabelValue(this.cachedUserEmail);
     }
 
-    log(`Updating labels for providers: ${JSON.stringify(labels)}`);
+    log(`Updating base labels for providers: ${JSON.stringify(labels)}`);
     for (const provider of this.activeProviders.values()) {
       provider.setLabels(labels);
     }
@@ -315,8 +310,30 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
       throw new Error(`Integration for vendor ${spec.vendor} is not registered.`);
     }
 
+    // Resolve labels for this specific request
+    const config = vscode.workspace.getConfiguration("vertexAiChat");
+    const requestLabels: Record<string, string> = {};
+    
+    if (config.get<boolean>("enableUserLabel") && this.cachedUserEmail) {
+      requestLabels["user"] = this.sanitizeLabelValue(this.cachedUserEmail);
+    }
+
+    if (config.get<boolean>("enableProjectLabel")) {
+      let projectName: string | undefined;
+      const activeEditor = vscode.window.activeTextEditor;
+      if (activeEditor) {
+        projectName = vscode.workspace.getWorkspaceFolder(activeEditor.document.uri)?.name;
+      }
+      if (!projectName) {
+        projectName = vscode.workspace.workspaceFolders?.[0]?.name || vscode.workspace.name;
+      }
+      if (projectName) {
+        requestLabels["project"] = this.sanitizeLabelValue(projectName);
+      }
+    }
+
     try {
-      const result = await provider.provideLanguageModelChatResponse(modelId, messages, options, progress, token);
+      const result = await provider.provideLanguageModelChatResponse(modelId, messages, options, progress, token, requestLabels);
       log(`  ✅ Successfully completed request via plugin ${provider.vendor}`);
 
       if (result.usage.input > 0 || result.usage.output > 0) {

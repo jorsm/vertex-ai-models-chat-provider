@@ -78,9 +78,11 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     options: vscode.ProvideLanguageModelChatResponseOptions,
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
     token: vscode.CancellationToken,
+    labels?: Record<string, string>,
   ): Promise<ChatInferenceResult> {
     log(`▶ Anthropic Plugin provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, messages: ${messages.length}`);
 
+    const requestLabels = labels || this.labels;
     try {
       const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
 
@@ -101,7 +103,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
             stream: true,
             ...(systemBlocks ? { system: systemBlocks } : {}),
             ...(tools?.length ? { tools } : {}),
-            ...(Object.keys(this.labels).length > 0 ? { labels: this.labels } : {}),
+            ...(Object.keys(requestLabels).length > 0 ? { labels: requestLabels } : {}),
           } as any),
         {
           log: log,

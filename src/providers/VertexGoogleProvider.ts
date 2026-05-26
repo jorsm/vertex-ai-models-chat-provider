@@ -366,10 +366,12 @@ export class VertexGoogleProvider implements VertexModelProvider {
     options: vscode.ProvideLanguageModelChatResponseOptions,
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
     token: vscode.CancellationToken,
+    labels?: Record<string, string>,
   ): Promise<ChatInferenceResult> {
     const { actualId, config } = this.resolveModelId(modelId);
     log(`▶ Google provideLanguageModelChatResponse called — requested: ${modelId} -> executed: ${actualId}, msgs: ${messages.length}`);
 
+    const requestLabels = labels || this.labels;
     const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
     let inputTokens = 0,
       outputTokens = 0,
@@ -403,7 +405,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
             model: actualId,
             contents: mappedContents,
             config: generationConfig,
-            ...(Object.keys(this.labels).length > 0 ? { labels: this.labels } : {}),
+            ...(Object.keys(requestLabels).length > 0 ? { labels: requestLabels } : {}),
           }),
         {
           log: log,

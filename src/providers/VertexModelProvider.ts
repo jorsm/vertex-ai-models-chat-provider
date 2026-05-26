@@ -42,7 +42,8 @@ export interface VertexModelProvider {
     messages: readonly vscode.LanguageModelChatRequestMessage[],
     options: vscode.ProvideLanguageModelChatResponseOptions,
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
-    token: vscode.CancellationToken
+    token: vscode.CancellationToken,
+    labels?: Record<string, string>
   ): Promise<ChatInferenceResult>;
 
   /**
