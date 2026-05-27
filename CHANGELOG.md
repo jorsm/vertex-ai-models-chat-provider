@@ -4,6 +4,17 @@ All notable changes to the **Vertex AI Models Chat Provider** extension will be 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.3] — 2026-05-27
+
+### Added
+
+- **Opt-in GCP Resource Labeling** — Added support for propagating user email and project name as labels to Vertex AI requests, enabling granular cost tracking and attribution in the Google Cloud Console. This feature is **disabled by default** to respect user privacy.
+- **Dynamic Label Resolution** — Labels are now resolved at the request level, prioritizing the workspace folder of the active text editor to support multi-root setups.
+
+### Changed
+
+- **Dependency Update** — Upgraded `@google/genai` to `v2.6.0` to ensure compatibility with latest API features and improved label logging.
+
 ## [0.4.2] — 2026-05-20
 
 ### Added

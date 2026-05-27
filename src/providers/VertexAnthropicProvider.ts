@@ -97,7 +97,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
       this.logMappedMessages(modelId, mappedMessages, systemBlocks, tools);
 
-      const stream = await withRetry(
+      const stream = await withRetry<any>(
         () =>
           this.client.messages.create({
             model: modelId,

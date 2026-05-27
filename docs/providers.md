@@ -73,9 +73,10 @@ Handles chat inference for Anthropic models. This method:
 3. Automatically applies cache control strategies:
     - **Static Prefix Caching**: Applies `ephemeral` caching to the system blocks or tool definitions.
     - **Chat History Caching**: Applies `ephemeral` caching to the second-to-last message in the history if the total history exceeds 1024 tokens.
-4. Manages streaming responses, reporting text deltas and tool call progress to VS Code after parsing partial JSON tool inputs.
-5. Captures and returns detailed usage statistics, including `input`, `output`, `cache_read`, and `cache_create` token metrics, alongside character-level consumption for different part types.
-6. Integrates metadata labels (provided via the `labels` parameter or the provider's internal state) into the API request for downstream cost tracking and telemetry.
+4. Executes the request using a robust retry mechanism for transient API failures (such as 429 or 503) with a configurable maximum duration to ensure request resilience.
+5. Manages streaming responses, reporting text deltas and tool call progress to VS Code after parsing partial JSON tool inputs.
+6. Captures and returns detailed usage statistics, including `input`, `output`, `cache_read`, and `cache_create` token metrics, alongside character-level consumption for different part types.
+7. Integrates metadata labels (provided via the `labels` parameter or the provider's internal state) into the API request for downstream cost tracking and telemetry.
 
 ### VertexGoogleProvider
 [source](../src/providers/VertexGoogleProvider.ts)

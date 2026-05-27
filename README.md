@@ -16,7 +16,7 @@ This extension registers **Google Gemini** and **Anthropic Claude** as first-cla
 - **🔒 Zero API Keys** — Securely uses your native Google Cloud identity.
 - **🏢 Automatic Billing** — Costs follow your project settings as you switch workspaces.
 - **⚡ Native Integration** — First-class support for Gemini 3 and Claude within Copilot Chat.
-- **📊 Cost Transparency** — Real-time session tracking and interactive usage dashboard.
+- **📊 Cost Transparency** — Real-time session tracking, interactive usage dashboard, and opt-in labels for precise Google Cloud Billing attribution.
 
 ---
 
@@ -48,7 +48,7 @@ This extension uses your **GCP Project ID** and **Application Default Credential
 
 - **🔒 Secure by Design**: Credentials stay in your system's secure store via `gcloud`. There are no sensitive API keys to paste, store in plain text, or rotate manually.
 - **🏢 Automatic Billing Switching**: By setting the Project ID in your workspace's `.vscode/settings.json`, billing for LLM usage automatically switches as you move between different client or internal projects.
-- **📈 Centralized Governance**: Organization admins can manage model access and quotas centrally through the Google Cloud Console, which automatically applies to all developers using that Project ID.
+- **📈 Centralized Governance**: Organization admins can manage model access and quotas centrally through the Google Cloud Console, which automatically applies to all developers using that Project ID. Additionally, request labeling provides admins with granular visibility into cost distribution across users and workspaces.
 - **⚡ Consistent Performance**: Leveraging your own GCP project quotas ensures you aren't sharing rate limits with other users on a global API key.
 
 ---
@@ -59,6 +59,7 @@ This extension uses your **GCP Project ID** and **Application Default Credential
 - **⚡ Anthropic Performance**: Native support for **Claude Opus, Sonnet, and Haiku**, featuring automated **Prompt Caching (Ephemeral)** to reduce latency and costs for long conversations.
 - **🔑 Actionable Auth**: Improved detection of expired credentials with a one-click "Login with gcloud" fix directly from VS Code.
 - **🪄 AI Commit Messages**: Generate professional, conventional commit messages from staged Git changes with one click from the Source Control view.
+- **🏷️ Cost Attribution Labels**: Opt-in to propagate user email and workspace names as GCP labels for granular cost tracking in the Google Cloud Console.
 - **📊 Local Usage Dashboard and Real Time Costs Estimation**: An interactive, ECharts-powered dashboard to track your individual costs, token consumption, and payload metrics—all stored locally and updated in real time.
 
 - **🔍 Smart Discovery**: Automatically probes regional endpoints (`global`, `us-east5`, `europe-west1`, `asia-southeast1`) to find and register only the models available in your specific GCP project.
@@ -72,16 +73,19 @@ This extension uses your **GCP Project ID** and **Application Default Credential
 | Vendor        | Model Family | Versions Supported                       | Features                      |
 | :------------ | :----------- | :--------------------------------------- | :---------------------------- |
 | **Anthropic** | Claude       | Opus 4.7,Opus 4.6, Sonnet 4.6, Haiku 4.5 | Vision, Tools, Caching        |
-| **Google**    | Gemini       | 3 Flash, 3.1 Pro                         | High Thinking, Parallel Tools |
+| **Google**    | Gemini       | 3.5 Flash, 3 Flash, 3.1 Pro              | High Thinking, Parallel Tools |
 
 ---
 
 ## ⚙️ Configuration
 
-| Setting                           | Type      | Default | Description                                        |
-| :-------------------------------- | :-------- | :------ | :------------------------------------------------- |
-| `vertexAiChat.projectId`          | `string`  | `""`    | **Required.** Your Google Cloud Project ID.        |
-| `vertexAiChat.hideBillingWarning` | `boolean` | `false` | Hide the cost estimation warning in the dashboard. |
+| Setting                                | Type      | Default | Description                                                                           |
+| :------------------------------------- | :-------- | :------ | :------------------------------------------------------------------------------------ |
+| `vertexAiChat.projectId`               | `string`  | `""`    | **Required.** Your Google Cloud Project ID.                                           |
+| `vertexAiChat.retryMaxDurationMinutes` | `integer` | `30`    | Maximum retry duration in minutes for transient API failures such as 429 or 503.      |
+| `vertexAiChat.hideBillingWarning`      | `boolean` | `false` | Hide the cost estimation warning in the dashboard.                                    |
+| `vertexAiChat.enableUserLabel`         | `boolean` | `false` | **Opt-in.** Include the logged-in user's email as a `user` label in Vertex AI calls.  |
+| `vertexAiChat.enableProjectLabel`      | `boolean` | `false` | **Opt-in.** Include the VS Code project name as a `project` label in Vertex AI calls. |
 
 ---
 
