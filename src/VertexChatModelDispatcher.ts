@@ -6,6 +6,7 @@ import { VertexAnthropicProvider } from "./providers/VertexAnthropicProvider";
 import { VertexGoogleProvider } from "./providers/VertexGoogleProvider";
 import { VertexModelProvider } from "./providers/VertexModelProvider";
 import { UsageTrackerService } from "./UsageTrackerService";
+import { estimateTokens } from "./utils/tokens";
 
 const execAsync = util.promisify(childProcess.exec);
 
@@ -264,17 +265,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
       return provider.provideTokenCount(text, token);
     }
 
-    // Fallback heuristic: ~4 chars per token, used to check if the request is too long to send to the model
-    if (typeof text === "string") {
-      return Math.ceil(text.length / 4);
-    }
-    let length = 0;
-    for (const part of text.content) {
-      if (part instanceof vscode.LanguageModelTextPart) {
-        length += part.value.length;
-      }
-    }
-    return Math.ceil(length / 4);
+    return estimateTokens(text);
   }
 
   // ── Chat response (inference) ─────────────────────────────────────────
