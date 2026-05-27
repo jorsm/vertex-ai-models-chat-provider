@@ -4,6 +4,22 @@ All notable changes to the **Vertex AI Models Chat Provider** extension will be 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.5] — 2026-05-27
+
+### Fixed
+
+- **Gemini 3.5 Thought Signature Leak** — Fixed an issue where Gemini 3.5 models (especially `gemini-3.5-flash-high`) would leak internal thought signatures (e.g. `gemini-3.5-flash-high\5R+S41tN...`) into the chat output. The provider now automatically detects and strips these headers while preserving the clean answer text.
+
+### Added
+
+- **Context Window Heuristic** — Improved token counting to estimate context window usage more accurately, helping prevent requests that exceed model limits.
+- **Token Usage Reporting** — Token estimation is now consolidated into a shared utility and reported to VS Code via the `LanguageModelDataPart` API for better usage tracking.
+
+### Improved
+
+- **Reasoning Chain Preservation** — Thought signatures are now properly managed and re-attached to model responses, preserving the model's reasoning quality across chat turns.
+- **Parallel Tool Calling** — Tool responses are now merged correctly into a single user turn, ensuring compatibility with Gemini's parallel tool calling protocol and preventing interleaved response issues.
+
 ## [0.4.4] — 2026-05-27
 
 ### Added
