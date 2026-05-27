@@ -18,6 +18,8 @@
         - [setLabels](#setlabels-1)
         - [pingModel](#pingmodel-1)
         - [provideTokenCount](#providetokencount-1)
+        - [isLeakedReasoningHeader](#isleakedreasoningheader)
+        - [stripLeakedReasoningHeader](#stripleakedreasoningheader)
         - [provideLanguageModelChatResponse](#providelanguagemodelchatresponse-1)
 - [Examples](#examples)
 
@@ -75,7 +77,7 @@ Handles chat inference for Anthropic models. This method:
     - **Chat History Caching**: Applies `ephemeral` caching to the second-to-last message in the history if the total history exceeds 1024 tokens.
 4. Executes the request using a robust retry mechanism for transient API failures (such as 429 or 503) with a configurable maximum duration to ensure request resilience.
 5. Manages streaming responses, reporting text deltas and tool call progress to VS Code after parsing partial JSON tool inputs.
-6. Captures and returns detailed usage statistics, including `input`, `output`, `cache_read`, and `cache_create` token metrics, alongside character-level consumption for different part types.
+6. Captures and returns detailed usage statistics, including `input`, `output`, `cache_read`, and `cache_create` token metrics. It also reports these statistics back to VS Code via a `LanguageModelDataPart` (MIME type `usage`) to update the native Copilot Chat usage indicator.
 7. Integrates metadata labels (provided via the `labels` parameter or the provider's internal state) into the API request for downstream cost tracking and telemetry.
 
 ### VertexGoogleProvider
@@ -106,6 +108,18 @@ Attempts a minimal request to the specified model ID to verify availability and 
 
 Provides a rough estimation of token usage. For text or message objects, it computes the count based on a 4-characters-per-token heuristic.
 
+#### isLeakedReasoningHeader
+[source](../src/providers/VertexGoogleProvider.ts)
+`isLeakedReasoningHeader(text: string, modelId: string, actualId: string): boolean`
+
+Detects if a given text segment is the starting chunk of a leaked reasoning block (e.g., `gemini-3.5-flash-high\5R+S41tN...`). It checks if the text starts with the configured or resolved model ID followed by a path separator.
+
+#### stripLeakedReasoningHeader
+[source](../src/providers/VertexGoogleProvider.ts)
+`stripLeakedReasoningHeader(text: string): string`
+
+Strips the leaked signature prefix from a reasoning header text block, returning only the clean answer text that follows the first newline.
+
 #### provideLanguageModelChatResponse
 [source](../src/providers/VertexGoogleProvider.ts)
 `provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>): Promise<ChatInferenceResult>`
@@ -113,13 +127,13 @@ Provides a rough estimation of token usage. For text or message objects, it comp
 Main entry point for chat inference. This method:
 1. Maps VS Code messages to the Gemini `contents` format, including support for multimodal `LanguageModelDataPart` (images and non-image data decoding), and ensures the conversation starts with a user message as required by the Gemini API.
 2. **Sanitizes tool input schemas** using a deep-recursive positive filter to ensure compatibility with Vertex AI's OpenAPI 3.0 requirements. It preserves only schema properties that are explicitly supported by the Google Cloud AI Platform (e.g., `type`, `properties`, `required`), stripping out arbitrary or non-standard metadata keys like `$comment` or `enumDescriptions` that would otherwise trigger `400 INVALID_ARGUMENT` responses.
-3. Re-injects cached thought signatures into the conversation history for both **assistant text parts** and **tool call parts** to preserve reasoning quality.
+3. Re-injects cached thought signatures into the conversation history for both **assistant text parts** and **tool call parts** to preserve reasoning quality. It also proactively sanitizes leaked reasoning headers from model turns in history.
 4. Merges consecutive tool result messages into a single user turn to satisfy Gemini API requirements for parallel tool calls.
 5. **Normalizes tool results** into JSON objects, wrapping primitive return values to comply with Gemini's `google.protobuf.Struct` requirement for function responses, and ensuring the function name is correctly associated with the response.
-6. Handles streaming responses with **automatic retries**, capturing text, tool calls, and `thoughtSignature` metadata (supporting both legacy Gemini 2.x separate thought parts and Gemini 3 inline fields).
+6. Handles streaming responses with **automatic retries**, using a stateful `StreamPartProcessor` to isolate and strip multi-chunk leaked reasoning/thinking blocks while capturing text, tool calls, and `thoughtSignature` metadata.
 7. Buffers parallel tool calls across the stream to ensure they are emitted to VS Code as a single atomic step, preventing turn-mismatch errors.
 8. Updates internal signature caches for both text reasoning (using a text-prefix key based on the first 120 characters) and tool calls (using unique call IDs).
-9. Tracks and returns detailed usage statistics including character counts and token usage metadata (input, output, and cache metrics). For Gemini, it correctly adjusts input tokens by subtracting cached content tokens to ensure accurate usage tracking.
+9. Tracks and returns detailed usage statistics including character counts and token usage metadata (input, output, and cache metrics). For Gemini, it correctly adjusts input tokens by subtracting cached content tokens to ensure accurate usage tracking, and reports the resulting payload to VS Code via `LanguageModelDataPart` (MIME `usage`).
 10. Attaches metadata labels (preferring the `labels` argument over instance-level labels) to the generation request, enabling granular cost attribution and usage monitoring in the Google Cloud Console.
 
 ## Examples
