@@ -68,8 +68,8 @@ Estimates token usage using a 4-characters-per-token heuristic for text strings 
 `provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>): Promise<ChatInferenceResult>`
 
 Handles chat inference for Anthropic models. This method:
-1. Maps VS Code messages to the Anthropic `messages` format, including support for `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart`, and `LanguageModelDataPart` (handling both base64 images and UTF-8 decoding for non-image data).
-2. Extracts system instructions from the message history to pass as top-level `system` blocks.
+1. Maps VS Code messages to the Anthropic `messages` format, including support for `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart` (normalizing array-based content into a single newline-delimited string), and `LanguageModelDataPart` (handling both base64 images and UTF-8 decoding for non-image data). It ensures the conversation history starts with a user message by inserting a placeholder if necessary.
+2. Extracts system instructions from the message history to pass as top-level `system` blocks. Tool definitions are also accounted for in the system-level character consumption metrics.
 3. Automatically applies cache control strategies:
     - **Static Prefix Caching**: Applies `ephemeral` caching to the system blocks or tool definitions.
     - **Chat History Caching**: Applies `ephemeral` caching to the second-to-last message in the history if the total history exceeds 1024 tokens.
