@@ -79,11 +79,11 @@ This extension uses your **GCP Project ID** and **Application Default Credential
 
 ## ⚙️ Configuration
 
-| Setting                                | Type      | Default | Description                                                                           |
-| :------------------------------------- | :-------- | :------ | :------------------------------------------------------------------------------------ |
-| `vertexAiChat.projectId`               | `string`  | `""`    | **Required.** Your Google Cloud Project ID.                                           |
-| `vertexAiChat.retryMaxDurationMinutes` | `integer` | `30`    | Maximum retry duration in minutes for transient API failures such as 429 or 503.      |
-| `vertexAiChat.hideBillingWarning`      | `boolean` | `false` | Hide the cost estimation warning in the dashboard.                                                   |
+| Setting                                | Type      | Default | Description                                                                                            |
+| :------------------------------------- | :-------- | :------ | :----------------------------------------------------------------------------------------------------- |
+| `vertexAiChat.projectId`               | `string`  | `""`    | **Required.** Your Google Cloud Project ID.                                                            |
+| `vertexAiChat.retryMaxDurationMinutes` | `integer` | `30`    | Maximum retry duration in minutes for transient API failures such as 429 or 503.                       |
+| `vertexAiChat.hideBillingWarning`      | `boolean` | `false` | Hide the cost estimation warning in the dashboard.                                                     |
 | `vertexAiChat.enableUserLabel`         | `boolean` | `false` | **Opt-in.** Include the logged-in user's email as a `vscode-vertex-ai-user` label in Vertex AI calls.  |
 | `vertexAiChat.enableProjectLabel`      | `boolean` | `false` | **Opt-in.** Include the VS Code project name as a `vscode-vertex-ai-project` label in Vertex AI calls. |
 

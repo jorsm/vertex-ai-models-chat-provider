@@ -4,6 +4,17 @@ All notable changes to the **Vertex AI Models Chat Provider** extension will be 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.4] — 2026-05-27
+
+### Added
+
+- **CI/CD Strengthening** — Implemented a new Continuous Integration pipeline via GitHub Actions to verify builds and linting on every push and pull request.
+- **Build Reliability Guardrails** — Integrated Husky pre-commit hooks and enabled stricter TypeScript compiler options (`noImplicitReturns`, `noUnusedParameters`, etc.) to catch errors before they reach the repository.
+
+### Changed
+
+- **Renamed Label Prefix** — Updated cost attribution labels to `vscode-vertex-ai-user` and `vscode-vertex-ai-project` for better identification and compliance with GCP labeling constraints.
+
 ## [0.4.3] — 2026-05-27
 
 ### Added
