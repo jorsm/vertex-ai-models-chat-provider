@@ -33,10 +33,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
   private readonly textSignatureCache = new Map<string, string>();
 
   // Safe minimal start list for JSON schema properties supported by Google Cloud AI.
-  private allowedSchemaKeys = new Set<string>([
-    "type", "format", "description", "nullable", "enum", 
-    "properties", "required", "items"
-  ]);
+  private allowedSchemaKeys = new Set<string>(["type", "format", "description", "nullable", "enum", "properties", "required", "items"]);
   private discoveryCompleted = false;
 
   private discoverVertexSchemaKeys() {
@@ -44,31 +41,33 @@ export class VertexGoogleProvider implements VertexModelProvider {
       return;
     }
     const url = "https://aiplatform.googleapis.com/$discovery/rest?version=v1";
-    https.get(url, (response) => {
-      if (response.statusCode !== 200) {
-        return;
-      }
-      let data = '';
-      response.on('data', (chunk) => data += chunk);
-      response.on('end', () => {
-        try {
-          const doc = JSON.parse(data);
-          const schemaDef = doc.schemas?.GoogleCloudAiplatformV1Schema;
-          if (schemaDef?.properties) {
-            const keys = Object.keys(schemaDef.properties);
-            if (keys.length > 0) {
-              this.allowedSchemaKeys = new Set(keys);
-              this.discoveryCompleted = true;
-              log(`🌐 Vertex Schema Discovery completed: populated ${keys.length} allowed properties. ${JSON.stringify(keys)}`);
-            }
-          }
-        } catch (e) {
-          log(`⚠️ Vertex Schema Discovery parse error, falling back to safe list: ${e}`);
+    https
+      .get(url, (response) => {
+        if (response.statusCode !== 200) {
+          return;
         }
+        let data = "";
+        response.on("data", (chunk) => (data += chunk));
+        response.on("end", () => {
+          try {
+            const doc = JSON.parse(data);
+            const schemaDef = doc.schemas?.GoogleCloudAiplatformV1Schema;
+            if (schemaDef?.properties) {
+              const keys = Object.keys(schemaDef.properties);
+              if (keys.length > 0) {
+                this.allowedSchemaKeys = new Set(keys);
+                this.discoveryCompleted = true;
+                log(`🌐 Vertex Schema Discovery completed: populated ${keys.length} allowed properties. ${JSON.stringify(keys)}`);
+              }
+            }
+          } catch (e) {
+            log(`⚠️ Vertex Schema Discovery parse error, falling back to safe list: ${e}`);
+          }
+        });
+      })
+      .on("error", (e) => {
+        log(`⚠️ Vertex Schema Discovery network error, falling back to safe list: ${e}`);
       });
-    }).on('error', (e) => {
-      log(`⚠️ Vertex Schema Discovery network error, falling back to safe list: ${e}`);
-    });
   }
 
   initialize(projectId: string, region: string): void {
@@ -112,9 +111,11 @@ export class VertexGoogleProvider implements VertexModelProvider {
       const client = await this.getClient();
       await client.models.generateContent({
         model: actualId,
-        contents: "ping",
-        config: { maxOutputTokens: 1 },
-        ...(Object.keys(this.labels).length > 0 ? { labels: this.labels } : {}),
+        contents: [{ role: "user", parts: [{ text: "ping" }] }],
+        config: {
+          maxOutputTokens: 1,
+          labels: Object.keys(this.labels).length > 0 ? this.labels : undefined,
+        },
       });
       log(`    🏓 Google ${modelId} -> ${actualId} → ✅`);
       return true;
@@ -342,7 +343,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
       return schema;
     }
     if (Array.isArray(schema)) {
-      return schema.map(item => this.sanitizeSchemaForVertex(item));
+      return schema.map((item) => this.sanitizeSchemaForVertex(item));
     }
 
     const result: any = {};
@@ -372,6 +373,9 @@ export class VertexGoogleProvider implements VertexModelProvider {
     log(`▶ Google provideLanguageModelChatResponse called — requested: ${modelId} -> executed: ${actualId}, msgs: ${messages.length}`);
 
     const requestLabels = labels || this.labels;
+    if (Object.keys(requestLabels).length > 0) {
+      log(`  🏷️  Labels: ${JSON.stringify(requestLabels)}`);
+    }
     const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
     let inputTokens = 0,
       outputTokens = 0,
@@ -394,8 +398,10 @@ export class VertexGoogleProvider implements VertexModelProvider {
           parameters: this.sanitizeSchemaForVertex(t.inputSchema || { type: "object", properties: {} }),
         }));
         generationConfig.tools = [{ functionDeclarations: declarations }];
-        log(`  🔧 Provided ${declarations.length} tools: ${declarations.map((d) => d.name).join(", ")}`);
-        log(`  🔧 Sanitized Tool Schemas: ${JSON.stringify(declarations)}`);
+      }
+
+      if (Object.keys(requestLabels).length > 0) {
+        generationConfig.labels = requestLabels;
       }
 
       const client = await this.getClient();
@@ -405,7 +411,6 @@ export class VertexGoogleProvider implements VertexModelProvider {
             model: actualId,
             contents: mappedContents,
             config: generationConfig,
-            ...(Object.keys(requestLabels).length > 0 ? { labels: requestLabels } : {}),
           }),
         {
           log: log,

@@ -83,6 +83,9 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     log(`▶ Anthropic Plugin provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, messages: ${messages.length}`);
 
     const requestLabels = labels || this.labels;
+    if (Object.keys(requestLabels).length > 0) {
+      log(`  🏷️  Labels: ${JSON.stringify(requestLabels)}`);
+    }
     try {
       const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
 
@@ -299,7 +302,6 @@ export class VertexAnthropicProvider implements VertexModelProvider {
       input_schema: t.inputSchema ?? { type: "object", properties: {} },
     }));
 
-    log(`  🔧 Tools provided: ${tools.map((t) => t.name).join(", ")}`);
     charCount.system += JSON.stringify(tools).length;
     return tools;
   }
