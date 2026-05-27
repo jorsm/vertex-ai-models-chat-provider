@@ -9,11 +9,13 @@
 - [API Reference](#api-reference)
     - [VertexAnthropicProvider](#vertexanthropicprovider)
         - [initialize](#initialize)
+        - [setLabels](#setlabels)
         - [pingModel](#pingmodel)
         - [provideTokenCount](#providetokencount)
         - [provideLanguageModelChatResponse](#providelanguagemodelchatresponse)
     - [VertexGoogleProvider](#vertexgoogleprovider)
         - [initialize](#initialize-1)
+        - [setLabels](#setlabels-1)
         - [pingModel](#pingmodel-1)
         - [provideTokenCount](#providetokencount-1)
         - [provideLanguageModelChatResponse](#providelanguagemodelchatresponse-1)
@@ -43,11 +45,17 @@ The `VertexAnthropicProvider` class implements the `VertexModelProvider` interfa
 
 Sets the GCP Project ID and regional endpoint for the Anthropic Vertex client.
 
+#### setLabels
+[source](../src/providers/VertexAnthropicProvider.ts)
+`setLabels(labels: Record<string, string>): void`
+
+Updates the internal labels mapping. These labels are included in every subsequent request to Vertex AI to facilitate cost tracking and resource labeling in the Google Cloud Console.
+
 #### pingModel
 [source](../src/providers/VertexAnthropicProvider.ts)
 `pingModel(modelId: string): Promise<boolean>`
 
-Sends a minimal "ping" message with `max_tokens: 1` to verify the availability of the specified Claude model in the configured project and region. It handles transient rate-limiting errors (429) gracefully, treating them as confirmation that the model is reachable and available.
+Sends a minimal "ping" message with `max_tokens: 1` to verify the availability of the specified Claude model in the configured project and region. It handles transient rate-limiting errors (429) gracefully, treating them as confirmation that the model is reachable and available. It includes configured labels in the request metadata.
 
 #### provideTokenCount
 [source](../src/providers/VertexAnthropicProvider.ts)
@@ -57,7 +65,7 @@ Estimates token usage using a 4-characters-per-token heuristic for text strings 
 
 #### provideLanguageModelChatResponse
 [source](../src/providers/VertexAnthropicProvider.ts)
-`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken): Promise<ChatInferenceResult>`
+`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>): Promise<ChatInferenceResult>`
 
 Handles chat inference for Anthropic models. This method:
 1. Maps VS Code messages to the Anthropic `messages` format, including support for `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart`, and `LanguageModelDataPart` (handling both base64 images and UTF-8 decoding for non-image data).
@@ -67,6 +75,7 @@ Handles chat inference for Anthropic models. This method:
     - **Chat History Caching**: Applies `ephemeral` caching to the second-to-last message in the history if the total history exceeds 1024 tokens.
 4. Manages streaming responses, reporting text deltas and tool call progress to VS Code after parsing partial JSON tool inputs.
 5. Captures and returns detailed usage statistics, including `input`, `output`, `cache_read`, and `cache_create` token metrics, alongside character-level consumption for different part types.
+6. Integrates metadata labels (provided via the `labels` parameter or the provider's internal state) into the API request for downstream cost tracking and telemetry.
 
 ### VertexGoogleProvider
 [source](../src/providers/VertexGoogleProvider.ts)
@@ -78,11 +87,17 @@ The `VertexGoogleProvider` class implements the `VertexModelProvider` interface 
 
 Sets the GCP Project ID and regional endpoint (e.g., `us-central1`) for the provider. It also initiates a dynamic schema discovery process to fetch the latest supported OpenAPI 3.0 schema keys from the Vertex AI Discovery API, ensuring tool definitions remain compatible with API updates.
 
+#### setLabels
+[source](../src/providers/VertexGoogleProvider.ts)
+`setLabels(labels: Record<string, string>): void`
+
+Configures the provider with a set of labels to be attached to Vertex AI requests. These are typically used for billing attribution and usage monitoring.
+
 #### pingModel
 [source](../src/providers/VertexGoogleProvider.ts)
 `pingModel(modelId: string): Promise<boolean>`
 
-Attempts a minimal request to the specified model ID to verify availability and permissions in the current GCP project. It automatically resolves high-thinking model IDs to their base counterparts and handles transient rate-limiting errors gracefully during discovery.
+Attempts a minimal request to the specified model ID to verify availability and permissions in the current GCP project. It automatically resolves high-thinking model IDs to their base counterparts and handles transient rate-limiting errors gracefully during discovery. Configured labels are included in the request payload.
 
 #### provideTokenCount
 [source](../src/providers/VertexGoogleProvider.ts)
@@ -92,7 +107,7 @@ Provides a rough estimation of token usage. For text or message objects, it comp
 
 #### provideLanguageModelChatResponse
 [source](../src/providers/VertexGoogleProvider.ts)
-`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken): Promise<ChatInferenceResult>`
+`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>): Promise<ChatInferenceResult>`
 
 Main entry point for chat inference. This method:
 1. Maps VS Code messages to the Gemini `contents` format, including support for multimodal `LanguageModelDataPart` (images and non-image data decoding), and ensures the conversation starts with a user message as required by the Gemini API.
@@ -104,5 +119,6 @@ Main entry point for chat inference. This method:
 7. Buffers parallel tool calls across the stream to ensure they are emitted to VS Code as a single atomic step, preventing turn-mismatch errors.
 8. Updates internal signature caches for both text reasoning (using a text-prefix key based on the first 120 characters) and tool calls (using unique call IDs).
 9. Tracks and returns detailed usage statistics including character counts and token usage metadata (input, output, and cache metrics). For Gemini, it correctly adjusts input tokens by subtracting cached content tokens to ensure accurate usage tracking.
+10. Attaches metadata labels (preferring the `labels` argument over instance-level labels) to the generation request, enabling granular cost attribution and usage monitoring in the Google Cloud Console.
 
 ## Examples
