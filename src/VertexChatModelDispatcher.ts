@@ -1,13 +1,13 @@
-import * as vscode from "vscode";
-import * as child_process from "child_process";
+import * as childProcess from "child_process";
 import * as util from "util";
+import * as vscode from "vscode";
 import localCatalog from "./models.json";
 import { VertexAnthropicProvider } from "./providers/VertexAnthropicProvider";
 import { VertexGoogleProvider } from "./providers/VertexGoogleProvider";
 import { VertexModelProvider } from "./providers/VertexModelProvider";
 import { UsageTrackerService } from "./UsageTrackerService";
 
-const execAsync = util.promisify(child_process.exec);
+const execAsync = util.promisify(childProcess.exec);
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -224,9 +224,9 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
   private mapModels(): vscode.LanguageModelChatInformation[] {
     const models = this.availableModels.length > 0 ? this.availableModels : (localCatalog as ModelCatalog).candidateModels;
-    
+
     // Check if we are running in VS Code 1.120 or higher
-    const versionParts = vscode.version.split('.');
+    const versionParts = vscode.version.split(".");
     const isV120OrHigher = Number.parseInt(versionParts[0]) > 1 || (Number.parseInt(versionParts[0]) === 1 && Number.parseInt(versionParts[1]) >= 120);
 
     return models.map((m) => {
@@ -313,7 +313,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     // Resolve labels for this specific request
     const config = vscode.workspace.getConfiguration("vertexAiChat");
     const requestLabels: Record<string, string> = {};
-    
+
     if (config.get<boolean>("enableUserLabel") && this.cachedUserEmail) {
       requestLabels["vscode-vertex-ai-user"] = this.sanitizeLabelValue(this.cachedUserEmail);
     }
