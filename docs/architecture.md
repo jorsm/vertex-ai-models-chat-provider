@@ -29,17 +29,17 @@ The extension follows a provider-based architecture centered around the `VertexC
 
 ### VertexChatModelDispatcher
 [source](../src/VertexChatModelDispatcher.ts)
-The central class that implements `vscode.LanguageModelChatProvider`. It manages model discovery, provider registration, and request dispatching.
+The central class that implements `vscode.LanguageModelChatProvider`. It manages model discovery, provider registration, authentication via `AuthManager`, and request dispatching.
 
 **Methods:**
 - `onDidChangeLanguageModelChatInformation`: Event that fires when the available model list changes, prompting VS Code to refresh model information.
-- `updateLabels()`: Triggers an asynchronous update of metadata labels by fetching the current authenticated `gcloud` account email and propagating it to all active providers. This supports cost tracking and attribution features. All label values are sanitized to meet GCP requirements (lowercase alphanumeric, hyphens, and underscores; maximum 63 characters; ensuring they start with a letter by prepending `v_` if necessary).
-- `discoverModelsAndRegion()`: Probes GCP regions to find available models based on the local catalog. It prevents concurrent discovery attempts by tracking and returning an active discovery promise if one is already in progress. Returns a `DiscoveryResult` and fires the change event upon successful discovery or failure.
+- `updateLabels()`: Triggers an asynchronous update of metadata labels by fetching the current authenticated identity from `AuthManager` and propagating it to all active providers. This supports cost tracking and attribution features. All label values are sanitized to meet GCP requirements (lowercase alphanumeric, hyphens, and underscores; maximum 63 characters; ensuring they start with a letter by prepending `v_` if necessary).
+- `discoverModelsAndRegion()`: Probes GCP regions to find available models based on the local catalog. It resolves the effective Project ID using a hierarchy of extension settings, Service Account JSON keys, or the system's `gcloud` identity. It prevents concurrent discovery attempts by tracking and returning an active discovery promise if one is already in progress. Returns a `DiscoveryResult` and fires the change event upon successful discovery or failure.
 - `setProjectId(projectId: string)`: Updates the active GCP project and resets discovery state.
 - `clearModels()`: Clears all available models and notifies VS Code of the change. Useful when authentication fails to prevent stale models from being used.
 - `provideLanguageModelChatInformation(...)`: Returns the list of discovered models to VS Code. It returns the set of models found during the discovery process, falling back to the full set of candidate models from the local catalog if discovery is not yet complete. It enriches model metadata with regional details and pricing summaries (input/output per 1M tokens) in the `detail` and `tooltip` fields. For VS Code 1.120 and higher, it explicitly sets the `vendor` to `google-vertex` and `isUserSelectable` to `true` to ensure models are correctly categorized and visible in the Copilot Chat picker.
 - `provideTokenCount(...)`: Calculates or estimates token counts for messages. It delegates to provider-specific counting logic if available (e.g., for Gemini or Claude specific counting), falling back to a heuristic of ~4 characters per token if no provider logic is found (supporting both raw strings and `LanguageModelChatRequestMessage` with `LanguageModelTextPart` content).
-- `provideLanguageModelChatResponse(...)`: Streams the chat response from the appropriate vendor provider. It automatically waits for any in-progress model discovery or label resolution to complete (synchronizing on internal promises) before starting inference. It resolves and injects request-level labels for cost attribution if enabled in settings, including `vscode-vertex-ai-user` from gcloud identity and `vscode-vertex-ai-project` derived from the active editor's workspace folder name, the primary workspace folder name, or the workspace name. It records detailed usage (input, output, cache_read, cache_create, and total character counts) via the `UsageTrackerService`.
+- `provideLanguageModelChatResponse(...)`: Streams the chat response from the appropriate vendor provider. It automatically waits for any in-progress model discovery or label resolution to complete (synchronizing on internal promises) before starting inference. It resolves and injects request-level labels for cost attribution if enabled in settings, including `vscode-vertex-ai-user` from `AuthManager` identity and `vscode-vertex-ai-project` derived from the active editor's workspace folder name, the primary workspace folder name, or the workspace name. It records detailed usage (input, output, cache_read, cache_create, and total character counts) via the `UsageTrackerService`.
 - `getAnthropicProvider()`: Returns the registered `VertexAnthropicProvider` instance.
 - `getGoogleProvider()`: Returns the registered `VertexGoogleProvider` instance.
 
@@ -82,14 +82,18 @@ The result of a region discovery operation, containing the successful `region` a
 [source](../src/extension.ts)
 The main entry point for the VS Code extension. It handles:
 - Configuration migration from legacy settings (`vertexAnthropic` to `vertexAiChat`), including Project ID and billing warning preferences.
-- Initializing the `UsageTrackerService` and `CostStatusBar`.
+- Initializing the `AuthManager`, `UsageTrackerService`, and `CostStatusBar`.
 - Registering the `VertexChatModelDispatcher` as a language model chat provider for the `google-vertex` vendor.
 - Registering extension commands including:
     - `claudeBilling.showDashboard`: Opens the usage dashboard webview.
     - `vertexAiChat.refreshModels`: Manually triggers the model discovery process.
     - `vertexAiChat.dumpTools`: Dumps the schema of all installed language model tools to an output channel for debugging.
     - `vertexAiChat.generateCommitMessage`: Generates AI-powered commit messages from staged changes using the Google provider.
-- Watching for configuration changes (specifically `vertexAiChat.projectId`) to trigger re-discovery and update the active project.
+    - `vertexAiChat.setServiceAccountKey`: Securely saves a Service Account JSON key to OS storage.
+    - `vertexAiChat.setServiceAccountPath`: Sets a local file path for a Service Account JSON key.
+    - `vertexAiChat.selectAuthMethod`: Switches the active authentication method.
+    - `vertexAiChat.clearAuthMethod`: Resets the workspace to use Default Application Credentials (ADC).
+- Watching for configuration changes (specifically `vertexAiChat.projectId`, `enableUserLabel`, and `enableProjectLabel`) to trigger re-discovery and update metadata labels.
 
 ### runDiscovery
 [source](../src/extension.ts)

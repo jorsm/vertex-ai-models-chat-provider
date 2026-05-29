@@ -43,9 +43,9 @@ The `VertexAnthropicProvider` class implements the `VertexModelProvider` interfa
 
 #### initialize
 [source](../src/providers/VertexAnthropicProvider.ts)
-`initialize(projectId: string, region: string): void`
+`initialize(projectId: string, region: string, authOptions?: any): void`
 
-Sets the GCP Project ID and regional endpoint for the Anthropic Vertex client.
+Sets the GCP Project ID and regional endpoint for the Anthropic Vertex client. If provided, `authOptions` are used to configure the underlying `GoogleAuth` instance with the necessary cloud-platform scopes.
 
 #### setLabels
 [source](../src/providers/VertexAnthropicProvider.ts)
@@ -86,9 +86,9 @@ The `VertexGoogleProvider` class implements the `VertexModelProvider` interface 
 
 #### initialize
 [source](../src/providers/VertexGoogleProvider.ts)
-`initialize(projectId: string, region: string): void`
+`initialize(projectId: string, region: string, authOptions?: any): void`
 
-Sets the GCP Project ID and regional endpoint (e.g., `us-central1`) for the provider. It also initiates a dynamic schema discovery process to fetch the latest supported OpenAPI 3.0 schema keys from the Vertex AI Discovery API, ensuring tool definitions remain compatible with API updates.
+Sets the GCP Project ID and regional endpoint (e.g., `us-central1`) for the provider. It also initiates a dynamic schema discovery process to fetch the latest supported OpenAPI 3.0 schema keys from the Vertex AI Discovery API, ensuring tool definitions remain compatible with API updates. If provided, `authOptions` are stored and passed to the `GoogleGenAI` client during lazy initialization.
 
 #### setLabels
 [source](../src/providers/VertexGoogleProvider.ts)
@@ -125,6 +125,7 @@ Strips the leaked signature prefix from a reasoning header text block, returning
 `provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>): Promise<ChatInferenceResult>`
 
 Main entry point for chat inference. This method:
+[source](../src/providers/VertexGoogleProvider.ts)
 1. Maps VS Code messages to the Gemini `contents` format, including support for multimodal `LanguageModelDataPart` (images and non-image data decoding), and ensures the conversation starts with a user message as required by the Gemini API.
 2. **Sanitizes tool input schemas** using a deep-recursive positive filter to ensure compatibility with Vertex AI's OpenAPI 3.0 requirements. It preserves only schema properties that are explicitly supported by the Google Cloud AI Platform (e.g., `type`, `properties`, `required`), stripping out arbitrary or non-standard metadata keys like `$comment` or `enumDescriptions` that would otherwise trigger `400 INVALID_ARGUMENT` responses.
 3. Re-injects cached thought signatures into the conversation history for both **assistant text parts** and **tool call parts** to preserve reasoning quality. It also proactively sanitizes leaked reasoning headers from model turns in history.
