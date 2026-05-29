@@ -73,6 +73,11 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     this.authManager = authManager;
     this.registerProviders();
     this._labelsPromise = this.updateLabels();
+
+    // Re-resolve identity and update labels when authentication changes
+    this.authManager.onAuthUpdated(() => {
+      this.updateLabels().catch((err) => log(`⚠️ Failed to update labels on auth change: ${err}`));
+    });
   }
 
   private registerProviders() {

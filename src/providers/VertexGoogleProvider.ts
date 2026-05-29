@@ -76,6 +76,8 @@ export class VertexGoogleProvider implements VertexModelProvider {
     this.projectId = projectId;
     this.region = region;
     this.authOptions = authOptions;
+    // Clear the cached client so it gets re-created with new auth/project options on next use
+    this.client = undefined;
     this.discoverVertexSchemaKeys();
   }
 
