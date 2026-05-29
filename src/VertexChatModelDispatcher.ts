@@ -305,7 +305,8 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     }
 
     // Resolve labels for this specific request
-    const config = vscode.workspace.getConfiguration("vertexAiChat");
+    const activeEditor = vscode.window.activeTextEditor;
+    const config = vscode.workspace.getConfiguration("vertexAiChat", activeEditor?.document.uri);
     const requestLabels: Record<string, string> = {};
 
     if (config.get<boolean>("enableUserLabel") && this.cachedUserEmail) {
@@ -316,8 +317,13 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     }
 
     if (config.get<boolean>("enableProjectLabel")) {
-      // 1. Try to use the workspace name (e.g., from .code-workspace file)
-      let projectName = vscode.workspace.name;
+      // 0. Check for a custom project label value in settings (Workspace/Project level)
+      let projectName = config.get<string>("projectLabelValue");
+
+      if (!projectName) {
+        // 1. Try to use the workspace name (e.g., from .code-workspace file)
+        projectName = vscode.workspace.name;
+      }
 
       if (!projectName) {
         // 2. Fallback to the active editor's workspace folder
