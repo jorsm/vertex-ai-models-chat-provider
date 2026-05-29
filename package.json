@@ -64,7 +64,9 @@
       {
         "vendor": "google-vertex",
         "displayName": "Google Cloud Vertex AI",
-        "managementCommand": "vertexAiChat.refreshModels"
+        "configuration": {
+          "managementCommand": "vertexAiChat.refreshModels"
+        }
       }
     ],
     "configuration": {
@@ -89,12 +91,24 @@
         "vertexAiChat.enableUserLabel": {
           "type": "boolean",
           "default": false,
-          "description": "Include the logged-in user's email as a 'vscode-vertex-ai-user' label in Vertex AI calls for cost tracking."
+          "description": "Include a user identifier as a 'vscode-vertex-ai-user' label in Vertex AI calls. Values are automatically sanitized to meet GCP label requirements (lowercase, numbers, hyphens, underscores)."
+        },
+        "vertexAiChat.userLabelValue": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Custom value for the user label. If empty, the name is derived automatically from the active identity. Values are automatically sanitized to meet GCP label requirements (lowercase, numbers, hyphens, underscores)."
         },
         "vertexAiChat.enableProjectLabel": {
           "type": "boolean",
           "default": false,
-          "description": "Include the current VS Code project name as a 'vscode-vertex-ai-project' label in Vertex AI calls for cost tracking."
+          "description": "Include the current VS Code project name as a 'vscode-vertex-ai-project' label in Vertex AI calls. Values are automatically sanitized to meet GCP label requirements."
+        },
+        "vertexAiChat.projectLabelValue": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Custom value for the project label. If empty, the name is derived automatically. Values are automatically sanitized to meet GCP label requirements."
         }
       }
     }
