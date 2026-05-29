@@ -1,4 +1,5 @@
 import { AnthropicVertex } from "@anthropic-ai/vertex-sdk";
+import { GoogleAuth } from "google-auth-library";
 import * as vscode from "vscode";
 import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
@@ -22,12 +23,20 @@ export class VertexAnthropicProvider implements VertexModelProvider {
   private region!: string;
   private labels: Record<string, string> = {};
 
-  initialize(projectId: string, region: string): void {
+  initialize(projectId: string, region: string, authOptions?: any): void {
     this.projectId = projectId;
     this.region = region;
     this.client = new AnthropicVertex({
       projectId: this.projectId,
       region: this.region,
+      ...(authOptions
+        ? {
+            googleAuth: new GoogleAuth({
+              ...authOptions,
+              scopes: "https://www.googleapis.com/auth/cloud-platform",
+            }),
+          }
+        : {}),
     });
   }
 

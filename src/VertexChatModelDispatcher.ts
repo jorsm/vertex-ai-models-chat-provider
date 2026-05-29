@@ -1,6 +1,7 @@
 import * as childProcess from "child_process";
 import * as util from "util";
 import * as vscode from "vscode";
+import { AuthManager } from "./AuthManager";
 import localCatalog from "./models.json";
 import { VertexAnthropicProvider } from "./providers/VertexAnthropicProvider";
 import { VertexGoogleProvider } from "./providers/VertexGoogleProvider";
@@ -57,6 +58,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   private readonly activeProviders: Map<string, VertexModelProvider> = new Map();
   private discoveryDone = false;
   private readonly usageTracker: UsageTrackerService;
+  private readonly authManager: AuthManager;
   private _discoveryPromise: Promise<DiscoveryResult> | null = null;
   private _labelsPromise: Promise<void> | null = null;
   private cachedUserEmail: string | undefined;
@@ -65,9 +67,10 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   private readonly _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChangeLanguageModelChatInformation = this._onDidChange.event;
 
-  constructor(projectId: string, usageTracker: UsageTrackerService) {
+  constructor(projectId: string, usageTracker: UsageTrackerService, authManager: AuthManager) {
     this.projectId = projectId;
     this.usageTracker = usageTracker;
+    this.authManager = authManager;
     this.registerProviders();
     this._labelsPromise = this.updateLabels();
   }
@@ -94,7 +97,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     this.cachedUserEmail = undefined;
     if (enableUser) {
-      this.cachedUserEmail = await this.getUserEmail();
+      this.cachedUserEmail = await this.authManager.getIdentity();
     }
 
     // Still push the user label to providers as a baseline
@@ -107,19 +110,6 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     for (const provider of this.activeProviders.values()) {
       provider.setLabels(labels);
     }
-  }
-
-  private async getUserEmail(): Promise<string | undefined> {
-    try {
-      const { stdout } = await execAsync("gcloud config get-value account");
-      const email = stdout.trim();
-      if (email && email !== "(unset)") {
-        return email;
-      }
-    } catch (e) {
-      log(`  ⚠️  Failed to get gcloud account email: ${e}`);
-    }
-    return undefined;
   }
 
   private sanitizeLabelValue(value: string): string {
@@ -157,7 +147,11 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const candidates = catalog.candidateModels;
     const regions = catalog.regionPriority;
 
-    log(`Starting model discovery for project "${this.projectId}"…`);
+    const authOptions = await this.authManager.getResolvedAuthOptions();
+    // Resolve project ID: Setting > JSON Key > gcloud (implied)
+    const effectiveProjectId = this.projectId || authOptions?.projectId || "";
+
+    log(`Starting model discovery for project "${effectiveProjectId || "(default)"}"…`);
 
     for (const region of regions) {
       log(`  Probing region "${region}"…`);
@@ -170,7 +164,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
           continue;
         }
 
-        provider.initialize(this.projectId, region);
+        provider.initialize(effectiveProjectId, region, authOptions);
         const ok = await provider.pingModel(model.version);
         if (ok) {
           available.push(model);

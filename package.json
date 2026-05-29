@@ -33,6 +33,22 @@
         "title": "Vertex AI Models Chat Provider: Generate Commit Message",
         "shortTitle": "Generate Commit Message",
         "icon": "$(wand)"
+      },
+      {
+        "command": "vertexAiChat.setServiceAccountKey",
+        "title": "Vertex AI: Paste Service Account JSON Key"
+      },
+      {
+        "command": "vertexAiChat.setServiceAccountPath",
+        "title": "Vertex AI: Select Service Account JSON File"
+      },
+      {
+        "command": "vertexAiChat.selectAuthMethod",
+        "title": "Vertex AI: Select Authentication Method"
+      },
+      {
+        "command": "vertexAiChat.clearAuthMethod",
+        "title": "Vertex AI: Clear Authentication Method (Use ADC)"
       }
     ],
     "menus": {
@@ -113,6 +129,7 @@
     "@anthropic-ai/vertex-sdk": "^0.14.4",
     "@google/genai": "^2.6.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "google-auth-library": "^9.15.1",
     "zod": "^4.3.6",
     "zod-to-json-schema": "^3.25.2"
   }

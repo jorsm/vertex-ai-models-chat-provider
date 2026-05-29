@@ -5,8 +5,10 @@ import { DashboardWebview } from "./DashboardWebview";
 import { UsageTrackerService } from "./UsageTrackerService";
 import { VertexChatModelDispatcher } from "./VertexChatModelDispatcher";
 import { VertexAuthenticationError } from "./utils/retry";
+import { AuthManager } from "./AuthManager";
 
 export async function activate(context: vscode.ExtensionContext) {
+  const authManager = new AuthManager(context);
   let config = vscode.workspace.getConfiguration("vertexAiChat");
   let projectId = config.get<string>("projectId") || "";
 
@@ -28,7 +30,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const costStatusBar = new CostStatusBar(usageTracker);
   context.subscriptions.push(costStatusBar);
 
-  const provider = new VertexChatModelDispatcher(projectId, usageTracker);
+  const provider = new VertexChatModelDispatcher(projectId, usageTracker, authManager);
 
   // Register dashboard command
   context.subscriptions.push(
@@ -45,14 +47,16 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("vertexAiChat.refreshModels", async () => {
       const currentProjectId = vscode.workspace.getConfiguration("vertexAiChat").get<string>("projectId");
-      if (!currentProjectId) {
-        vscode.window.showErrorMessage("Vertex AI Models Chat Provider: Project ID is not configured. Please set vertexAiChat.projectId in settings.");
-        return;
-      }
-      provider.setProjectId(currentProjectId);
-      return runDiscovery(provider);
+      provider.setProjectId(currentProjectId || "");
+      return runDiscovery(provider, authManager);
     }),
   );
+
+  // Auth management commands
+  context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.setServiceAccountKey", () => authManager.setServiceAccountKey().then(() => runDiscovery(provider, authManager))));
+  context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.setServiceAccountPath", () => authManager.setServiceAccountPath().then(() => runDiscovery(provider, authManager))));
+  context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.selectAuthMethod", () => authManager.selectAuthMethod().then(() => runDiscovery(provider, authManager))));
+  context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.clearAuthMethod", () => authManager.clearAuthMethod().then(() => runDiscovery(provider, authManager))));
 
   context.subscriptions.push(
     vscode.commands.registerCommand("vertexAiChat.dumpTools", () => {
@@ -82,11 +86,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.generateCommitMessage", (resourceUri?: vscode.Uri) => generateCommitMessage(provider.getGoogleProvider(), usageTracker, resourceUri)));
 
   // If projectId is present, run discovery in the background on activation
-  if (projectId) {
-    runDiscovery(provider);
-  } else {
-    vscode.window.showWarningMessage("Vertex AI Models Chat Provider: Project ID is not configured. Please set vertexAiChat.projectId in settings.");
-  }
+  runDiscovery(provider, authManager);
 
   // Re-run discovery when projectId setting changes
   context.subscriptions.push(
@@ -96,9 +96,9 @@ export async function activate(context: vscode.ExtensionContext) {
         const newProjectId = newConfig.get<string>("projectId") || "";
         if (newProjectId) {
           vscode.window.showInformationMessage(`Vertex AI Models Chat Provider: Project changed to "${newProjectId}". Re-discovering models…`);
-          provider.setProjectId(newProjectId);
-          await runDiscovery(provider);
         }
+        provider.setProjectId(newProjectId);
+        await runDiscovery(provider, authManager);
       }
       if (e.affectsConfiguration("vertexAiChat.enableUserLabel") || e.affectsConfiguration("vertexAiChat.enableProjectLabel")) {
         await provider.updateLabels();
@@ -112,8 +112,9 @@ export async function activate(context: vscode.ExtensionContext) {
  * Updates the provider's state and notifies the user of the results.
  *
  * @param provider The dispatcher responsible for probing model availability.
+ * @param authManager The authentication manager for resolving credentials.
  */
-async function runDiscovery(provider: VertexChatModelDispatcher): Promise<void> {
+async function runDiscovery(provider: VertexChatModelDispatcher, authManager: AuthManager): Promise<void> {
   try {
     const result = await provider.discoverModelsAndRegion();
     if (result.availableModels.length > 0) {
@@ -148,7 +149,7 @@ async function runDiscovery(provider: VertexChatModelDispatcher): Promise<void> 
             for await (const data of event.execution.read()) {
               if (data.includes("Credentials saved to file")) {
                 vscode.window.showInformationMessage("Vertex AI: Authentication successful! Refreshing models…");
-                runDiscovery(provider);
+                runDiscovery(provider, authManager);
                 disposable.dispose(); // Cleanup the listener
                 break;
               }

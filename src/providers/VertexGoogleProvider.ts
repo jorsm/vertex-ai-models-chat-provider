@@ -15,6 +15,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
   private client: any;
   private projectId!: string;
   private region!: string;
+  private authOptions?: any;
   private labels: Record<string, string> = {};
   /**
    * Cache of thought signatures keyed by unique tool call ID.
@@ -71,9 +72,10 @@ export class VertexGoogleProvider implements VertexModelProvider {
       });
   }
 
-  initialize(projectId: string, region: string): void {
+  initialize(projectId: string, region: string, authOptions?: any): void {
     this.projectId = projectId;
     this.region = region;
+    this.authOptions = authOptions;
     this.discoverVertexSchemaKeys();
   }
 
@@ -91,6 +93,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
         vertexai: true,
         project: this.projectId,
         location: this.region,
+        googleAuthOptions: this.authOptions,
       });
     }
     return this.client;

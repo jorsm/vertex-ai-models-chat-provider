@@ -120,9 +120,7 @@ function logRetrySummary(success: boolean, attempt: number, retryLog: RetryLogEn
   if (attempt === 0 || !log) {
     return;
   }
-  const message = success
-    ? `✅ Operation succeeded after ${attempt} retries.`
-    : `❌ Operation failed after ${attempt} retries. Final error: ${error.message || error}`;
+  const message = success ? `✅ Operation succeeded after ${attempt} retries.` : `❌ Operation failed after ${attempt} retries. Final error: ${error.message || error}`;
   log(message);
   log(`   Retry history: ${JSON.stringify(retryLog, null, 2)}`);
 }
@@ -207,6 +205,6 @@ export function checkAuthError(e: any): void {
 
   const msg = (e.message || e.toString()).toLowerCase();
   if (msg.includes("invalid_grant") || msg.includes("invalid_rapt") || msg.includes("could not load the default credentials") || msg.includes("reauth related error") || e.status === 401 || e.code === 401) {
-    throw new VertexAuthenticationError("Google Cloud credentials have expired or are invalid. Please run 'gcloud auth application-default login' in your terminal.");
+    throw new VertexAuthenticationError("Google Cloud credentials have expired or are invalid. Please check your Project ID and Service Account permissions, or run 'gcloud auth application-default login' in your terminal.");
   }
 }
