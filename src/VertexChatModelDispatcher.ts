@@ -339,23 +339,47 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
       throw new Error(`Integration for vendor ${spec.vendor} is not registered.`);
     }
 
-    // Resolve labels for this specific request
-    const config = vscode.workspace.getConfiguration("vertexAiChat");
+    // Resolve labels for this specific request (resource-aware)
+    const activeEditor = vscode.window.activeTextEditor;
+    const config = vscode.workspace.getConfiguration("vertexAiChat", activeEditor?.document.uri);
     const requestLabels: Record<string, string> = {};
 
-    if (config.get<boolean>("enableUserLabel") && this.cachedUserEmail) {
-      requestLabels["vscode-vertex-ai-user"] = this.sanitizeLabelValue(this.cachedUserEmail);
+    if (config.get<boolean>("enableUserLabel")) {
+      // 0. Check for a custom user label value in settings
+      let userValue = config.get<string>("userLabelValue");
+
+      if (!userValue) {
+        // 1. Fallback to cached identity
+        userValue = this.cachedUserEmail;
+      }
+
+      if (userValue) {
+        requestLabels["vscode-vertex-ai-user"] = this.sanitizeLabelValue(userValue);
+      }
     }
 
     if (config.get<boolean>("enableProjectLabel")) {
-      let projectName: string | undefined;
-      const activeEditor = vscode.window.activeTextEditor;
-      if (activeEditor) {
-        projectName = vscode.workspace.getWorkspaceFolder(activeEditor.document.uri)?.name;
-      }
+      // 0. Check for a custom project label value in settings (Workspace/Folder level only)
+      const inspection = config.inspect<string>("projectLabelValue");
+      let projectName = inspection?.workspaceValue || inspection?.workspaceFolderValue;
+
       if (!projectName) {
-        projectName = vscode.workspace.workspaceFolders?.[0]?.name || vscode.workspace.name;
+        // 1. Try to use the workspace name (e.g. from .code-workspace file)
+        projectName = vscode.workspace.name;
+
+        if (!projectName) {
+          // 2. Fallback to the active editor's workspace folder
+          if (activeEditor) {
+            projectName = vscode.workspace.getWorkspaceFolder(activeEditor.document.uri)?.name;
+          }
+        }
+
+        if (!projectName) {
+          // 3. Final fallback to the first workspace folder
+          projectName = vscode.workspace.workspaceFolders?.[0]?.name;
+        }
       }
+
       if (projectName) {
         requestLabels["vscode-vertex-ai-project"] = this.sanitizeLabelValue(projectName);
       }

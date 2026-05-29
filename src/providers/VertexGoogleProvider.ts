@@ -120,7 +120,6 @@ export class VertexGoogleProvider implements VertexModelProvider {
         contents: [{ role: "user", parts: [{ text: "ping" }] }],
         config: {
           maxOutputTokens: 1,
-          labels: Object.keys(this.labels).length > 0 ? this.labels : undefined,
         },
       });
       log(`    🏓 Google ${modelId} -> ${actualId} → ✅`);
