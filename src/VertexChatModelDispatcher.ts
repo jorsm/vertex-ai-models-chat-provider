@@ -310,14 +310,22 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     }
 
     if (config.get<boolean>("enableProjectLabel")) {
-      let projectName: string | undefined;
-      const activeEditor = vscode.window.activeTextEditor;
-      if (activeEditor) {
-        projectName = vscode.workspace.getWorkspaceFolder(activeEditor.document.uri)?.name;
-      }
+      // 1. Try to use the workspace name (e.g., from .code-workspace file)
+      let projectName = vscode.workspace.name;
+
       if (!projectName) {
-        projectName = vscode.workspace.workspaceFolders?.[0]?.name || vscode.workspace.name;
+        // 2. Fallback to the active editor's workspace folder
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor) {
+          projectName = vscode.workspace.getWorkspaceFolder(activeEditor.document.uri)?.name;
+        }
       }
+
+      if (!projectName) {
+        // 3. Final fallback to the first workspace folder
+        projectName = vscode.workspace.workspaceFolders?.[0]?.name;
+      }
+
       if (projectName) {
         requestLabels["vscode-vertex-ai-project"] = this.sanitizeLabelValue(projectName);
       }
