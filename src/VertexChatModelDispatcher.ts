@@ -100,7 +100,8 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     // Still push the user label to providers as a baseline
     const labels: Record<string, string> = {};
     if (this.cachedUserEmail) {
-      labels["vscode-vertex-ai-user"] = this.sanitizeLabelValue(this.cachedUserEmail);
+      const userKey = config.get<string>("userLabelKey") || "vscode-vertex-ai-user";
+      labels[userKey] = this.sanitizeLabelValue(this.cachedUserEmail);
     }
 
     log(`Updating base labels for providers: ${JSON.stringify(labels)}`);
@@ -306,7 +307,8 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const requestLabels: Record<string, string> = {};
 
     if (config.get<boolean>("enableUserLabel") && this.cachedUserEmail) {
-      requestLabels["vscode-vertex-ai-user"] = this.sanitizeLabelValue(this.cachedUserEmail);
+      const userKey = config.get<string>("userLabelKey") || "vscode-vertex-ai-user";
+      requestLabels[userKey] = this.sanitizeLabelValue(this.cachedUserEmail);
     }
 
     if (config.get<boolean>("enableProjectLabel")) {
@@ -327,7 +329,8 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
       }
 
       if (projectName) {
-        requestLabels["vscode-vertex-ai-project"] = this.sanitizeLabelValue(projectName);
+        const projectKey = config.get<string>("projectLabelKey") || "vscode-vertex-ai-project";
+        requestLabels[projectKey] = this.sanitizeLabelValue(projectName);
       }
     }
 
