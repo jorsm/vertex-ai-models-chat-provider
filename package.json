@@ -3,7 +3,7 @@
   "displayName": "Vertex AI Models Chat Provider",
   "description": "VS Code Chat Models Provider for Google Cloud Vertex AI (Gemini & Claude)",
   "publisher": "jorsm",
-  "version": "0.4.2",
+  "version": "0.4.5",
   "icon": "images/logo.png",
   "repository": {
     "type": "git",
@@ -73,12 +73,12 @@
         "vertexAiChat.enableUserLabel": {
           "type": "boolean",
           "default": false,
-          "description": "Include the logged-in user's email as a 'user' label in Vertex AI calls for cost tracking."
+          "description": "Include the logged-in user's email as a 'vscode-vertex-ai-user' label in Vertex AI calls for cost tracking."
         },
         "vertexAiChat.enableProjectLabel": {
           "type": "boolean",
           "default": false,
-          "description": "Include the current VS Code project name as a 'project' label in Vertex AI calls for cost tracking."
+          "description": "Include the current VS Code project name as a 'vscode-vertex-ai-project' label in Vertex AI calls for cost tracking."
         }
       }
     }
@@ -91,20 +91,18 @@
     "bundle": "npm run clean && esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --minify",
     "bundle-dev": "npm run clean && esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
     "watch-bundle": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --watch",
-    "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "preversion": "npm run compile && npm run lint",
+    "prepare": "husky"
   },
   "devDependencies": {
-    "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
     "@types/vscode": "^1.110.0",
     "@typescript-eslint/eslint-plugin": "^8.42.0",
     "@typescript-eslint/parser": "^8.42.0",
-    "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2",
     "esbuild": "^0.27.4",
     "eslint": "^9.34.0",
+    "husky": "^9.1.7",
     "rimraf": "^6.1.3",
     "typescript": "^5.9.2"
   },
@@ -113,7 +111,7 @@
   ],
   "dependencies": {
     "@anthropic-ai/vertex-sdk": "^0.14.4",
-    "@google/genai": "^1.46.0",
+    "@google/genai": "^2.6.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "zod": "^4.3.6",
     "zod-to-json-schema": "^3.25.2"

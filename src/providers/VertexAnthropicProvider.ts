@@ -1,6 +1,7 @@
 import { AnthropicVertex } from "@anthropic-ai/vertex-sdk";
 import * as vscode from "vscode";
 import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
+import { estimateTokens } from "../utils/tokens";
 import { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
 
 // ─── Output channel for diagnostics ─────────────────────────────────────────
@@ -55,19 +56,10 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     }
   }
 
-  // ── Token counting (heuristic: ~4 chars per token) ─────────────────────
+  // ── Token counting (heuristic) ─────────────────────────────────────────
 
   async provideTokenCount(text: string | vscode.LanguageModelChatRequestMessage, _token: vscode.CancellationToken): Promise<number> {
-    if (typeof text === "string") {
-      return Math.ceil(text.length / 4);
-    }
-    let length = 0;
-    for (const part of text.content) {
-      if (part instanceof vscode.LanguageModelTextPart) {
-        length += part.value.length;
-      }
-    }
-    return Math.ceil(length / 4);
+    return estimateTokens(text);
   }
 
   // ── Chat response (inference) ─────────────────────────────────────────
@@ -83,6 +75,9 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     log(`▶ Anthropic Plugin provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, messages: ${messages.length}`);
 
     const requestLabels = labels || this.labels;
+    if (Object.keys(requestLabels).length > 0) {
+      log(`  🏷️  Labels: ${JSON.stringify(requestLabels)}`);
+    }
     try {
       const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
 
@@ -94,7 +89,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
       this.logMappedMessages(modelId, mappedMessages, systemBlocks, tools);
 
-      const stream = await withRetry(
+      const stream = await withRetry<any>(
         () =>
           this.client.messages.create({
             model: modelId,
@@ -114,6 +109,25 @@ export class VertexAnthropicProvider implements VertexModelProvider {
       log(`  Stream created successfully`);
 
       const usage = await this.processStream(stream, charCount, progress, token);
+
+      // Report token usage to VS Code (MIME type 'usage') for Copilot Chat indicator
+      if (typeof vscode.LanguageModelDataPart !== "undefined") {
+        const promptTokens = usage.input;
+        const completionTokens = usage.output;
+        const cachedTokens = usage.cache_read;
+
+        const usagePayload = {
+          prompt_tokens: promptTokens,
+          completion_tokens: completionTokens,
+          total_tokens: promptTokens + completionTokens,
+          prompt_tokens_details: {
+            cached_tokens: cachedTokens,
+          },
+        };
+
+        progress.report(new vscode.LanguageModelDataPart(new TextEncoder().encode(JSON.stringify(usagePayload)), "usage"));
+        log(`  📊 Reported token usage to VS Code: ${JSON.stringify(usagePayload)}`);
+      }
 
       return { usage, charCount };
     } catch (e: any) {
@@ -299,7 +313,6 @@ export class VertexAnthropicProvider implements VertexModelProvider {
       input_schema: t.inputSchema ?? { type: "object", properties: {} },
     }));
 
-    log(`  🔧 Tools provided: ${tools.map((t) => t.name).join(", ")}`);
     charCount.system += JSON.stringify(tools).length;
     return tools;
   }

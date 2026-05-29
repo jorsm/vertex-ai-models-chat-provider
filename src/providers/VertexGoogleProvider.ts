@@ -1,6 +1,7 @@
 import * as https from "https";
 import * as vscode from "vscode";
 import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
+import { estimateTokens } from "../utils/tokens";
 import { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
 const outputChannel = vscode.window.createOutputChannel("Vertex AI Models: Google Provider");
 
@@ -33,10 +34,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
   private readonly textSignatureCache = new Map<string, string>();
 
   // Safe minimal start list for JSON schema properties supported by Google Cloud AI.
-  private allowedSchemaKeys = new Set<string>([
-    "type", "format", "description", "nullable", "enum", 
-    "properties", "required", "items"
-  ]);
+  private allowedSchemaKeys = new Set<string>(["type", "format", "description", "nullable", "enum", "properties", "required", "items"]);
   private discoveryCompleted = false;
 
   private discoverVertexSchemaKeys() {
@@ -44,31 +42,33 @@ export class VertexGoogleProvider implements VertexModelProvider {
       return;
     }
     const url = "https://aiplatform.googleapis.com/$discovery/rest?version=v1";
-    https.get(url, (response) => {
-      if (response.statusCode !== 200) {
-        return;
-      }
-      let data = '';
-      response.on('data', (chunk) => data += chunk);
-      response.on('end', () => {
-        try {
-          const doc = JSON.parse(data);
-          const schemaDef = doc.schemas?.GoogleCloudAiplatformV1Schema;
-          if (schemaDef?.properties) {
-            const keys = Object.keys(schemaDef.properties);
-            if (keys.length > 0) {
-              this.allowedSchemaKeys = new Set(keys);
-              this.discoveryCompleted = true;
-              log(`🌐 Vertex Schema Discovery completed: populated ${keys.length} allowed properties. ${JSON.stringify(keys)}`);
-            }
-          }
-        } catch (e) {
-          log(`⚠️ Vertex Schema Discovery parse error, falling back to safe list: ${e}`);
+    https
+      .get(url, (response) => {
+        if (response.statusCode !== 200) {
+          return;
         }
+        let data = "";
+        response.on("data", (chunk) => (data += chunk));
+        response.on("end", () => {
+          try {
+            const doc = JSON.parse(data);
+            const schemaDef = doc.schemas?.GoogleCloudAiplatformV1Schema;
+            if (schemaDef?.properties) {
+              const keys = Object.keys(schemaDef.properties);
+              if (keys.length > 0) {
+                this.allowedSchemaKeys = new Set(keys);
+                this.discoveryCompleted = true;
+                log(`🌐 Vertex Schema Discovery completed: populated ${keys.length} allowed properties. ${JSON.stringify(keys)}`);
+              }
+            }
+          } catch (e) {
+            log(`⚠️ Vertex Schema Discovery parse error, falling back to safe list: ${e}`);
+          }
+        });
+      })
+      .on("error", (e) => {
+        log(`⚠️ Vertex Schema Discovery network error, falling back to safe list: ${e}`);
       });
-    }).on('error', (e) => {
-      log(`⚠️ Vertex Schema Discovery network error, falling back to safe list: ${e}`);
-    });
   }
 
   initialize(projectId: string, region: string): void {
@@ -112,9 +112,11 @@ export class VertexGoogleProvider implements VertexModelProvider {
       const client = await this.getClient();
       await client.models.generateContent({
         model: actualId,
-        contents: "ping",
-        config: { maxOutputTokens: 1 },
-        ...(Object.keys(this.labels).length > 0 ? { labels: this.labels } : {}),
+        contents: [{ role: "user", parts: [{ text: "ping" }] }],
+        config: {
+          maxOutputTokens: 1,
+          labels: Object.keys(this.labels).length > 0 ? this.labels : undefined,
+        },
       });
       log(`    🏓 Google ${modelId} -> ${actualId} → ✅`);
       return true;
@@ -130,16 +132,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
   }
 
   async provideTokenCount(text: string | vscode.LanguageModelChatRequestMessage, _token: vscode.CancellationToken): Promise<number> {
-    if (typeof text === "string") {
-      return Math.ceil(text.length / 4);
-    }
-    let length = 0;
-    for (const part of text.content) {
-      if (part instanceof vscode.LanguageModelTextPart) {
-        length += part.value.length;
-      }
-    }
-    return Math.ceil(length / 4);
+    return estimateTokens(text);
   }
 
   private mapRole(roleNum: number): string {
@@ -185,10 +178,159 @@ export class VertexGoogleProvider implements VertexModelProvider {
     return { functionResponse: { name: responseName, response: { result: resStr } } };
   }
 
-  private extractMessages(messages: readonly vscode.LanguageModelChatRequestMessage[], charCount: any): { mappedContents: any[]; systemInstruction: string } {
+  /**
+   * Detects if the given text segment is the starting chunk of a leaked reasoning block
+   * (e.g. `gemini-3.5-flash-high\5R+S41tN...`).
+   *
+   * @param text The text chunk/part to inspect.
+   * @param modelId The configured/requested VS Code model ID.
+   * @param actualId The actual resolved Vertex AI model/endpoint ID.
+   * @returns `true` if the text starts with the leaked reasoning signature prefix; otherwise `false`.
+   */
+  public isLeakedReasoningHeader(text: string, modelId: string, actualId: string): boolean {
+    const trimmed = text.trimStart();
+    return trimmed.startsWith(modelId + "\\") || trimmed.startsWith(actualId + "\\") || trimmed.startsWith(modelId + "/") || trimmed.startsWith(actualId + "/");
+  }
+
+  /**
+   * Strips the leaked signature prefix from a reasoning header text block, returning only
+   * the clean answer text following the first newline.
+   *
+   * @param text The dirty text containing the leaked reasoning header prefix.
+   * @returns The remaining text after the prefix block (i.e. everything after the first newline),
+   *          or an empty string if there is no newline (meaning the block is purely signature metadata).
+   */
+  public stripLeakedReasoningHeader(text: string): string {
+    const firstNewline = text.indexOf("\n");
+    if (firstNewline !== -1) {
+      return text.substring(firstNewline + 1);
+    }
+    return "";
+  }
+
+  /**
+   * Maps a single VS Code `LanguageModelChatRequestMessage` to its respective raw parts array
+   * as expected by the Google Gen AI / Vertex AI API, while sanitizing leaked reasoning history
+   * and injecting cached thought signatures to preserve reasoning chain quality.
+   *
+   * @param msg The source VS Code message to map.
+   * @param roleName The role of the message sender ("user", "model", "system").
+   * @param modelId The configured/requested VS Code model ID.
+   * @param actualId The actual resolved Vertex AI model/endpoint ID.
+   * @param charCount The running character count analytics object.
+   * @param callIdToName A map tracking tool call IDs to their original function names.
+   * @returns An array of mapped content parts conformant to Vertex AI schema requirements.
+   */
+  private mapMessageParts(msg: vscode.LanguageModelChatRequestMessage, roleName: string, modelId: string, actualId: string, charCount: any, callIdToName: Map<string, string>): any[] {
+    const parts: any[] = [];
+    for (const p of msg.content) {
+      if (p instanceof vscode.LanguageModelTextPart) {
+        if (p.value.length > 0) {
+          let cleanText = p.value;
+          if (roleName === "model" && this.isLeakedReasoningHeader(cleanText, modelId, actualId)) {
+            const stripped = this.stripLeakedReasoningHeader(cleanText);
+            if (stripped.length > 0) {
+              cleanText = stripped;
+              log(`  🧹 Stripped leaked reasoning header from model turn in history`);
+            } else {
+              cleanText = "";
+              log(`  🧹 Stripped entire leaked reasoning model turn in history`);
+            }
+          }
+
+          if (roleName === "model") {
+            const textKey = cleanText.substring(0, 120);
+            const cachedTextSig = this.textSignatureCache.get(textKey);
+            if (cachedTextSig) {
+              parts.push({ text: cleanText, thoughtSignature: cachedTextSig });
+              log(`  📋 Text part in history: re-attached thought signature (${cachedTextSig.length} chars)`);
+            } else {
+              parts.push({ text: cleanText });
+            }
+          } else {
+            parts.push({ text: cleanText });
+          }
+
+          if (roleName === "user") {
+            charCount.user_text += cleanText.length;
+          } else {
+            charCount.assistant_text += cleanText.length;
+          }
+        }
+      } else if (p instanceof vscode.LanguageModelToolCallPart) {
+        callIdToName.set(p.callId, p.name);
+        const cachedSig = this.thoughtSignatureCache.get(p.callId);
+        log(`  📋 ToolCall in history: callId=${p.callId} name=${p.name} hasCachedSig=${!!cachedSig} cacheSize=${this.thoughtSignatureCache.size}`);
+        if (cachedSig) {
+          parts.push({ functionCall: { name: p.name, args: p.input }, thoughtSignature: cachedSig });
+          log(`    ↪ injected inline thought signature on functionCall part (${cachedSig.length} chars)`);
+        } else {
+          log(`    ⚠️  NO thought signature found for callId=${p.callId}`);
+          parts.push({ functionCall: { name: p.name, args: p.input } });
+        }
+        charCount.tool_use += JSON.stringify(p.input).length + p.name.length;
+      } else if (p instanceof vscode.LanguageModelToolResultPart) {
+        const resolvedName = callIdToName.get(p.callId);
+        log(`  📋 ToolResult in history: callId=${p.callId} resolvedName=${resolvedName ?? "(not found, using callId)"}`);
+        parts.push(this.mapToolResult(p, resolvedName));
+        charCount.tool_result += 1;
+      } else if (p instanceof vscode.LanguageModelDataPart) {
+        if (p.mimeType?.startsWith("image/")) {
+          parts.push({
+            inlineData: { mimeType: p.mimeType, data: Buffer.from(p.data).toString("base64") },
+          });
+          charCount.image += p.data.byteLength;
+        } else {
+          try {
+            const text = new TextDecoder().decode(p.data);
+            if (text.length > 0) {
+              parts.push({ text });
+            }
+          } catch (e) {
+            log(`⚠️  Unparseable data part: ${e}`);
+          }
+        }
+      }
+    }
+    return parts;
+  }
+
+  /**
+   * Merges consecutive user-role messages containing only functionResponse parts into a single turn.
+   * This is a critical requirement of the Gemini parallel tool-calling protocol, which demands
+   * that all tool execution responses from a single model turn are delivered together in one user turn.
+   *
+   * @param mappedContents The list of mapped roles and parts.
+   * @returns A merged list of messages with parallel tool calls consolidated.
+   */
+  private mergeParallelToolResponses(mappedContents: any[]): any[] {
+    const merged: any[] = [];
+    for (const content of mappedContents) {
+      const prev = merged.at(-1);
+      const isFunctionResponseOnly = (c: any) => c.role === "user" && c.parts.every((p: any) => p.functionResponse !== undefined);
+      if (prev && isFunctionResponseOnly(prev) && isFunctionResponseOnly(content)) {
+        prev.parts.push(...content.parts);
+      } else {
+        merged.push(content);
+      }
+    }
+    return merged;
+  }
+
+  /**
+   * Extracts system instructions and translates conversation history from the standard VS Code
+   * Language Model API format into the exact payload structure expected by Google Vertex AI,
+   * applying proactive reasoning header sanitization and parallel tool consolidate filters.
+   *
+   * @param messages The standard readonly VS Code message list representing the active chat history.
+   * @param charCount The running character count analytics object.
+   * @param modelId The configured/requested VS Code model ID.
+   * @param actualId The actual resolved Vertex AI model/endpoint ID.
+   * @returns An object containing mapped content structures and the isolated system instruction.
+   */
+  private extractMessages(messages: readonly vscode.LanguageModelChatRequestMessage[], charCount: any, modelId: string, actualId: string): { mappedContents: any[]; systemInstruction: string } {
     const mappedContents: any[] = [];
     let systemInstruction = "";
-    // Build a map from callId -> function name so tool results can use the right name
     const callIdToName = new Map<string, string>();
 
     for (const msg of messages) {
@@ -201,74 +343,10 @@ export class VertexGoogleProvider implements VertexModelProvider {
             charCount.system += p.value.length;
           }
         }
-        continue; // System instructions are passed separately in Gemini
+        continue;
       }
 
-      const parts: any[] = [];
-      for (const p of msg.content) {
-        if (p instanceof vscode.LanguageModelTextPart) {
-          if (p.value.length > 0) {
-            // For assistant text parts, re-attach any cached thought signature.
-            // The docs recommend (but don't require) echoing these back to
-            // preserve reasoning quality across turns.
-            if (roleName === "model") {
-              const textKey = p.value.substring(0, 120);
-              const cachedTextSig = this.textSignatureCache.get(textKey);
-              if (cachedTextSig) {
-                parts.push({ text: p.value, thoughtSignature: cachedTextSig });
-                log(`  📋 Text part in history: re-attached thought signature (${cachedTextSig.length} chars)`);
-              } else {
-                parts.push({ text: p.value });
-              }
-            } else {
-              parts.push({ text: p.value });
-            }
-            if (roleName === "user") {
-              charCount.user_text += p.value.length;
-            } else {
-              charCount.assistant_text += p.value.length;
-            }
-          }
-        } else if (p instanceof vscode.LanguageModelToolCallPart) {
-          // Track callId -> function name for tool result mapping below.
-          callIdToName.set(p.callId, p.name);
-          const cachedSig = this.thoughtSignatureCache.get(p.callId);
-          log(`  📋 ToolCall in history: callId=${p.callId} name=${p.name} hasCachedSig=${!!cachedSig} cacheSize=${this.thoughtSignatureCache.size}`);
-          if (cachedSig) {
-            // Gemini 3: embed the thought_signature inline on the functionCall part
-            // (exactly as the API returned it). Also works for Gemini 2.x which
-            // accepts either the inline or the preceding-thought-part form.
-            parts.push({ functionCall: { name: p.name, args: p.input }, thoughtSignature: cachedSig });
-            log(`    ↪ injected inline thought signature on functionCall part (${cachedSig.length} chars)`);
-          } else {
-            log(`    ⚠️  NO thought signature found for callId=${p.callId}`);
-            parts.push({ functionCall: { name: p.name, args: p.input } });
-          }
-          charCount.tool_use += JSON.stringify(p.input).length + p.name.length;
-        } else if (p instanceof vscode.LanguageModelToolResultPart) {
-          const resolvedName = callIdToName.get(p.callId);
-          log(`  📋 ToolResult in history: callId=${p.callId} resolvedName=${resolvedName ?? "(not found, using callId)"}`);
-          parts.push(this.mapToolResult(p, resolvedName));
-          charCount.tool_result += 1;
-        } else if (p instanceof vscode.LanguageModelDataPart) {
-          if (p.mimeType?.startsWith("image/")) {
-            parts.push({
-              inlineData: { mimeType: p.mimeType, data: Buffer.from(p.data).toString("base64") },
-            });
-            charCount.image += p.data.byteLength;
-          } else {
-            try {
-              const text = new TextDecoder().decode(p.data);
-              if (text.length > 0) {
-                parts.push({ text });
-              }
-            } catch (e) {
-              // ignore unparseable data part
-              log(`⚠️  Unparseable data part: ${e}`);
-            }
-          }
-        }
-      }
+      const parts = this.mapMessageParts(msg, roleName, modelId, actualId, charCount, callIdToName);
 
       if (parts.length > 0) {
         mappedContents.push({ role: roleName, parts });
@@ -277,23 +355,8 @@ export class VertexGoogleProvider implements VertexModelProvider {
       }
     }
 
-    // Merge consecutive user messages that contain only functionResponse parts
-    // into a single user message. This is required by the Gemini API for parallel
-    // tool calls: all function responses must be in one user turn, not interleaved
-    // across multiple user messages (which VS Code sends one per tool result).
-    const merged: any[] = [];
-    for (const content of mappedContents) {
-      const prev = merged.at(-1);
-      const isFunctionResponseOnly = (c: any) => c.role === "user" && c.parts.every((p: any) => p.functionResponse !== undefined);
-      if (prev && isFunctionResponseOnly(prev) && isFunctionResponseOnly(content)) {
-        // Merge into the previous user message
-        prev.parts.push(...content.parts);
-      } else {
-        merged.push(content);
-      }
-    }
+    const merged = this.mergeParallelToolResponses(mappedContents);
 
-    // Make sure first non-system message is from user
     if (merged.length === 0 || merged[0].role !== "user") {
       merged.unshift({ role: "user", parts: [{ text: " " }] });
     }
@@ -342,7 +405,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
       return schema;
     }
     if (Array.isArray(schema)) {
-      return schema.map(item => this.sanitizeSchemaForVertex(item));
+      return schema.map((item) => this.sanitizeSchemaForVertex(item));
     }
 
     const result: any = {};
@@ -360,6 +423,28 @@ export class VertexGoogleProvider implements VertexModelProvider {
     return result;
   }
 
+  private logRawParts(rawParts: any[]): void {
+    log(
+      `  🧩 Chunk rawParts[${rawParts.length}]: ${rawParts
+        .map((p: any) => {
+          if (p.thought) {
+            return `thought(sig=${!!p.thoughtSignature},len=${p.thoughtSignature?.length ?? 0})`;
+          }
+          if (p.functionCall) {
+            return `functionCall(${p.functionCall.name},inlineSig=${!!p.thoughtSignature})`;
+          }
+          if (p.functionResponse) {
+            return `functionResponse(${p.functionResponse.name})`;
+          }
+          if (p.text !== undefined) {
+            return `text(${p.text.length},sig=${!!p.thoughtSignature})`;
+          }
+          return JSON.stringify(Object.keys(p));
+        })
+        .join(", ")}`,
+    );
+  }
+
   async provideLanguageModelChatResponse(
     modelId: string,
     messages: readonly vscode.LanguageModelChatRequestMessage[],
@@ -372,6 +457,9 @@ export class VertexGoogleProvider implements VertexModelProvider {
     log(`▶ Google provideLanguageModelChatResponse called — requested: ${modelId} -> executed: ${actualId}, msgs: ${messages.length}`);
 
     const requestLabels = labels || this.labels;
+    if (Object.keys(requestLabels).length > 0) {
+      log(`  🏷️  Labels: ${JSON.stringify(requestLabels)}`);
+    }
     const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
     let inputTokens = 0,
       outputTokens = 0,
@@ -379,7 +467,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
       cacheCreate = 0;
 
     try {
-      const { mappedContents, systemInstruction } = this.extractMessages(messages, charCount);
+      const { mappedContents, systemInstruction } = this.extractMessages(messages, charCount, modelId, actualId);
 
       const generationConfig: any = { ...config };
 
@@ -394,8 +482,10 @@ export class VertexGoogleProvider implements VertexModelProvider {
           parameters: this.sanitizeSchemaForVertex(t.inputSchema || { type: "object", properties: {} }),
         }));
         generationConfig.tools = [{ functionDeclarations: declarations }];
-        log(`  🔧 Provided ${declarations.length} tools: ${declarations.map((d) => d.name).join(", ")}`);
-        log(`  🔧 Sanitized Tool Schemas: ${JSON.stringify(declarations)}`);
+      }
+
+      if (Object.keys(requestLabels).length > 0) {
+        generationConfig.labels = requestLabels;
       }
 
       const client = await this.getClient();
@@ -405,7 +495,6 @@ export class VertexGoogleProvider implements VertexModelProvider {
             model: actualId,
             contents: mappedContents,
             config: generationConfig,
-            ...(Object.keys(requestLabels).length > 0 ? { labels: requestLabels } : {}),
           }),
         {
           log: log,
@@ -413,13 +502,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
         },
       );
 
-      // Buffer all function calls across the entire stream before emitting any.
-      // Parallel tool calls (e.g. FC1+sig, FC2) can arrive in separate chunks;
-      // emitting them incrementally causes VS Code to treat them as separate
-      // model steps, which the API then rejects ("number of function response
-      // parts must equal number of function call parts"). Buffering and emitting
-      // all calls together after stream end groups them into one model turn.
-      let pendingThoughtSignature: string | undefined;
+      const processor = new StreamPartProcessor(this, modelId, actualId, progress, charCount);
       const bufferedCalls: Array<{ callId: string; callName: string; args: any; signature?: string }> = [];
 
       for await (const chunk of stream) {
@@ -427,52 +510,12 @@ export class VertexGoogleProvider implements VertexModelProvider {
           break;
         }
 
-        // Build a name->signature map from raw parts for this chunk.
-        // Gemini 3: signature is inline on the functionCall part.
-        // Gemini 2.x thinking: signature is on a preceding { thought: true } part.
         const rawParts: any[] | undefined = chunk.candidates?.[0]?.content?.parts;
         const inlineSignatureByName = new Map<string, string>();
 
         if (rawParts) {
-          log(
-            `  🧩 Chunk rawParts[${rawParts.length}]: ${rawParts
-              .map((p: any) => {
-                if (p.thought) {
-                  return `thought(sig=${!!p.thoughtSignature},len=${p.thoughtSignature?.length ?? 0})`;
-                }
-                if (p.functionCall) {
-                  return `functionCall(${p.functionCall.name},inlineSig=${!!p.thoughtSignature})`;
-                }
-                if (p.functionResponse) {
-                  return `functionResponse(${p.functionResponse.name})`;
-                }
-                if (p.text !== undefined) {
-                  return `text(${p.text.length},sig=${!!p.thoughtSignature})`;
-                }
-                return JSON.stringify(Object.keys(p));
-              })
-              .join(", ")}`,
-          );
-          for (const part of rawParts) {
-            // Legacy: separate thought part with signature (Gemini 2.x thinking)
-            if (part.thought === true && part.thoughtSignature) {
-              pendingThoughtSignature = part.thoughtSignature;
-              log(`    ✍️  Captured preceding thought signature (${part.thoughtSignature.length} chars)`);
-            }
-            // Gemini 3: signature embedded directly on the functionCall part
-            if (part.functionCall?.name && part.thoughtSignature) {
-              inlineSignatureByName.set(part.functionCall.name, part.thoughtSignature);
-              log(`    ✍️  Captured inline thought signature for ${part.functionCall.name} (${part.thoughtSignature.length} chars)`);
-            }
-            // Capture optional signature on final text parts (non-functionCall turns)
-            if (part.text !== undefined && part.thoughtSignature && !part.thought) {
-              const textKey = part.text.substring(0, 120);
-              if (textKey.length > 0) {
-                this.textSignatureCache.set(textKey, part.thoughtSignature);
-                log(`    📝 Cached text thought signature for key "${textKey.substring(0, 40)}..." (${part.thoughtSignature.length} chars)`);
-              }
-            }
-          }
+          this.logRawParts(rawParts);
+          processor.processRawParts(rawParts, inlineSignatureByName);
         }
 
         const functionCalls = chunk.functionCalls;
@@ -480,17 +523,11 @@ export class VertexGoogleProvider implements VertexModelProvider {
           for (const fc of functionCalls) {
             const callName = fc.name || "unknown";
             const callId = `${callName}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-            const signature = inlineSignatureByName.get(callName) ?? pendingThoughtSignature;
-            log(`  🔧 FunctionCall buffered: name=${callName} callId=${callId} inlineSig=${inlineSignatureByName.has(callName)} pendingSig=${!!pendingThoughtSignature}`);
+            const signature = inlineSignatureByName.get(callName) ?? processor.pendingThoughtSignature;
+            log(`  🔧 FunctionCall buffered: name=${callName} callId=${callId} inlineSig=${inlineSignatureByName.has(callName)} pendingSig=${!!processor.pendingThoughtSignature}`);
             bufferedCalls.push({ callId, callName, args: fc.args ?? {}, signature });
           }
-          // Clear the pending (legacy) signature after processing all calls in this chunk.
-          pendingThoughtSignature = undefined;
-        }
-
-        if (chunk.text) {
-          charCount.assistant_text += chunk.text.length;
-          progress.report(new vscode.LanguageModelTextPart(chunk.text));
+          processor.pendingThoughtSignature = undefined;
         }
 
         if (chunk.usageMetadata) {
@@ -515,12 +552,34 @@ export class VertexGoogleProvider implements VertexModelProvider {
         }
       }
 
+      // Cache the text signature against the clean answer text so it can be re-attached in history.
+      if (processor.latestTextSignature && processor.accumulatedAnswerText.length > 0) {
+        const textKey = processor.accumulatedAnswerText.substring(0, 120);
+        this.textSignatureCache.set(textKey, processor.latestTextSignature);
+        log(`    📝 Cached text thought signature for answer turn (${processor.latestTextSignature.length} chars)`);
+      }
+
       log(`  ✅ Stream finished successfully`);
 
       // For Gemini, promptTokenCount includes cachedContentTokenCount.
       // To correctly record usage in our tracker, we subtract cached tokens from
       // input tokens so that each category is billed once (standard vs. discounted).
       const newTokens = Math.max(0, inputTokens - cacheRead);
+
+      // Report token usage to VS Code (MIME type 'usage') for Copilot Chat indicator
+      if (typeof vscode.LanguageModelDataPart !== "undefined") {
+        const usagePayload = {
+          prompt_tokens: inputTokens, // For display we use total prompt tokens
+          completion_tokens: outputTokens,
+          total_tokens: inputTokens + outputTokens,
+          prompt_tokens_details: {
+            cached_tokens: cacheRead,
+          },
+        };
+
+        progress.report(new vscode.LanguageModelDataPart(new TextEncoder().encode(JSON.stringify(usagePayload)), "usage"));
+        log(`  📊 Reported token usage to VS Code: ${JSON.stringify(usagePayload)}`);
+      }
 
       return {
         usage: { input: newTokens, output: outputTokens, cache_read: cacheRead, cache_create: cacheCreate },
@@ -531,5 +590,147 @@ export class VertexGoogleProvider implements VertexModelProvider {
       checkAuthError(e);
       throw e;
     }
+  }
+}
+
+/**
+ * Stateful helper class responsible for parsing raw candidate parts from the Google/Vertex AI stream.
+ * It is specifically designed to isolate legacy and inline cryptographic `thoughtSignature` parameters,
+ * while automatically detecting and stripping multi-chunk leaked reasoning blocks in high-thinking models.
+ */
+class StreamPartProcessor {
+  public pendingThoughtSignature: string | undefined;
+  public latestTextSignature: string | undefined;
+  public accumulatedAnswerText = "";
+  public inLeakedReasoning = false;
+
+  constructor(
+    private readonly provider: VertexGoogleProvider,
+    private readonly modelId: string,
+    private readonly actualId: string,
+    private readonly progress: vscode.Progress<vscode.LanguageModelResponsePart>,
+    private readonly charCount: any,
+  ) {}
+
+  /**
+   * Processes all raw candidate parts in a single stream chunk.
+   * Extracts thought signatures and handles skipping/reporting of text chunks.
+   *
+   * @param rawParts The raw part objects array returned by the API.
+   * @param inlineSignatureByName A map to associate inline signatures with tool call names.
+   */
+  public processRawParts(rawParts: any[], inlineSignatureByName: Map<string, string>): void {
+    for (const part of rawParts) {
+      this.extractSignatures(part, inlineSignatureByName);
+      this.processTextPart(part);
+    }
+  }
+
+  /**
+   * Identifies and stores any legacy (preceding thought part) or inline thought signatures
+   * present on the given part so they can be cached and re-injected in later history turns.
+   *
+   * @param part The raw part object being inspected.
+   * @param inlineSignatureByName A map to associate inline signatures with tool call names.
+   */
+  private extractSignatures(part: any, inlineSignatureByName: Map<string, string>): void {
+    // Legacy: separate thought part with signature (Gemini 2.x thinking)
+    if (part.thought === true && part.thoughtSignature) {
+      this.pendingThoughtSignature = part.thoughtSignature;
+      this.latestTextSignature = part.thoughtSignature;
+      log(`    ✍️  Captured preceding thought signature (${part.thoughtSignature.length} chars)`);
+    }
+    // Gemini 3: signature embedded directly on the functionCall part
+    if (part.functionCall?.name && part.thoughtSignature) {
+      inlineSignatureByName.set(part.functionCall.name, part.thoughtSignature);
+      log(`    ✍️  Captured inline thought signature for ${part.functionCall.name} (${part.thoughtSignature.length} chars)`);
+    }
+    // Capture optional signature on final text parts (non-functionCall turns)
+    if (part.text !== undefined && part.thoughtSignature && !part.thought) {
+      this.latestTextSignature = part.thoughtSignature;
+    }
+  }
+
+  /**
+   * Inspects and handles text parts. Safely filters out explicit thoughts and leaked
+   * reasoning/thinking blocks while reporting clean answer text to VS Code.
+   *
+   * @param part The raw part containing a text property.
+   */
+  private processTextPart(part: any): void {
+    if (part.text === undefined) {
+      return;
+    }
+
+    if (part.thought) {
+      log(`    🧠 Skipping reasoning text part (${part.text.length} chars)`);
+      return;
+    }
+
+    // Skip streamed leaked reasoning chunks if we are already in skipping state
+    if (this.inLeakedReasoning) {
+      this.handleStreamingLeakedReasoning(part.text);
+      return;
+    }
+
+    // Detect if this part is the start of a leaked reasoning block
+    if (part.thoughtSignature && this.provider.isLeakedReasoningHeader(part.text, this.modelId, this.actualId)) {
+      log(`    🧠 Detected leaked reasoning block starting for ${this.modelId}`);
+      this.handleLeakedReasoningStart(part.text);
+      return;
+    }
+
+    // Normal text part: report it
+    this.emitText(part.text);
+  }
+
+  /**
+   * Process a streamed leaked reasoning chunk when already in a skipping state.
+   * Keeps skipping text until a newline is found, indicating the end of the metadata block.
+   *
+   * @param text The current raw text chunk.
+   */
+  private handleStreamingLeakedReasoning(text: string): void {
+    const newlineIdx = text.indexOf("\n");
+    if (newlineIdx !== -1) {
+      this.inLeakedReasoning = false;
+      const realText = text.substring(newlineIdx + 1);
+      if (realText.length > 0) {
+        this.emitText(realText);
+      }
+    } else {
+      log(`    🧠 Skipping streamed leaked reasoning chunk (${text.length} chars)`);
+    }
+  }
+
+  /**
+   * Handles the first chunk of a detected leaked reasoning block.
+   * If the block contains a newline, it strips the prefix and emits the remaining text.
+   * Otherwise, it transitions the processor into the `inLeakedReasoning` skipping state.
+   *
+   * @param text The current raw text chunk that started with the leaked signature prefix.
+   */
+  private handleLeakedReasoningStart(text: string): void {
+    const newlineIdx = text.indexOf("\n");
+    if (newlineIdx !== -1) {
+      const realText = text.substring(newlineIdx + 1);
+      if (realText.length > 0) {
+        this.emitText(realText);
+      }
+    } else {
+      this.inLeakedReasoning = true;
+    }
+  }
+
+  /**
+   * Reports clean, non-metadata answer text back to the VS Code UI and increments
+   * assistant character count tracking metrics.
+   *
+   * @param text The clean text to emit.
+   */
+  private emitText(text: string): void {
+    this.accumulatedAnswerText += text;
+    this.progress.report(new vscode.LanguageModelTextPart(text));
+    this.charCount.assistant_text += text.length;
   }
 }
