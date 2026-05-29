@@ -148,10 +148,39 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const regions = catalog.regionPriority;
 
     const authOptions = await this.authManager.getResolvedAuthOptions();
-    // Resolve project ID: Setting > JSON Key > gcloud (implied)
-    const effectiveProjectId = this.projectId || authOptions?.projectId || "";
+    /*
+     * Resolve project ID: Strictly use the workspace setting.
+     * 
+     * DESIGN CHOICE: We do NOT fall back to the project ID found in service account credentials.
+     * The setting 'vertexAiChat.projectId' is the absolute source of truth for billing.
+     * If the credentials provided (Service Account or ADC) do not match or have access
+     * to this specific project, the extension is designed to fail loudly.
+     */
+    const effectiveProjectId = this.projectId;
 
-    log(`Starting model discovery for project "${effectiveProjectId || "(default)"}"…`);
+    if (!effectiveProjectId) {
+      log("❌ No Project ID configured in settings (vertexAiChat.projectId). Discovery aborted.");
+      vscode.window.showErrorMessage("Vertex AI: Please configure a GCP Project ID in your settings to use this extension.");
+      this.availableModels = [];
+      this.discoveryDone = true;
+      this._onDidChange.fire();
+      return { region: "none", availableModels: [] };
+    }
+
+    /*
+     * Validation: If using a Service Account, warn if its home project doesn't match our setting.
+     * 
+     * NOTE: This is a warning, not an error, because cross-project IAM is a valid GCP pattern
+     * (e.g., a Service Account created in Project A having 'Vertex AI User' role in Project B).
+     */
+    if (authOptions?.projectId && authOptions.projectId !== effectiveProjectId) {
+      const msg = `Configuration Note: Settings specify project '${effectiveProjectId}', but Service Account belongs to '${authOptions.projectId}'. Proceeding assuming cross-project IAM permissions.`;
+      log(`⚠️ ${msg}`);
+      vscode.window.showWarningMessage(`Vertex AI: ${msg}`);
+      // We do NOT return or abort here, allowing the provider.pingModel to perform the actual access check.
+    }
+
+    log(`Starting model discovery for project "${effectiveProjectId}"…`);
 
     for (const region of regions) {
       log(`  Probing region "${region}"…`);
@@ -165,9 +194,19 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         }
 
         provider.initialize(effectiveProjectId, region, authOptions);
-        const ok = await provider.pingModel(model.version);
-        if (ok) {
-          available.push(model);
+        try {
+          const ok = await provider.pingModel(model.version);
+          if (ok) {
+            available.push(model);
+          }
+        } catch (e: any) {
+          // If we hit an authentication error, we should stop trying other regions
+          // and bubble the error up to the UI.
+          if (e.name === "VertexAuthenticationError") {
+            log(`❌ Authentication error during discovery: ${e.message}`);
+            throw e;
+          }
+          log(`  ⚠️ Ping failed for ${model.id} in ${region}: ${e.message || e}`);
         }
       }
 

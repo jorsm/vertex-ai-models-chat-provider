@@ -27,7 +27,7 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 
   const usageTracker = new UsageTrackerService(context);
-  const costStatusBar = new CostStatusBar(usageTracker);
+  const costStatusBar = new CostStatusBar(usageTracker, authManager);
   context.subscriptions.push(costStatusBar);
 
   const provider = new VertexChatModelDispatcher(projectId, usageTracker, authManager);

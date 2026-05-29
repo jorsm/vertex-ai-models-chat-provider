@@ -25,6 +25,8 @@ const SUPPRESS_WARNING_KEY = "vertexAiChat.suppressAuthWarning";
 
 export class AuthManager {
   private readonly outputChannel: vscode.OutputChannel;
+  private readonly _onAuthUpdated = new vscode.EventEmitter<void>();
+  public readonly onAuthUpdated = this._onAuthUpdated.event;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.outputChannel = vscode.window.createOutputChannel("Vertex AI: Auth");
@@ -42,7 +44,11 @@ export class AuthManager {
     const authMethod = this.context.workspaceState.get<AuthMethod>(WORKSPACE_AUTH_METHOD_KEY);
 
     // 1. Explicit selection (Secret or File)
-    if (authMethod?.type === "secret" && authMethod.value) {
+    if (authMethod?.type === "secret") {
+      if (!authMethod.value) {
+        this.log("Secret auth selected but no name provided.");
+        return undefined;
+      }
       const secret = await this.context.secrets.get(SECRETS_PREFIX + authMethod.value);
       if (secret) {
         try {
@@ -52,18 +58,40 @@ export class AuthManager {
         } catch (e) {
           this.log(`Error parsing secret '${authMethod.value}': ${e}`);
           await this.showFallbackWarning(`secret '${authMethod.value}'`);
+          /* 
+           * DESIGN CHOICE: We return undefined here to trigger the standard ADC fallback. 
+           * While this might seem "silent," the safety net is enforced in VertexChatModelDispatcher.
+           * If the active ADC identity (e.g., a personal gcloud login) does not have explicit 
+           * access to the Project ID set in VS Code settings, the Model Discovery/Ping 
+           * will fail loudly, clearing the model list and notifying the user.
+           * This prevents accidental billing on the wrong project while allowing recovery.
+           */
         }
       } else {
         this.log(`Secret '${authMethod.value}' not found in storage.`);
         await this.showFallbackWarning(`secret '${authMethod.value}'`);
       }
+      return undefined;
     }
 
-    if (authMethod?.type === "file" && authMethod.value) {
-      return this.resolveFromFile(authMethod.value);
+    if (authMethod?.type === "file") {
+      if (!authMethod.value) {
+        this.log("File auth selected but no path provided.");
+        return undefined;
+      }
+      const options = this.resolveFromFile(authMethod.value);
+      if (!options) {
+        await this.showFallbackWarning(`file '${authMethod.value}'`);
+      }
+      return options;
     }
 
-    // 2. Environment Variable Fallback (Implicit in ADC, but we parse for identity/project)
+    if (authMethod?.type === "adc") {
+      this.log("Using standard Application Default Credentials (ADC).");
+      return undefined;
+    }
+
+    // 2. Default Behavior: Environment Variable Fallback
     const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
     if (envPath) {
       const options = this.resolveFromFile(envPath);
@@ -73,7 +101,7 @@ export class AuthManager {
       }
     }
 
-    this.log("Using standard Application Default Credentials (ADC).");
+    this.log("No explicit auth method set, using standard Application Default Credentials (ADC).");
     return undefined;
   }
 
@@ -152,6 +180,7 @@ export class AuthManager {
 
     await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "secret", value: name });
     await this.context.workspaceState.update(SUPPRESS_WARNING_KEY, false);
+    this._onAuthUpdated.fire();
     vscode.window.showInformationMessage(`Vertex AI: Service Account '${name}' saved and activated for this workspace.`);
   }
 
@@ -174,6 +203,7 @@ export class AuthManager {
     const filePath = uris[0].fsPath;
     await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "file", value: filePath });
     await this.context.workspaceState.update(SUPPRESS_WARNING_KEY, false);
+    this._onAuthUpdated.fire();
     vscode.window.showInformationMessage(`Vertex AI: Using Service Account file: ${filePath}`);
   }
 
@@ -224,6 +254,7 @@ export class AuthManager {
     }
 
     await this.context.workspaceState.update(SUPPRESS_WARNING_KEY, false);
+    this._onAuthUpdated.fire();
   }
 
   /**
@@ -232,6 +263,7 @@ export class AuthManager {
   public async clearAuthMethod(): Promise<void> {
     await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "adc" });
     await this.context.workspaceState.update(SUPPRESS_WARNING_KEY, false);
+    this._onAuthUpdated.fire();
     vscode.window.showInformationMessage("Vertex AI: Authentication reset to Application Default Credentials.");
   }
 
