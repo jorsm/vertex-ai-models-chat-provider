@@ -42,7 +42,19 @@ export class CostStatusBar implements vscode.Disposable {
       const identity = await this.authManager.getIdentity();
       const activeMethod = this.authManager.getActiveMethod();
       const config = vscode.workspace.getConfiguration("vertexAiChat");
-      const projectId = config.get<string>("projectId") || "(Not set)";
+
+      // Inspect to see where the project ID is coming from
+      const inspection = config.inspect<string>("projectId");
+      const projectId = config.get<string>("projectId") || "";
+
+      let projectSource = "Unset";
+      if (inspection?.workspaceValue) {
+        projectSource = "Workspace Setting";
+      } else if (inspection?.globalValue) {
+        projectSource = "Global (User) Setting";
+      } else if (inspection?.defaultValue) {
+        projectSource = "Default";
+      }
 
       // Determine icon based on auth type
       let icon = "$(pulse)"; // Default
@@ -71,12 +83,13 @@ export class CostStatusBar implements vscode.Disposable {
       tooltip.appendMarkdown(`### Vertex AI Usage\n\n`);
       tooltip.appendMarkdown(`**Today's Cost:** ${formattedCost}\n\n`);
       tooltip.appendMarkdown(`---\n\n`);
-      tooltip.appendMarkdown(`**Project:** \`${projectId}\`\n\n`);
+      tooltip.appendMarkdown(`**Project:** \`${projectId || "(Unset)"}\`\n`);
+      tooltip.appendMarkdown(`*Source: ${projectSource}*\n\n`);
       tooltip.appendMarkdown(`**Auth Method:** ${methodDesc}\n\n`);
       tooltip.appendMarkdown(`${identityText}\n\n`);
       tooltip.appendMarkdown(`---\n\n`);
       tooltip.appendMarkdown(`$(dashboard) Click to open Dashboard`);
-
+      
       this.statusBarItem.tooltip = tooltip;
     } catch (error) {
       console.error("[CostStatusBar] Error updating status bar:", error);
