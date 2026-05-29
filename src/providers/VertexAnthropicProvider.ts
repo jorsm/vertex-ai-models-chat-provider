@@ -41,7 +41,6 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         model: modelId,
         messages: [{ role: "user", content: "ping" }],
         max_tokens: 1,
-        ...(Object.keys(this.labels).length > 0 ? { labels: this.labels } : {}),
       } as any);
       log(`    🏓 Anthropic ${modelId} → ✅`);
       return true;
