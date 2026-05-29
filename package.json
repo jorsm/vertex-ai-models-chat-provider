@@ -80,6 +80,11 @@
           "default": "",
           "description": "Custom key for the user label. If empty, 'vscode-vertex-ai-user' will be used."
         },
+        "vertexAiChat.userLabelValueSuffix": {
+          "type": "string",
+          "default": "",
+          "description": "Optional suffix for the user label value (e.g., your corporate ID). If set, it will be appended to the user email (e.g., 'email_suffix')."
+        },
         "vertexAiChat.enableProjectLabel": {
           "type": "boolean",
           "default": false,
