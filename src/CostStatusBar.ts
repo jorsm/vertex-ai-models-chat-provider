@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import { UsageTrackerService } from "./UsageTrackerService";
 import { AuthManager } from "./AuthManager";
+import { UsageTrackerService } from "./UsageTrackerService";
 
 export class CostStatusBar implements vscode.Disposable {
   private readonly statusBarItem: vscode.StatusBarItem;
@@ -40,13 +40,44 @@ export class CostStatusBar implements vscode.Disposable {
     try {
       const todayCost = await this.usageTracker.getTodayTotalCost();
       const identity = await this.authManager.getIdentity();
+      const activeMethod = this.authManager.getActiveMethod();
+      const config = vscode.workspace.getConfiguration("vertexAiChat");
+      const projectId = config.get<string>("projectId") || "(Not set)";
+
+      // Determine icon based on auth type
+      let icon = "$(pulse)"; // Default
+      let methodDesc = "Default (ADC)";
+
+      if (activeMethod) {
+        if (activeMethod.type === "secret") {
+          icon = "$(key)";
+          methodDesc = `Secret: ${activeMethod.value}`;
+        } else if (activeMethod.type === "file") {
+          icon = "$(file)";
+          methodDesc = "Local JSON File";
+        } else if (activeMethod.type === "adc") {
+          icon = "$(cloud)";
+          methodDesc = "gcloud ADC";
+        }
+      }
 
       // Format to 2 decimal places with $
       const formattedCost = `$${todayCost.toFixed(2)}`;
-      this.statusBarItem.text = `$(pulse) Today: ${formattedCost}`;
+      this.statusBarItem.text = `${icon} Today: ${formattedCost}`;
 
-      const identityText = identity ? `Account: ${identity}` : "Account: Not signed in (using ADC)";
-      this.statusBarItem.tooltip = new vscode.MarkdownString(`**Vertex AI Usage**\n\nToday's Cost: ${formattedCost}\n\n${identityText}\n\nClick to open Dashboard`);
+      const identityText = identity ? `**Account:** ${identity}` : "**Account:** Not signed in (using ADC)";
+
+      const tooltip = new vscode.MarkdownString();
+      tooltip.appendMarkdown(`### Vertex AI Usage\n\n`);
+      tooltip.appendMarkdown(`**Today's Cost:** ${formattedCost}\n\n`);
+      tooltip.appendMarkdown(`---\n\n`);
+      tooltip.appendMarkdown(`**Project:** \`${projectId}\`\n\n`);
+      tooltip.appendMarkdown(`**Auth Method:** ${methodDesc}\n\n`);
+      tooltip.appendMarkdown(`${identityText}\n\n`);
+      tooltip.appendMarkdown(`---\n\n`);
+      tooltip.appendMarkdown(`$(dashboard) Click to open Dashboard`);
+
+      this.statusBarItem.tooltip = tooltip;
     } catch (error) {
       console.error("[CostStatusBar] Error updating status bar:", error);
       this.statusBarItem.text = `$(pulse) Today: $--.--`;

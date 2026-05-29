@@ -38,6 +38,13 @@ export class AuthManager {
   }
 
   /**
+   * Returns the raw authentication method configuration for the current workspace.
+   */
+  public getActiveMethod(): AuthMethod | undefined {
+    return this.context.workspaceState.get<AuthMethod>(WORKSPACE_AUTH_METHOD_KEY);
+  }
+
+  /**
    * Resolves the current authentication options based on workspace selection.
    */
   public async getResolvedAuthOptions(): Promise<AuthOptions | undefined> {
@@ -58,11 +65,11 @@ export class AuthManager {
         } catch (e) {
           this.log(`Error parsing secret '${authMethod.value}': ${e}`);
           await this.showFallbackWarning(`secret '${authMethod.value}'`);
-          /* 
-           * DESIGN CHOICE: We return undefined here to trigger the standard ADC fallback. 
+          /*
+           * DESIGN CHOICE: We return undefined here to trigger the standard ADC fallback.
            * While this might seem "silent," the safety net is enforced in VertexChatModelDispatcher.
-           * If the active ADC identity (e.g., a personal gcloud login) does not have explicit 
-           * access to the Project ID set in VS Code settings, the Model Discovery/Ping 
+           * If the active ADC identity (e.g., a personal gcloud login) does not have explicit
+           * access to the Project ID set in VS Code settings, the Model Discovery/Ping
            * will fail loudly, clearing the model list and notifying the user.
            * This prevents accidental billing on the wrong project while allowing recovery.
            */
