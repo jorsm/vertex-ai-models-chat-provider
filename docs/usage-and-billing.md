@@ -8,6 +8,7 @@
 - [Core Concepts](#core-concepts)
 - [API Reference](#api-reference)
   - [DashboardWebview](#dashboardwebview)
+  - [CostStatusBar](#coststatusbar)
   - [UsageTrackerService](#usagetrackerservice)
   - [Data Structures](#data-structures)
 - [Examples](#examples)
@@ -20,6 +21,7 @@ The usage and billing module is centered around the `DashboardWebview`, which pr
 - **Data Visualization**: Uses [ECharts](https://echarts.apache.org/en/index.html) to render time-series costs, token distribution, and payload footprints (input vs. output vs. cached tokens).
 - **Cost Estimation**: Calculates raw token estimates based on standard publicly documented pricing for Gemini and Claude models. Users are warned that the Google Cloud Billing Console remains the final source of truth.
 - **Project Context**: Automatically generates deep links to the specific Google Cloud Billing page using the configured `vertexAiChat.projectId`.
+- **Real-time Status**: A status bar item provides immediate feedback on today's accumulated costs and the active authentication identity, updating automatically as interactions occur.
 - **Filtering**: Supports date range selection, model-specific filtering, and quick presets (Today, Last 7 Days, This Month).
 - **Persistence**: Usage logs are tracked by the `UsageTrackerService`, which stores daily logs in `.jsonl` format within the extension's global storage directory. The dashboard can permanently dismiss cost warnings by updating the `vertexAiChat.hideBillingWarning` global configuration.
 
@@ -45,6 +47,26 @@ Reveals the existing dashboard panel or creates a new one if it doesn't exist.
 [source](../src/DashboardWebview.ts)
 `public dispose()`
 Cleans up the webview panel and disposes of all internal event listeners and subscriptions.
+
+### CostStatusBar
+[source](../src/CostStatusBar.ts)
+Manages a persistent status bar item that displays today's total estimated cost and the active authentication identity. It updates in real-time as usage is recorded or authentication methods change, using dynamic icons to reflect the active auth type:
+- **$(key)**: Encrypted Service Account secret.
+- **$(file)**: Local JSON key file path.
+- **$(cloud)**: Google Application Default Credentials (ADC).
+- **$(pulse)**: Default or disconnected state.
+
+#### constructor
+[source](../src/CostStatusBar.ts)
+`constructor(usageTracker: UsageTrackerService, authManager: AuthManager)`
+Initializes the status bar item at the right side of the status bar (priority 100) and binds it to the dashboard display command. It subscribes to usage and authentication updates to refresh the UI automatically, presenting a rich Markdown tooltip that includes the current GCP project ID, active authentication method, and account identity.
+- `usageTracker`: An instance of `UsageTrackerService` used to retrieve daily cost totals.
+- `authManager`: An instance of `AuthManager` used to identify the current user or service account.
+
+#### dispose
+[source](../src/CostStatusBar.ts)
+`public dispose()`
+Cleans up the status bar item and disposes of all internal event subscriptions.
 
 ### UsageTrackerService
 [source](../src/UsageTrackerService.ts)
@@ -127,6 +149,16 @@ import { DashboardWebview } from './DashboardWebview';
 
 // Inside an activation or command registration
 DashboardWebview.createOrShow(context.extensionUri, usageTrackerInstance);
+```
+
+### Initializing the Cost Status Bar
+The status bar should be initialized during extension activation:
+```typescript
+import { CostStatusBar } from './CostStatusBar';
+
+// Inside activation
+const statusBar = new CostStatusBar(usageTracker, authManager);
+context.subscriptions.push(statusBar);
 ```
 
 ### Dashboard UI Components
