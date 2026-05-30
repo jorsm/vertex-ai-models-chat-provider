@@ -56,8 +56,12 @@ export class UsageTrackerService {
 
     const inputCost = (tokens.input / 1_000_000) * pricing.input;
     const outputCost = (tokens.output / 1_000_000) * pricing.output;
-    const cacheReadCost = (tokens.cache_read / 1_000_000) * pricing.cache_read;
-    const cacheCreateCost = (tokens.cache_create / 1_000_000) * pricing.cache_create;
+    const cacheReadCost = pricing.cache_read !== undefined 
+      ? (tokens.cache_read / 1_000_000) * pricing.cache_read 
+      : 0;
+    const cacheCreateCost = pricing.cache_create !== undefined 
+      ? (tokens.cache_create / 1_000_000) * pricing.cache_create 
+      : 0;
 
     return inputCost + outputCost + cacheReadCost + cacheCreateCost;
   }

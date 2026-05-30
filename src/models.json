@@ -189,6 +189,57 @@
         "cache_read": 0.3,
         "cache_create": 0.0
       }
+    },
+    {
+      "id": "qwen3-coder-480b",
+      "vendor": "maas",
+      "displayName": "Qwen3 Coder 480B",
+      "family": "qwen",
+      "version": "qwen/qwen3-coder-480b-a35b-instruct-maas",
+      "maxInputTokens": 262144,
+      "maxOutputTokens": 65536,
+      "capabilities": {
+        "imageInput": false,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 0,
+        "output": 0
+      }
+    },
+    {
+      "id": "deepseek-v3.2",
+      "vendor": "maas",
+      "displayName": "DeepSeek V3.2",
+      "family": "deepseek",
+      "version": "deepseek-ai/deepseek-v3.2-maas",
+      "maxInputTokens": 131072,
+      "maxOutputTokens": 8192,
+      "capabilities": {
+        "imageInput": false,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 0,
+        "output": 0
+      }
+    },
+    {
+      "id": "kimi-k2-thinking",
+      "vendor": "maas",
+      "displayName": "Kimi K2 Thinking",
+      "family": "kimi",
+      "version": "moonshot/kimi-k2-thinking-maas",
+      "maxInputTokens": 32768,
+      "maxOutputTokens": 8192,
+      "capabilities": {
+        "imageInput": false,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 0,
+        "output": 0
+      }
     }
   ],
   "regionPriority": [

@@ -5,6 +5,7 @@ import { AuthManager } from "./AuthManager";
 import localCatalog from "./models.json";
 import { VertexAnthropicProvider } from "./providers/VertexAnthropicProvider";
 import { VertexGoogleProvider } from "./providers/VertexGoogleProvider";
+import { VertexMaaSProvider } from "./providers/VertexMaaSProvider";
 import { VertexModelProvider } from "./providers/VertexModelProvider";
 import { UsageTrackerService } from "./UsageTrackerService";
 import { estimateTokens } from "./utils/tokens";
@@ -89,6 +90,10 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const googleProvider = new VertexGoogleProvider();
     log(`Registered plugin for vendor: ${googleProvider.vendor}`);
     this.activeProviders.set(googleProvider.vendor, googleProvider);
+
+    const maasProvider = new VertexMaaSProvider();
+    log(`Registered plugin for vendor: ${maasProvider.vendor}`);
+    this.activeProviders.set(maasProvider.vendor, maasProvider);
   }
 
   public updateLabels(): Promise<void> {
