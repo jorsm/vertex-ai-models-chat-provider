@@ -23,7 +23,7 @@ The usage and billing module is centered around the `DashboardWebview`, which pr
 - **Project Context**: Automatically generates deep links to the specific Google Cloud Billing page using the configured `vertexAiChat.projectId`.
 - **Real-time Status**: A status bar item provides immediate feedback on today's accumulated costs and the active authentication identity, updating automatically as interactions occur.
 - **Filtering**: Supports date range selection, model-specific filtering, and quick presets (Today, Last 7 Days, This Month).
-- **Persistence**: Usage logs are tracked by the `UsageTrackerService`, which stores daily logs in `.jsonl` format within the extension's global storage directory. The dashboard can permanently dismiss cost warnings by updating the `vertexAiChat.hideBillingWarning` global configuration.
+- **Persistence**: Usage logs are tracked by the `UsageTrackerService`, which stores daily logs in `.jsonl` format within a `usage_logs` subdirectory of the extension's global storage. The dashboard can permanently dismiss cost warnings by updating the `vertexAiChat.hideBillingWarning` global configuration.
 
 ## API Reference
 
@@ -70,7 +70,13 @@ Cleans up the status bar item and disposes of all internal event subscriptions.
 
 ### UsageTrackerService
 [source](../src/UsageTrackerService.ts)
-A backend service dedicated to persisting token usage and calculating costs for every LLM interaction. It manages local JSONL files in the extension's global storage.
+A backend service dedicated to persisting token usage and calculating costs for every LLM interaction. It manages local JSONL files in the `usage_logs` subdirectory within the extension's global storage.
+
+#### constructor
+[source](../src/UsageTrackerService.ts)
+`constructor(context: vscode.ExtensionContext)`
+Initializes the service and determines the native file system path for usage logging.
+- `context`: The VS Code extension context, used to locate the `globalStorageUri` for log persistence.
 
 #### onUsageUpdated
 [source](../src/UsageTrackerService.ts)
