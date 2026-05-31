@@ -27,14 +27,14 @@ This extension registers **Google Gemini**, **Anthropic Claude**, and **MaaS ope
 >
 > 1. **Enable APIs**: Enable the **Agent Platform API** (`aiplatform.googleapis.com`) in the Cloud Console ([Docs](https://docs.cloud.google.com/gemini-enterprise-agent-platform)).
 > 2. **IAM Roles**: Your account requires the **Agent Platform User** (`roles/aiplatform.user`) role ([Docs](https://docs.cloud.google.com/iam/docs/roles-permissions/aiplatform#aiplatform.user)).
-> 3. **Model Access**: For Anthropic Claude models, find them in the **Vertex AI Model Garden** and click **Enable** ([Docs](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude)).
+> 3. **Model Access**: For Anthropic Claude models, find them in the **Google Agent Platform Model Garden** and click **Enable** ([Docs](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude)).
 
 ## 🚀 Quick Start
 
-1. **Install**: Find **Vertex AI Models Chat Provider** in the VS Code Marketplace and click Install.
+1. **Install**: Find **Google Agent Platform for Copilot Chat** in the VS Code Marketplace and click Install.
 2. **Authenticate**: Choose one of the following methods:
     - **Option A (Standard)**: Run `gcloud auth application-default login` in your terminal.
-    - **Option B (Service Account)**: Run the command `Vertex AI: Paste Service Account JSON Key` in VS Code and paste your JSON key.
+    - **Option B (Service Account)**: Run the command `Google Agent Platform: Paste Service Account JSON Key` in VS Code and paste your JSON key.
 3. **Configure**: Open VS Code Settings (`Ctrl+,`) and set your **GCP Project ID** in `vertexAiChat.projectId`.
 4. **Chat**: Open the Chat panel (`Ctrl+Shift+I`) and select a **Vertex** model from the picker.
 
@@ -95,7 +95,7 @@ Choose the workflow that fits your environment:
 | **Google**    | Gemini       | 3.5 Flash, 3 Flash, 3.1 Pro              | High Thinking, Parallel Tools |
 | **MaaS**      | Open-Weight  | Qwen3-Coder, DeepSeek V3.2, Kimi K2      | Thinking, Tools               |
 
-> MaaS (Model-as-a-Service) brings open-weight third-party models via an OpenAI-compatible API on Vertex AI. See the [MaaS wiki page](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-as-a-Service-(MaaS)) for details.
+> MaaS (Model-as-a-Service) brings open-weight third-party models via an OpenAI-compatible API on Google Agent Platform. See the [MaaS wiki page](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-as-a-Service-(MaaS)) for details.
 
 ---
 
@@ -115,12 +115,12 @@ Choose the workflow that fits your environment:
 
 Authentication methods are managed privately per-workspace to avoid platform-specific path conflicts and Git pollution.
 
-| Action                 | Command                                       | Description                                                              |
-| :--------------------- | :-------------------------------------------- | :----------------------------------------------------------------------- |
-| **Paste JSON Key**     | `Vertex AI: Paste Service Account JSON Key`   | Save a JSON key to the encrypted OS store and activate it.               |
-| **Select JSON File**   | `Vertex AI: Select Service Account JSON File` | Pick a local JSON key file. Path is stored privately in workspace state. |
-| **Select Auth Method** | `Vertex AI: Select Authentication Method`     | Switch between Stored Secrets, File Paths, or Default ADC.               |
-| **Clear Auth Method**  | `Vertex AI: Clear Authentication Method`      | Reset the workspace to use Default ADC (gcloud login).                   |
+| Action                 | Command                                                   | Description                                                              |
+| :--------------------- | :-------------------------------------------------------- | :----------------------------------------------------------------------- |
+| **Paste JSON Key**     | `Google Agent Platform: Paste Service Account JSON Key`   | Save a JSON key to the encrypted OS store and activate it.               |
+| **Select JSON File**   | `Google Agent Platform: Select Service Account JSON File` | Pick a local JSON key file. Path is stored privately in workspace state. |
+| **Select Auth Method** | `Google Agent Platform: Select Authentication Method`     | Switch between Stored Secrets, File Paths, or Default ADC.               |
+| **Clear Auth Method**  | `Google Agent Platform: Clear Authentication Method`      | Reset the workspace to use Default ADC (gcloud login).                   |
 
 ---
 
@@ -129,7 +129,7 @@ Authentication methods are managed privately per-workspace to avoid platform-spe
 For detailed request/response mapping and troubleshooting:
 
 1. Open the **Output** panel (`Ctrl+Shift+U`).
-2. Select **Vertex AI Models Chat Provider** from the dropdown.
+2. Select **Google Agent Platform for Copilot Chat** from the dropdown.
 3. View region probing results, token usage metadata, and raw API transformations.
 
 ---
@@ -141,7 +141,7 @@ If you prefer to build the extension manually:
 1. Clone the repository:
 
     ```bash
-    git clone https://github.com/jorsm/vertex-anthropic.git
+    git clone https://github.com/jorsm/vertex-ai-models-chat-provider.git
     ```
 
 2. Install dependencies:
