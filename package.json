@@ -22,33 +22,33 @@
     "commands": [
       {
         "command": "vertexAiChat.dumpTools",
-        "title": "Vertex AI Models Chat Provider: Dump Installed Tools Schema"
+        "title": "Google Agent Platform: Dump Installed Tools Schema"
       },
       {
         "command": "vertexAiChat.refreshModels",
-        "title": "Vertex AI Models Chat Provider: Refresh Models"
+        "title": "Google Agent Platform: Refresh Models"
       },
       {
         "command": "vertexAiChat.generateCommitMessage",
-        "title": "Vertex AI Models Chat Provider: Generate Commit Message",
+        "title": "Google Agent Platform: Generate Commit Message",
         "shortTitle": "Generate Commit Message",
         "icon": "$(wand)"
       },
       {
         "command": "vertexAiChat.setServiceAccountKey",
-        "title": "Vertex AI: Paste Service Account JSON Key"
+        "title": "Google Agent Platform: Paste Service Account JSON Key"
       },
       {
         "command": "vertexAiChat.setServiceAccountPath",
-        "title": "Vertex AI: Select Service Account JSON File"
+        "title": "Google Agent Platform: Select Service Account JSON File"
       },
       {
         "command": "vertexAiChat.selectAuthMethod",
-        "title": "Vertex AI: Select Authentication Method"
+        "title": "Google Agent Platform: Select Authentication Method"
       },
       {
         "command": "vertexAiChat.clearAuthMethod",
-        "title": "Vertex AI: Clear Authentication Method (Use ADC)"
+        "title": "Google Agent Platform: Clear Authentication Method (Use ADC)"
       }
     ],
     "menus": {
@@ -63,19 +63,19 @@
     "languageModelChatProviders": [
       {
         "vendor": "google-vertex",
-        "displayName": "Google Cloud Vertex AI",
+        "displayName": "Google Agent Platform (Vertex AI)",
         "configuration": {
           "managementCommand": "vertexAiChat.refreshModels"
         }
       }
     ],
     "configuration": {
-      "title": "Vertex AI Models Chat Provider",
+      "title": "Google Agent Platform (Vertex AI)",
       "properties": {
         "vertexAiChat.projectId": {
           "type": "string",
           "default": "",
-          "description": "GCP Project ID to use with Vertex AI. Models and regions are auto-discovered."
+          "description": "GCP Project ID to use with Google Agent Platform. Models and regions are auto-discovered."
         },
         "vertexAiChat.retryMaxDurationMinutes": {
           "type": "integer",
@@ -91,7 +91,7 @@
         "vertexAiChat.enableUserLabel": {
           "type": "boolean",
           "default": false,
-          "description": "Include a user identifier as a 'vscode-vertex-ai-user' label in Vertex AI calls. Values are automatically sanitized to meet GCP label requirements (lowercase, numbers, hyphens, underscores)."
+          "description": "Include a user identifier as a 'vscode-vertex-ai-user' label in Google Agent Platform calls. Values are automatically sanitized to meet GCP label requirements (lowercase, numbers, hyphens, underscores)."
         },
         "vertexAiChat.userLabelValue": {
           "type": "string",
@@ -102,7 +102,7 @@
         "vertexAiChat.enableProjectLabel": {
           "type": "boolean",
           "default": false,
-          "description": "Include the current VS Code project name as a 'vscode-vertex-ai-project' label in Vertex AI calls. Values are automatically sanitized to meet GCP label requirements."
+          "description": "Include the current VS Code project name as a 'vscode-vertex-ai-project' label in Google Agent Platform calls. Values are automatically sanitized to meet GCP label requirements."
         },
         "vertexAiChat.projectLabelValue": {
           "type": "string",

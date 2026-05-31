@@ -8,7 +8,7 @@
 Experience enterprise-grade AI directly within the **standard VS Code Chat panel**.
 
 <p align="center">
-  <img src="images/demo.gif" alt="Vertex AI Chat Demo" width="800">
+  <img src="images/demo.gif" alt="Google Agent Platform Demo" width="800">
 </p>
 
 This extension registers **Google Gemini**, **Anthropic Claude**, and **MaaS open-weight models** as first-class providers—**no separate UI, no extra windows, no friction.**
@@ -26,7 +26,7 @@ This extension registers **Google Gemini**, **Anthropic Claude**, and **MaaS ope
 > ⚠️ **Important:** Before using this extension, ensure your Google Cloud project is properly configured to avoid authentication or permission errors.
 >
 > 1. **Enable APIs**: Enable the **Agent Platform API** (`aiplatform.googleapis.com`) in the Cloud Console ([Docs](https://docs.cloud.google.com/gemini-enterprise-agent-platform)).
-> 2. **IAM Roles**: Your account requires the **Agent Platform User** (`roles/aiplatform.user`) role ([Docs](https://docs.cloud.google.com/iam/docs/roles-permissions/aiplatform)).
+> 2. **IAM Roles**: Your account requires the **Agent Platform User** (`roles/aiplatform.user`) role ([Docs](https://docs.cloud.google.com/iam/docs/roles-permissions/aiplatform#aiplatform.user)).
 > 3. **Model Access**: For Anthropic Claude models, find them in the **Vertex AI Model Garden** and click **Enable** ([Docs](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude)).
 
 ## 🚀 Quick Start

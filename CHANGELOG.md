@@ -1,8 +1,24 @@
 # Changelog
 
-All notable changes to the **Vertex AI Models Chat Provider** extension will be documented in this file.
+All notable changes to the **Google Agent Platform (Vertex AI)** extension will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
+
+## [0.5.0] — 2026-05-31
+
+### Added
+
+- **Rebranded to Google Agent Platform** — Renamed the extension to "Google Agent Platform for Copilot Chat" to align with Google Cloud's updated product branding.
+- **Model-as-a-Service (MaaS) Support** — Integrated `VertexMaaSProvider` for high-performance open-weight models (`Qwen3-Coder`, `DeepSeek V3.2`, `Kimi K2`). Includes native `reasoning_content` extraction to ensure clean responses from "thinking" models.
+- **Private Service Account Auth** — Support for pasting Service Account JSON keys directly into secure VS Code Secret Storage, enabling "Zero-Pollution" authentication without system-wide environment variables.
+- **Enhanced Status Bar Visibility** — Added dynamic icons reflecting the active auth method and a detailed tooltip showing the source of the Project ID (Workspace, User, or Auto-detected).
+- **Custom Resource Labeling** — Added settings for custom labels at the request level, enabling granular cost attribution in the Google Cloud Console.
+
+### Improved
+
+- **Unified Logger** — Centralized all diagnostic output into a unified `Logger` utility for better troubleshooting and cleaner output channel management.
+- **Project ID Resolution** — Enhanced the logic for Project ID enforcement and auto-discovery to ensure consistent billing across multi-root workspaces.
+
 
 ## [0.4.5] — 2026-05-27
 
