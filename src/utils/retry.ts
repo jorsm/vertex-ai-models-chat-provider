@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { Logger } from "./Logger";
 
 export class VertexAuthenticationError extends Error {
   constructor(message: string) {
@@ -28,6 +29,9 @@ export interface RetryOptions {
   /** Maximum total retry duration in milliseconds (default from settings or 30 minutes) */
   maxRetryDurationMs?: number;
 }
+
+// ─── Logger instance for retry operations ────────────────────────────────────
+const logger = new Logger("Retry");
 
 /**
  * Executes an async operation with automatic exponential backoff retries.
@@ -101,7 +105,7 @@ export async function withRetry<T>(operation: () => Promise<T>, options?: RetryO
         throw e;
       }
 
-      handleRetryAttempt(attempt, maxRetries, actualDelayMs, e, retryLog, options?.log);
+      handleRetryAttempt(attempt, maxRetries, actualDelayMs, e, retryLog);
       await new Promise((resolve) => setTimeout(resolve, actualDelayMs));
     }
   }
@@ -121,11 +125,11 @@ function logRetrySummary(success: boolean, attempt: number, retryLog: RetryLogEn
     return;
   }
   const message = success ? `✅ Operation succeeded after ${attempt} retries.` : `❌ Operation failed after ${attempt} retries. Final error: ${error.message || error}`;
-  log(message);
-  log(`   Retry history: ${JSON.stringify(retryLog, null, 2)}`);
+  logger.log(message);
+  logger.log(`   Retry history: ${JSON.stringify(retryLog, null, 2)}`);
 }
 
-function handleRetryAttempt(attempt: number, maxRetries: number, delayMs: number, e: any, retryLog: RetryLogEntry[], log?: (msg: string) => void) {
+function handleRetryAttempt(attempt: number, maxRetries: number, delayMs: number, e: any, retryLog: RetryLogEntry[]) {
   const errorMsg = e.message || e.toString();
   retryLog.push({
     attempt,
@@ -134,9 +138,7 @@ function handleRetryAttempt(attempt: number, maxRetries: number, delayMs: number
     timestamp: new Date().toISOString(),
   });
 
-  if (log) {
-    log(`⚠️ Retryable error encountered: "${errorMsg}". Retrying in ${Math.round(delayMs)}ms (attempt ${attempt}/${maxRetries})...`);
-  }
+  logger.log(`⚠️ Retryable error encountered: "${errorMsg}". Retrying in ${Math.round(delayMs)}ms (attempt ${attempt}/${maxRetries})...`);
 }
 
 // Native Node.js / Fetch network error codes that are safe to retry

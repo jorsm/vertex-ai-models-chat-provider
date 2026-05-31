@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { VertexGoogleProvider } from "./providers/VertexGoogleProvider";
 import { UsageTrackerService } from "./UsageTrackerService";
+import { Logger } from "./utils/Logger";
 
 const MODEL_ID = "gemini-3-flash-preview";
 
@@ -71,12 +72,7 @@ CRITICAL: Output ONLY the raw commit message text. Do NOT wrap your response in 
 Git Diff:
 ${diffString}`;
 
-const outputChannel = vscode.window.createOutputChannel("Vertex AI Models: Commit Message");
-
-function log(msg: string): void {
-  const ts = new Date().toISOString();
-  outputChannel.appendLine(`[${ts}] ${msg}`);
-}
+const logger = new Logger("CommitMessage");
 
 function getGitAPI(): any {
   const gitExtension = vscode.extensions.getExtension<any>("vscode.git")?.exports;
@@ -121,21 +117,21 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
     return fullPath.startsWith(workspaceRoot) ? fullPath.slice(workspaceRoot.length).replace(/^[\\/]/, "") : fullPath;
   });
 
-  log(`▶ generateCommitMessage — ${stagedChanges.length} staged file(s): ${stagedPaths.join(", ")}`);
+  logger.log(`▶ generateCommitMessage — ${stagedChanges.length} staged file(s): ${stagedPaths.join(", ")}`);
 
   // Collect all staged diffs
   const diffParts: string[] = [];
   for (let i = 0; i < stagedChanges.length; i++) {
-    log(`── [${i + 1}/${stagedChanges.length}] ${stagedPaths[i]}`);
+    logger.log(`── [${i + 1}/${stagedChanges.length}] ${stagedPaths[i]}`);
     try {
       const diff: string = await repo.diffIndexWithHEAD(stagedChanges[i].uri.fsPath);
       if (diff.length > 0) {
         diffParts.push(diff);
       } else {
-        log(`   (empty diff — skipped)`);
+        logger.log(`   (empty diff — skipped)`);
       }
     } catch (e) {
-      log(`   ⚠️  Failed to get diff: ${e}`);
+      logger.log(`   ⚠️  Failed to get diff: ${e}`);
     }
   }
 
@@ -145,7 +141,7 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
   }
 
   const combinedDiff = diffParts.join("\n");
-  log(`── Sending ${combinedDiff.length} chars of diff to ${MODEL_ID}…`);
+  logger.log(`── Sending ${combinedDiff.length} chars of diff to ${MODEL_ID}…`);
 
   // Build the VS Code LLM message objects.
   // Role 0 is neither User (1) nor Assistant (2), so VertexAnthropicProvider treats it as a system prompt.
@@ -175,7 +171,7 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
   try {
     const result = await provider.provideLanguageModelChatResponse(MODEL_ID, messages, options, progress, token);
     commitMessage = commitMessage.trim();
-    log(`✅ Generated: ${commitMessage}`);
+    logger.log(`✅ Generated: ${commitMessage}`);
     repo.inputBox.value = commitMessage;
 
     if (result.usage.input > 0 || result.usage.output > 0) {
@@ -187,10 +183,10 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
           cache_create: result.usage.cache_create,
           characters: result.charCount,
         })
-        .catch((err) => log(`⚠️ Failed to record usage: ${err}`));
+        .catch((err) => logger.log(`⚠️ Failed to record usage: ${err}`));
     }
   } catch (e) {
-    log(`❌ LLM call failed: ${e}`);
+    logger.log(`❌ LLM call failed: ${e}`);
     repo.inputBox.value = "";
     vscode.window.showErrorMessage(`Vertex AI Models Chat Provider: Failed to generate commit message — ${e}`);
   }

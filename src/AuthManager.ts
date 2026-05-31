@@ -2,6 +2,7 @@ import * as childProcess from "child_process";
 import * as fs from "fs";
 import * as util from "util";
 import * as vscode from "vscode";
+import { Logger } from "./utils/Logger";
 
 const execAsync = util.promisify(childProcess.exec);
 
@@ -24,17 +25,12 @@ const WORKSPACE_AUTH_METHOD_KEY = "vertexAiChat.activeAuthMethod";
 const SUPPRESS_WARNING_KEY = "vertexAiChat.suppressAuthWarning";
 
 export class AuthManager {
-  private readonly outputChannel: vscode.OutputChannel;
+  private readonly logger = new Logger("AuthManager");
   private readonly _onAuthUpdated = new vscode.EventEmitter<void>();
   public readonly onAuthUpdated = this._onAuthUpdated.event;
 
   constructor(private readonly context: vscode.ExtensionContext) {
-    this.outputChannel = vscode.window.createOutputChannel("Vertex AI: Auth");
-  }
-
-  private log(msg: string): void {
-    const ts = new Date().toISOString();
-    this.outputChannel.appendLine(`[${ts}] ${msg}`);
+    // No output channel creation needed
   }
 
   /**
@@ -53,17 +49,17 @@ export class AuthManager {
     // 1. Explicit selection (Secret or File)
     if (authMethod?.type === "secret") {
       if (!authMethod.value) {
-        this.log("Secret auth selected but no name provided.");
+        this.logger.log("Secret auth selected but no name provided.");
         return undefined;
       }
       const secret = await this.context.secrets.get(SECRETS_PREFIX + authMethod.value);
       if (secret) {
         try {
           const credentials = JSON.parse(secret);
-          this.log(`Using Service Account secret: ${authMethod.value}`);
+          this.logger.log(`Using Service Account secret: ${authMethod.value}`);
           return { credentials, projectId: credentials.project_id };
         } catch (e) {
-          this.log(`Error parsing secret '${authMethod.value}': ${e}`);
+          this.logger.log(`Error parsing secret '${authMethod.value}': ${e}`);
           await this.showFallbackWarning(`secret '${authMethod.value}'`);
           /*
            * DESIGN CHOICE: We return undefined here to trigger the standard ADC fallback.
@@ -75,7 +71,7 @@ export class AuthManager {
            */
         }
       } else {
-        this.log(`Secret '${authMethod.value}' not found in storage.`);
+        this.logger.log(`Secret '${authMethod.value}' not found in storage.`);
         await this.showFallbackWarning(`secret '${authMethod.value}'`);
       }
       return undefined;
@@ -83,7 +79,7 @@ export class AuthManager {
 
     if (authMethod?.type === "file") {
       if (!authMethod.value) {
-        this.log("File auth selected but no path provided.");
+        this.logger.log("File auth selected but no path provided.");
         return undefined;
       }
       const options = this.resolveFromFile(authMethod.value);
@@ -94,7 +90,7 @@ export class AuthManager {
     }
 
     if (authMethod?.type === "adc") {
-      this.log("Using standard Application Default Credentials (ADC).");
+      this.logger.log("Using standard Application Default Credentials (ADC).");
       return undefined;
     }
 
@@ -103,12 +99,12 @@ export class AuthManager {
     if (envPath) {
       const options = this.resolveFromFile(envPath);
       if (options) {
-        this.log(`Using GOOGLE_APPLICATION_CREDENTIALS: ${envPath}`);
+        this.logger.log(`Using GOOGLE_APPLICATION_CREDENTIALS: ${envPath}`);
         return options;
       }
     }
 
-    this.log("No explicit auth method set, using standard Application Default Credentials (ADC).");
+    this.logger.log("No explicit auth method set, using standard Application Default Credentials (ADC).");
     return undefined;
   }
 
@@ -119,7 +115,7 @@ export class AuthManager {
         const credentials = JSON.parse(content);
         return { keyFilename: filePath, credentials, projectId: credentials.project_id };
       } catch (e) {
-        this.log(`Error reading/parsing file '${filePath}': ${e}`);
+        this.logger.log(`Error reading/parsing file '${filePath}': ${e}`);
       }
     }
     return undefined;
@@ -291,7 +287,7 @@ export class AuthManager {
         return email;
       }
     } catch (e) {
-      this.log(`Failed to get gcloud account email: ${e}`);
+      this.logger.log(`Failed to get gcloud account email: ${e}`);
     }
     return undefined;
   }

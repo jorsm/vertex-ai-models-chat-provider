@@ -1,12 +1,14 @@
 import * as vscode from "vscode";
 import { AuthManager } from "./AuthManager";
 import { UsageTrackerService } from "./UsageTrackerService";
+import { Logger } from "./utils/Logger";
 
 export class CostStatusBar implements vscode.Disposable {
   private readonly statusBarItem: vscode.StatusBarItem;
   private readonly usageTracker: UsageTrackerService;
   private readonly authManager: AuthManager;
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly logger = new Logger("CostStatusBar");
 
   constructor(usageTracker: UsageTrackerService, authManager: AuthManager) {
     this.usageTracker = usageTracker;
@@ -20,19 +22,19 @@ export class CostStatusBar implements vscode.Disposable {
     // Listen to usage updates
     this.disposables.push(
       this.usageTracker.onUsageUpdated(() => {
-        this.updateStatusBar().catch((err) => console.error(err));
+        this.updateStatusBar().catch((err) => this.logger.log(`Error updating status bar on usage update: ${err}`));
       }),
     );
 
     // Listen to auth updates
     this.disposables.push(
       this.authManager.onAuthUpdated(() => {
-        this.updateStatusBar().catch((err) => console.error(err));
+        this.updateStatusBar().catch((err) => this.logger.log(`Error updating status bar on auth update: ${err}`));
       }),
     );
 
     // Initial update
-    this.updateStatusBar().catch((err) => console.error(err));
+    this.updateStatusBar().catch((err) => this.logger.log(`Error updating status bar on initialization: ${err}`));
     this.statusBarItem.show();
   }
 
@@ -89,10 +91,10 @@ export class CostStatusBar implements vscode.Disposable {
       tooltip.appendMarkdown(`${identityText}\n\n`);
       tooltip.appendMarkdown(`---\n\n`);
       tooltip.appendMarkdown(`$(dashboard) Click to open Dashboard`);
-      
+
       this.statusBarItem.tooltip = tooltip;
     } catch (error) {
-      console.error("[CostStatusBar] Error updating status bar:", error);
+      this.logger.log(`Error updating status bar: ${error}`);
       this.statusBarItem.text = `$(pulse) Today: $--.--`;
       this.statusBarItem.tooltip = "Click to open Usage Dashboard";
     }

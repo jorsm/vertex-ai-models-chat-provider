@@ -8,6 +8,7 @@ import { VertexGoogleProvider } from "./providers/VertexGoogleProvider";
 import { VertexMaaSProvider } from "./providers/VertexMaaSProvider";
 import { VertexModelProvider } from "./providers/VertexModelProvider";
 import { UsageTrackerService } from "./UsageTrackerService";
+import { Logger } from "./utils/Logger";
 import { estimateTokens } from "./utils/tokens";
 
 const execAsync = util.promisify(childProcess.exec);
@@ -41,15 +42,6 @@ export interface DiscoveryResult {
   availableModels: ModelSpec[];
 }
 
-// ─── Output channel for diagnostics ─────────────────────────────────────────
-
-const outputChannel = vscode.window.createOutputChannel("Vertex AI Models: Dispatcher");
-
-function log(msg: string): void {
-  const ts = new Date().toISOString();
-  outputChannel.appendLine(`[${ts}] ${msg}`);
-}
-
 // ─── Dispatcher ─────────────────────────────────────────────────────────────
 
 export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvider {
@@ -63,6 +55,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   private _discoveryPromise: Promise<DiscoveryResult> | null = null;
   private _labelsPromise: Promise<void> | null = null;
   private cachedUserEmail: string | undefined;
+  private readonly logger = new Logger("VertexChatModelDispatcher");
 
   /** Fires when the available model list changes — VS Code re-queries provideLanguageModelChatInformation. */
   private readonly _onDidChange = new vscode.EventEmitter<void>();
@@ -77,22 +70,22 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     // Re-resolve identity and update labels when authentication changes
     this.authManager.onAuthUpdated(() => {
-      this.updateLabels().catch((err) => log(`⚠️ Failed to update labels on auth change: ${err}`));
+      this.updateLabels().catch((err) => this.logger.log(`⚠️ Failed to update labels on auth change: ${err}`));
     });
   }
 
   private registerProviders() {
     // Currently hardcoded, could be dynamic in the future
     const anthropicProvider = new VertexAnthropicProvider();
-    log(`Registered plugin for vendor: ${anthropicProvider.vendor}`);
+    this.logger.log(`Registered plugin for vendor: ${anthropicProvider.vendor}`);
     this.activeProviders.set(anthropicProvider.vendor, anthropicProvider);
 
     const googleProvider = new VertexGoogleProvider();
-    log(`Registered plugin for vendor: ${googleProvider.vendor}`);
+    this.logger.log(`Registered plugin for vendor: ${googleProvider.vendor}`);
     this.activeProviders.set(googleProvider.vendor, googleProvider);
 
     const maasProvider = new VertexMaaSProvider();
-    log(`Registered plugin for vendor: ${maasProvider.vendor}`);
+    this.logger.log(`Registered plugin for vendor: ${maasProvider.vendor}`);
     this.activeProviders.set(maasProvider.vendor, maasProvider);
   }
 
@@ -116,7 +109,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
       labels["vscode-vertex-ai-user"] = this.sanitizeLabelValue(this.cachedUserEmail);
     }
 
-    log(`Updating base labels for providers: ${JSON.stringify(labels)}`);
+    this.logger.log(`Updating base labels for providers: ${JSON.stringify(labels)}`);
     for (const provider of this.activeProviders.values()) {
       provider.setLabels(labels);
     }
@@ -169,7 +162,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const effectiveProjectId = this.projectId;
 
     if (!effectiveProjectId) {
-      log("❌ No Project ID configured in settings (vertexAiChat.projectId). Discovery aborted.");
+      this.logger.log("❌ No Project ID configured in settings (vertexAiChat.projectId). Discovery aborted.");
       vscode.window.showErrorMessage("Vertex AI: Please configure a GCP Project ID in your settings to use this extension.");
       this.availableModels = [];
       this.discoveryDone = true;
@@ -185,21 +178,21 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
      */
     if (authOptions?.projectId && authOptions.projectId !== effectiveProjectId) {
       const msg = `Configuration Note: Settings specify project '${effectiveProjectId}', but Service Account belongs to '${authOptions.projectId}'. Proceeding assuming cross-project IAM permissions.`;
-      log(`⚠️ ${msg}`);
+      this.logger.log(`⚠️ ${msg}`);
       vscode.window.showWarningMessage(`Vertex AI: ${msg}`);
       // We do NOT return or abort here, allowing the provider.pingModel to perform the actual access check.
     }
 
-    log(`Starting model discovery for project "${effectiveProjectId}"…`);
+    this.logger.log(`Starting model discovery for project "${effectiveProjectId}"…`);
 
     for (const region of regions) {
-      log(`  Probing region "${region}"…`);
+      this.logger.log(`  Probing region "${region}"…`);
       const available: ModelSpec[] = [];
 
       for (const model of candidates) {
         const provider = this.activeProviders.get(model.vendor);
         if (!provider) {
-          log(`  ⚠️  No provider registered for vendor "${model.vendor}", skipping ${model.id}`);
+          this.logger.log(`  ⚠️  No provider registered for vendor "${model.vendor}", skipping ${model.id}`);
           continue;
         }
 
@@ -213,15 +206,15 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
           // If we hit an authentication error, we should stop trying other regions
           // and bubble the error up to the UI.
           if (e.name === "VertexAuthenticationError") {
-            log(`❌ Authentication error during discovery: ${e.message}`);
+            this.logger.log(`❌ Authentication error during discovery: ${e.message}`);
             throw e;
           }
-          log(`  ⚠️ Ping failed for ${model.id} in ${region}: ${e.message || e}`);
+          this.logger.log(`  ⚠️ Ping failed for ${model.id} in ${region}: ${e.message || e}`);
         }
       }
 
       if (available.length > 0) {
-        log(`✅ Region "${region}" — ${available.length} model(s) available: ${available.map((m) => m.id).join(", ")}`);
+        this.logger.log(`✅ Region "${region}" — ${available.length} model(s) available: ${available.map((m) => m.id).join(", ")}`);
 
         this.region = region;
         this.availableModels = available;
@@ -231,10 +224,10 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         return { region, availableModels: available };
       }
 
-      log(`  ⚠️  No models responded in "${region}", trying next…`);
+      this.logger.log(`  ⚠️  No models responded in "${region}", trying next…`);
     }
 
-    log("❌ No models available in any region.");
+    this.logger.log("❌ No models available in any region.");
     this.availableModels = [];
     this.discoveryDone = true;
     this._onDidChange.fire();
@@ -257,7 +250,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     this.availableModels = [];
     this.discoveryDone = false;
     this._onDidChange.fire();
-    log("🚫 Available models cleared due to error.");
+    this.logger.log("🚫 Available models cleared due to error.");
   }
 
   // ── Chat provider interface ───────────────────────────────────────────
@@ -321,7 +314,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     token: vscode.CancellationToken,
   ): Promise<void> {
     if (this._discoveryPromise) {
-      log(`  ⏳ Waiting for model discovery to complete before inference...`);
+      this.logger.log(`  ⏳ Waiting for model discovery to complete before inference...`);
       await this._discoveryPromise;
     }
     if (this._labelsPromise) {
@@ -331,16 +324,16 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const modelId = model.id;
     const spec = (this.availableModels.length > 0 ? this.availableModels : (localCatalog as ModelCatalog).candidateModels).find((m) => m.id === modelId);
 
-    log(`▶ provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, vendor: ${spec?.vendor}, messages: ${messages.length}`);
+    this.logger.log(`▶ provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, vendor: ${spec?.vendor}, messages: ${messages.length}`);
 
     if (!spec) {
-      log(`  ❌ Model ID ${modelId} not found in available models catalog`);
+      this.logger.log(`  ❌ Model ID ${modelId} not found in available models catalog`);
       throw new Error(`Model not available: ${modelId}`);
     }
 
     const provider = this.activeProviders.get(spec.vendor);
     if (!provider) {
-      log(`  ❌ No plugin provider found for vendor ${spec.vendor}`);
+      this.logger.log(`  ❌ No plugin provider found for vendor ${spec.vendor}`);
       throw new Error(`Integration for vendor ${spec.vendor} is not registered.`);
     }
 
@@ -392,7 +385,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     try {
       const result = await provider.provideLanguageModelChatResponse(modelId, messages, options, progress, token, requestLabels);
-      log(`  ✅ Successfully completed request via plugin ${provider.vendor}`);
+      this.logger.log(`  ✅ Successfully completed request via plugin ${provider.vendor}`);
 
       if (result.usage.input > 0 || result.usage.output > 0) {
         this.usageTracker
@@ -403,10 +396,10 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
             cache_create: result.usage.cache_create,
             characters: result.charCount,
           })
-          .catch((err) => log(`  ⚠️ Failed to record usage: ${err}`));
+          .catch((err) => this.logger.log(`  ⚠️ Failed to record usage: ${err}`));
       }
     } catch (e) {
-      log(`  ❌ provideLanguageModelChatResponse error: ${e}`);
+      this.logger.log(`  ❌ provideLanguageModelChatResponse error: ${e}`);
       throw e;
     }
   }

@@ -1,13 +1,17 @@
 import * as vscode from "vscode";
+import { AuthManager } from "./AuthManager";
 import { generateCommitMessage } from "./CommitMessage";
 import { CostStatusBar } from "./CostStatusBar";
 import { DashboardWebview } from "./DashboardWebview";
 import { UsageTrackerService } from "./UsageTrackerService";
 import { VertexChatModelDispatcher } from "./VertexChatModelDispatcher";
+import { Logger } from "./utils/Logger";
 import { VertexAuthenticationError } from "./utils/retry";
-import { AuthManager } from "./AuthManager";
 
 export async function activate(context: vscode.ExtensionContext) {
+  // Initialize the logger
+  Logger.initialize();
+
   const authManager = new AuthManager(context);
   let config = vscode.workspace.getConfiguration("vertexAiChat");
   let projectId = config.get<string>("projectId") || "";

@@ -4,15 +4,7 @@ import * as vscode from "vscode";
 import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
 import { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
-
-// ─── Output channel for diagnostics ─────────────────────────────────────────
-
-const outputChannel = vscode.window.createOutputChannel("Vertex AI Models: Anthropic Provider");
-
-function log(msg: string): void {
-  const ts = new Date().toISOString();
-  outputChannel.appendLine(`[${ts}] ${msg}`);
-}
+import { Logger } from "../utils/Logger";
 
 // ─── Provider Plugin ───────────────────────────────────────────────────────
 
@@ -22,6 +14,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
   private projectId!: string;
   private region!: string;
   private labels: Record<string, string> = {};
+  private readonly logger = new Logger("VertexAnthropicProvider");
 
   initialize(projectId: string, region: string, authOptions?: any): void {
     this.projectId = projectId;
@@ -51,15 +44,15 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         messages: [{ role: "user", content: "ping" }],
         max_tokens: 1,
       } as any);
-      log(`    🏓 Anthropic ${modelId} → ✅`);
+      this.logger.log(`    🏓 Anthropic ${modelId} → ✅`);
       return true;
     } catch (e: any) {
       if (isRetryableError(e)) {
-        log(`    🏓 Anthropic ${modelId} → ✅ (rate limited, but available)`);
+        this.logger.log(`    🏓 Anthropic ${modelId} → ✅ (rate limited, but available)`);
         return true;
       }
       checkAuthError(e);
-      log(`    🏓 Anthropic ${modelId} → ❌`);
+      this.logger.log(`    🏓 Anthropic ${modelId} → ❌`);
       return false;
     }
   }
@@ -80,11 +73,11 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     token: vscode.CancellationToken,
     labels?: Record<string, string>,
   ): Promise<ChatInferenceResult> {
-    log(`▶ Anthropic Plugin provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, messages: ${messages.length}`);
+    this.logger.log(`▶ Anthropic Plugin provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, messages: ${messages.length}`);
 
     const requestLabels = labels || this.labels;
     if (Object.keys(requestLabels).length > 0) {
-      log(`  🏷️  Labels: ${JSON.stringify(requestLabels)}`);
+      this.logger.log(`  🏷️  Labels: ${JSON.stringify(requestLabels)}`);
     }
     try {
       const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
@@ -109,12 +102,11 @@ export class VertexAnthropicProvider implements VertexModelProvider {
             ...(Object.keys(requestLabels).length > 0 ? { labels: requestLabels } : {}),
           } as any),
         {
-          log: log,
           token: token,
         },
       );
 
-      log(`  Stream created successfully`);
+      this.logger.log(`  Stream created successfully`);
 
       const usage = await this.processStream(stream, charCount, progress, token);
 
@@ -134,12 +126,12 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         };
 
         progress.report(new vscode.LanguageModelDataPart(new TextEncoder().encode(JSON.stringify(usagePayload)), "usage"));
-        log(`  📊 Reported token usage to VS Code: ${JSON.stringify(usagePayload)}`);
+        this.logger.log(`  📊 Reported token usage to VS Code: ${JSON.stringify(usagePayload)}`);
       }
 
       return { usage, charCount };
     } catch (e: any) {
-      log(`  ❌ Anthropic provideLanguageModelChatResponse error: ${e}`);
+      this.logger.log(`  ❌ Anthropic provideLanguageModelChatResponse error: ${e}`);
       checkAuthError(e);
       throw e;
     }
@@ -155,7 +147,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
       const msg = messages[i];
       const roleNum = msg.role;
       const roleName = this.roleName(roleNum);
-      log(`  ── Message [${i}] role=${roleName} (${roleNum}), ${msg.content.length} part(s)`);
+      this.logger.log(`  ── Message [${i}] role=${roleName} (${roleNum}), ${msg.content.length} part(s)`);
 
       this.logMessageParts(msg.content);
 
@@ -170,7 +162,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     }
 
     if (mappedMessages.length === 0 || mappedMessages[0].role !== "user") {
-      log(`  ⚠️  No user messages — inserting placeholder`);
+      this.logger.log(`  ⚠️  No user messages — inserting placeholder`);
       mappedMessages.unshift({ role: "user", content: [{ type: "text", text: " " }] });
     }
 
@@ -195,29 +187,29 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         charCount.system += part.value.length;
       }
     }
-    log(`     → Extracted as system prompt (${systemParts.length} part(s) so far, ${systemParts.reduce((a, s) => a + s.length, 0)} chars total)`);
+    this.logger.log(`     → Extracted as system prompt (${systemParts.length} part(s) so far, ${systemParts.reduce((a, s) => a + s.length, 0)} chars total)`);
   }
 
   private logMessageParts(content: readonly vscode.LanguageModelChatRequestMessage["content"][number][]): void {
     content.forEach((part, p) => {
       if (part instanceof vscode.LanguageModelTextPart) {
         const preview = part.value.length > 300 ? "…" + part.value.slice(-300) : part.value;
-        log(`     Part [${p}] TextPart (${part.value.length} chars): ${preview}`);
+        this.logger.log(`     Part [${p}] TextPart (${part.value.length} chars): ${preview}`);
       } else if (part instanceof vscode.LanguageModelToolResultPart) {
-        log(`     Part [${p}] ToolResultPart callId=${part.callId}, content: ${this.previewToolResult(part)}`);
+        this.logger.log(`     Part [${p}] ToolResultPart callId=${part.callId}, content: ${this.previewToolResult(part)}`);
       } else if (part instanceof vscode.LanguageModelToolCallPart) {
         const inputStr = JSON.stringify(part.input);
         const inputPreview = inputStr.length > 200 ? "…" + inputStr.slice(-200) : inputStr;
-        log(`     Part [${p}] ToolCallPart callId=${part.callId}, name=${part.name}, input=${inputPreview}`);
+        this.logger.log(`     Part [${p}] ToolCallPart callId=${part.callId}, name=${part.name}, input=${inputPreview}`);
       } else if (part instanceof vscode.LanguageModelDataPart) {
-        log(`     Part [${p}] DataPart mime=${part.mimeType}, size=${part.data?.byteLength ?? 0} bytes`);
+        this.logger.log(`     Part [${p}] DataPart mime=${part.mimeType}, size=${part.data?.byteLength ?? 0} bytes`);
       } else {
         const keys = Object.keys(part as object);
         const snapshot = keys
           .slice(0, 5)
           .map((k) => `${k}=${String((part as Record<string, unknown>)[k]).slice(0, 50)}`)
           .join(", ");
-        log(`     Part [${p}] Unknown part type: ${Object.getPrototypeOf(part)?.constructor?.name ?? typeof part} — keys: [${keys.join(", ")}] ${snapshot}`);
+        this.logger.log(`     Part [${p}] Unknown part type: ${Object.getPrototypeOf(part)?.constructor?.name ?? typeof part} — keys: [${keys.join(", ")}] ${snapshot}`);
       }
     });
   }
@@ -285,7 +277,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
       const base64 = Buffer.from(part.data).toString("base64");
       contentParts.push({ type: "image", source: { type: "base64", media_type: part.mimeType, data: base64 } });
       charCount.image += base64.length;
-      log(`     🖼️  Mapped image: ${part.mimeType}, ${part.data.byteLength} bytes → base64 (${base64.length} chars)`);
+      this.logger.log(`     🖼️  Mapped image: ${part.mimeType}, ${part.data.byteLength} bytes → base64 (${base64.length} chars)`);
     } else {
       this.mapNonImageDataPart(part, role, contentParts, charCount);
     }
@@ -301,10 +293,10 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         } else {
           charCount.assistant_text += text.length;
         }
-        log(`     📎 Mapped non-image DataPart (${part.mimeType}) as text (${text.length} chars)`);
+        this.logger.log(`     📎 Mapped non-image DataPart (${part.mimeType}) as text (${text.length} chars)`);
       }
     } catch {
-      log(`     ⚠️  Skipped non-image DataPart (${part.mimeType}, ${part.data.byteLength} bytes) — could not decode`);
+      this.logger.log(`     ⚠️  Skipped non-image DataPart (${part.mimeType}, ${part.data.byteLength} bytes) — could not decode`);
     }
   }
 
@@ -334,7 +326,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     // 2. Chat History Caching (Messages)
     const { historyCached, historyTokens } = this.applyHistoryCache(mappedMessages);
 
-    log(`  Caching Strategy Applied: Prefix=${prefixCached}, History=${historyCached} (Estimated ${historyTokens} tokens)`);
+    this.logger.log(`  Caching Strategy Applied: Prefix=${prefixCached}, History=${historyCached} (Estimated ${historyTokens} tokens)`);
   }
 
   private applyPrefixCache(tools: any[] | undefined, systemBlocks: any[] | undefined): boolean {
@@ -368,16 +360,16 @@ export class VertexAnthropicProvider implements VertexModelProvider {
   // ── Logging helpers ───────────────────────────────────────────────────
 
   private logMappedMessages(modelId: string, mappedMessages: any[], systemBlocks: any[] | undefined, tools: any[] | undefined): void {
-    log(`  ── Mapped messages summary ──`);
+    this.logger.log(`  ── Mapped messages summary ──`);
     for (let i = 0; i < mappedMessages.length; i++) {
       const mm = mappedMessages[i];
       const partsDesc = mm.content.map((p: any) => p.type + (p.cache_control ? " [CACHED]" : "")).join(", ");
-      log(`     [${i}] ${mm.role}: ${partsDesc}`);
+      this.logger.log(`     [${i}] ${mm.role}: ${partsDesc}`);
     }
 
     const sysCharCount = systemBlocks ? systemBlocks.reduce((a: number, b: any) => a + b.text.length, 0) : 0;
     const sysLog = systemBlocks ? sysCharCount + " chars" : "none";
-    log(`  Sending: model=${modelId}, max_tokens=4096, msgs=${mappedMessages.length}, system=${sysLog}, tools=${tools?.length ?? 0}`);
+    this.logger.log(`  Sending: model=${modelId}, max_tokens=4096, msgs=${mappedMessages.length}, system=${sysLog}, tools=${tools?.length ?? 0}`);
   }
 
   // ── Stream processing ─────────────────────────────────────────────────
@@ -390,13 +382,13 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     for await (const chunk of stream) {
       chunkCount++;
       if (token.isCancellationRequested) {
-        log(`  Cancelled after ${chunkCount} chunks`);
+        this.logger.log(`  Cancelled after ${chunkCount} chunks`);
         break;
       }
       this.handleStreamChunk(chunk, charCount, progress, toolState, tokenUsage);
     }
 
-    log(`  ✅ Stream finished — ${chunkCount} chunks total`);
+    this.logger.log(`  ✅ Stream finished — ${chunkCount} chunks total`);
     return tokenUsage;
   }
 
@@ -413,13 +405,13 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         tokenUsage.input = usage.input_tokens ?? 0;
         tokenUsage.cache_read = usage.cache_read_input_tokens ?? 0;
         tokenUsage.cache_create = usage.cache_creation_input_tokens ?? 0;
-        log(`  📊 Input tokens: ${tokenUsage.input}, cache_read: ${tokenUsage.cache_read}, cache_create: ${tokenUsage.cache_create}`);
+        this.logger.log(`  📊 Input tokens: ${tokenUsage.input}, cache_read: ${tokenUsage.cache_read}, cache_create: ${tokenUsage.cache_create}`);
       }
     } else if (chunk.type === "message_delta") {
       const usage = chunk.usage;
       if (usage) {
         tokenUsage.output = usage.output_tokens ?? 0;
-        log(`  📊 Output tokens: ${tokenUsage.output}`);
+        this.logger.log(`  📊 Output tokens: ${tokenUsage.output}`);
       }
     } else if (chunk.type === "content_block_delta" && chunk.delta.type === "text_delta") {
       charCount.assistant_text += chunk.delta.text.length;

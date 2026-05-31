@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { Logger } from "./utils/Logger";
 import * as modelsFile from "./models.json";
 
 export interface PayloadCharacters {
@@ -28,6 +29,7 @@ export interface UsageLogEntry {
 }
 
 export class UsageTrackerService {
+  private readonly logger = new Logger("UsageTrackerService");
   private readonly _onUsageUpdated = new vscode.EventEmitter<void>();
   public readonly onUsageUpdated = this._onUsageUpdated.event;
 
@@ -112,7 +114,7 @@ export class UsageTrackerService {
       // Emit the event to inform other parts of the extension (e.g. Status Bar)
       this._onUsageUpdated.fire();
     } catch (error) {
-      console.error("[UsageTrackerService] Failed to record usage:", error);
+      this.logger.log(`Failed to record usage: ${error}`);
       // Fails safe – missing usage stats shouldn't crash the entire chat provider
     }
   }

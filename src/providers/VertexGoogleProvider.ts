@@ -1,14 +1,9 @@
 import * as https from "https";
 import * as vscode from "vscode";
+import { Logger } from "../utils/Logger";
 import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
 import { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
-const outputChannel = vscode.window.createOutputChannel("Vertex AI Models: Google Provider");
-
-function log(msg: string): void {
-  const ts = new Date().toISOString();
-  outputChannel.appendLine(`[${ts}] ${msg}`);
-}
 
 export class VertexGoogleProvider implements VertexModelProvider {
   vendor = "google";
@@ -17,6 +12,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
   private region!: string;
   private authOptions?: any;
   private labels: Record<string, string> = {};
+  private readonly logger = new Logger("VertexGoogleProvider");
   /**
    * Cache of thought signatures keyed by unique tool call ID.
    * Gemini 3 embeds the thought_signature inline on the functionCall part;
@@ -59,16 +55,16 @@ export class VertexGoogleProvider implements VertexModelProvider {
               if (keys.length > 0) {
                 this.allowedSchemaKeys = new Set(keys);
                 this.discoveryCompleted = true;
-                log(`🌐 Vertex Schema Discovery completed: populated ${keys.length} allowed properties. ${JSON.stringify(keys)}`);
+                this.logger.log(`🌐 Vertex Schema Discovery completed: populated ${keys.length} allowed properties. ${JSON.stringify(keys)}`);
               }
             }
           } catch (e) {
-            log(`⚠️ Vertex Schema Discovery parse error, falling back to safe list: ${e}`);
+            this.logger.log(`⚠️ Vertex Schema Discovery parse error, falling back to safe list: ${e}`);
           }
         });
       })
       .on("error", (e) => {
-        log(`⚠️ Vertex Schema Discovery network error, falling back to safe list: ${e}`);
+        this.logger.log(`⚠️ Vertex Schema Discovery network error, falling back to safe list: ${e}`);
       });
   }
 
@@ -122,15 +118,15 @@ export class VertexGoogleProvider implements VertexModelProvider {
           maxOutputTokens: 1,
         },
       });
-      log(`    🏓 Google ${modelId} -> ${actualId} → ✅`);
+      this.logger.log(`    🏓 Google ${modelId} -> ${actualId} → ✅`);
       return true;
     } catch (e: any) {
       if (isRetryableError(e)) {
-        log(`    🏓 Google ${modelId} -> ${actualId} → ✅ (rate limited, but available)`);
+        this.logger.log(`    🏓 Google ${modelId} -> ${actualId} → ✅ (rate limited, but available)`);
         return true;
       }
       checkAuthError(e);
-      log(`    🏓 Google ${modelId} -> ${actualId} → ❌ ${e}`);
+      this.logger.log(`    🏓 Google ${modelId} -> ${actualId} → ❌ ${e}`);
       return false;
     }
   }
@@ -235,10 +231,10 @@ export class VertexGoogleProvider implements VertexModelProvider {
             const stripped = this.stripLeakedReasoningHeader(cleanText);
             if (stripped.length > 0) {
               cleanText = stripped;
-              log(`  🧹 Stripped leaked reasoning header from model turn in history`);
+              this.logger.log(`  🧹 Stripped leaked reasoning header from model turn in history`);
             } else {
               cleanText = "";
-              log(`  🧹 Stripped entire leaked reasoning model turn in history`);
+              this.logger.log(`  🧹 Stripped entire leaked reasoning model turn in history`);
             }
           }
 
@@ -247,7 +243,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
             const cachedTextSig = this.textSignatureCache.get(textKey);
             if (cachedTextSig) {
               parts.push({ text: cleanText, thoughtSignature: cachedTextSig });
-              log(`  📋 Text part in history: re-attached thought signature (${cachedTextSig.length} chars)`);
+              this.logger.log(`  📋 Text part in history: re-attached thought signature (${cachedTextSig.length} chars)`);
             } else {
               parts.push({ text: cleanText });
             }
@@ -264,18 +260,18 @@ export class VertexGoogleProvider implements VertexModelProvider {
       } else if (p instanceof vscode.LanguageModelToolCallPart) {
         callIdToName.set(p.callId, p.name);
         const cachedSig = this.thoughtSignatureCache.get(p.callId);
-        log(`  📋 ToolCall in history: callId=${p.callId} name=${p.name} hasCachedSig=${!!cachedSig} cacheSize=${this.thoughtSignatureCache.size}`);
+        this.logger.log(`  📋 ToolCall in history: callId=${p.callId} name=${p.name} hasCachedSig=${!!cachedSig} cacheSize=${this.thoughtSignatureCache.size}`);
         if (cachedSig) {
           parts.push({ functionCall: { name: p.name, args: p.input }, thoughtSignature: cachedSig });
-          log(`    ↪ injected inline thought signature on functionCall part (${cachedSig.length} chars)`);
+          this.logger.log(`    ↪ injected inline thought signature on functionCall part (${cachedSig.length} chars)`);
         } else {
-          log(`    ⚠️  NO thought signature found for callId=${p.callId}`);
+          this.logger.log(`    ⚠️  NO thought signature found for callId=${p.callId}`);
           parts.push({ functionCall: { name: p.name, args: p.input } });
         }
         charCount.tool_use += JSON.stringify(p.input).length + p.name.length;
       } else if (p instanceof vscode.LanguageModelToolResultPart) {
         const resolvedName = callIdToName.get(p.callId);
-        log(`  📋 ToolResult in history: callId=${p.callId} resolvedName=${resolvedName ?? "(not found, using callId)"}`);
+        this.logger.log(`  📋 ToolResult in history: callId=${p.callId} resolvedName=${resolvedName ?? "(not found, using callId)"}`);
         parts.push(this.mapToolResult(p, resolvedName));
         charCount.tool_result += 1;
       } else if (p instanceof vscode.LanguageModelDataPart) {
@@ -291,7 +287,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
               parts.push({ text });
             }
           } catch (e) {
-            log(`⚠️  Unparseable data part: ${e}`);
+            this.logger.log(`⚠️  Unparseable data part: ${e}`);
           }
         }
       }
@@ -428,7 +424,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
   }
 
   private logRawParts(rawParts: any[]): void {
-    log(
+    this.logger.log(
       `  🧩 Chunk rawParts[${rawParts.length}]: ${rawParts
         .map((p: any) => {
           if (p.thought) {
@@ -458,11 +454,11 @@ export class VertexGoogleProvider implements VertexModelProvider {
     labels?: Record<string, string>,
   ): Promise<ChatInferenceResult> {
     const { actualId, config } = this.resolveModelId(modelId);
-    log(`▶ Google provideLanguageModelChatResponse called — requested: ${modelId} -> executed: ${actualId}, msgs: ${messages.length}`);
+    this.logger.log(`▶ Google provideLanguageModelChatResponse called — requested: ${modelId} -> executed: ${actualId}, msgs: ${messages.length}`);
 
     const requestLabels = labels || this.labels;
     if (Object.keys(requestLabels).length > 0) {
-      log(`  🏷️  Labels: ${JSON.stringify(requestLabels)}`);
+      this.logger.log(`  🏷️  Labels: ${JSON.stringify(requestLabels)}`);
     }
     const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
     let inputTokens = 0,
@@ -501,12 +497,11 @@ export class VertexGoogleProvider implements VertexModelProvider {
             config: generationConfig,
           }),
         {
-          log: log,
           token: token,
         },
       );
 
-      const processor = new StreamPartProcessor(this, modelId, actualId, progress, charCount);
+      const processor = new StreamPartProcessor(this, modelId, actualId, progress, charCount, this.logger);
       const bufferedCalls: Array<{ callId: string; callName: string; args: any; signature?: string }> = [];
 
       for await (const chunk of stream) {
@@ -528,7 +523,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
             const callName = fc.name || "unknown";
             const callId = `${callName}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
             const signature = inlineSignatureByName.get(callName) ?? processor.pendingThoughtSignature;
-            log(`  🔧 FunctionCall buffered: name=${callName} callId=${callId} inlineSig=${inlineSignatureByName.has(callName)} pendingSig=${!!processor.pendingThoughtSignature}`);
+            this.logger.log(`  🔧 FunctionCall buffered: name=${callName} callId=${callId} inlineSig=${inlineSignatureByName.has(callName)} pendingSig=${!!processor.pendingThoughtSignature}`);
             bufferedCalls.push({ callId, callName, args: fc.args ?? {}, signature });
           }
           processor.pendingThoughtSignature = undefined;
@@ -544,13 +539,13 @@ export class VertexGoogleProvider implements VertexModelProvider {
       // Emit all buffered function calls together so VS Code groups them into
       // a single model turn, matching the API's parallel-call expectations.
       if (bufferedCalls.length > 0) {
-        log(`  🔧 Emitting ${bufferedCalls.length} buffered function call(s)`);
+        this.logger.log(`  🔧 Emitting ${bufferedCalls.length} buffered function call(s)`);
         for (const { callId, callName, args, signature } of bufferedCalls) {
           if (signature) {
             this.thoughtSignatureCache.set(callId, signature);
-            log(`    💾 Cached thought signature for callId=${callId} (${signature.length} chars)`);
+            this.logger.log(`    💾 Cached thought signature for callId=${callId} (${signature.length} chars)`);
           } else {
-            log(`    ⚠️  No thought signature for callId=${callId}`);
+            this.logger.log(`    ⚠️  No thought signature for callId=${callId}`);
           }
           progress.report(new vscode.LanguageModelToolCallPart(callId, callName, args));
         }
@@ -560,10 +555,10 @@ export class VertexGoogleProvider implements VertexModelProvider {
       if (processor.latestTextSignature && processor.accumulatedAnswerText.length > 0) {
         const textKey = processor.accumulatedAnswerText.substring(0, 120);
         this.textSignatureCache.set(textKey, processor.latestTextSignature);
-        log(`    📝 Cached text thought signature for answer turn (${processor.latestTextSignature.length} chars)`);
+        this.logger.log(`    📝 Cached text thought signature for answer turn (${processor.latestTextSignature.length} chars)`);
       }
 
-      log(`  ✅ Stream finished successfully`);
+      this.logger.log(`  ✅ Stream finished successfully`);
 
       // For Gemini, promptTokenCount includes cachedContentTokenCount.
       // To correctly record usage in our tracker, we subtract cached tokens from
@@ -582,7 +577,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
         };
 
         progress.report(new vscode.LanguageModelDataPart(new TextEncoder().encode(JSON.stringify(usagePayload)), "usage"));
-        log(`  📊 Reported token usage to VS Code: ${JSON.stringify(usagePayload)}`);
+        this.logger.log(`  📊 Reported token usage to VS Code: ${JSON.stringify(usagePayload)}`);
       }
 
       return {
@@ -590,7 +585,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
         charCount,
       };
     } catch (e: any) {
-      log(`  ❌ Google provideLanguageModelChatResponse error: ${e}`);
+      this.logger.log(`  ❌ Google provideLanguageModelChatResponse error: ${e}`);
       checkAuthError(e);
       throw e;
     }
@@ -614,6 +609,7 @@ class StreamPartProcessor {
     private readonly actualId: string,
     private readonly progress: vscode.Progress<vscode.LanguageModelResponsePart>,
     private readonly charCount: any,
+    private readonly logger: Logger,
   ) {}
 
   /**
@@ -642,12 +638,12 @@ class StreamPartProcessor {
     if (part.thought === true && part.thoughtSignature) {
       this.pendingThoughtSignature = part.thoughtSignature;
       this.latestTextSignature = part.thoughtSignature;
-      log(`    ✍️  Captured preceding thought signature (${part.thoughtSignature.length} chars)`);
+      this.logger.log(`    ✍️  Captured preceding thought signature (${part.thoughtSignature.length} chars)`);
     }
     // Gemini 3: signature embedded directly on the functionCall part
     if (part.functionCall?.name && part.thoughtSignature) {
       inlineSignatureByName.set(part.functionCall.name, part.thoughtSignature);
-      log(`    ✍️  Captured inline thought signature for ${part.functionCall.name} (${part.thoughtSignature.length} chars)`);
+      this.logger.log(`    ✍️  Captured inline thought signature for ${part.functionCall.name} (${part.thoughtSignature.length} chars)`);
     }
     // Capture optional signature on final text parts (non-functionCall turns)
     if (part.text !== undefined && part.thoughtSignature && !part.thought) {
@@ -667,7 +663,7 @@ class StreamPartProcessor {
     }
 
     if (part.thought) {
-      log(`    🧠 Skipping reasoning text part (${part.text.length} chars)`);
+      this.logger.log(`    🧠 Skipping reasoning text part (${part.text.length} chars)`);
       return;
     }
 
@@ -679,7 +675,7 @@ class StreamPartProcessor {
 
     // Detect if this part is the start of a leaked reasoning block
     if (part.thoughtSignature && this.provider.isLeakedReasoningHeader(part.text, this.modelId, this.actualId)) {
-      log(`    🧠 Detected leaked reasoning block starting for ${this.modelId}`);
+      this.logger.log(`    🧠 Detected leaked reasoning block starting for ${this.modelId}`);
       this.handleLeakedReasoningStart(part.text);
       return;
     }
@@ -703,7 +699,7 @@ class StreamPartProcessor {
         this.emitText(realText);
       }
     } else {
-      log(`    🧠 Skipping streamed leaked reasoning chunk (${text.length} chars)`);
+      this.logger.log(`    🧠 Skipping streamed leaked reasoning chunk (${text.length} chars)`);
     }
   }
 

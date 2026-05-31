@@ -3,19 +3,11 @@ import OpenAI from "openai";
 import { Stream } from "openai/streaming";
 import * as vscode from "vscode";
 import localCatalog from "../models.json";
+import { Logger } from "../utils/Logger";
 import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
 import type { ModelSpec } from "../VertexChatModelDispatcher";
 import type { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
-
-// ─── Output channel for diagnostics ─────────────────────────────────────────
-
-const outputChannel = vscode.window.createOutputChannel("Vertex AI Models: MaaS Provider");
-
-function log(msg: string): void {
-  const ts = new Date().toISOString();
-  outputChannel.appendLine(`[${ts}] ${msg}`);
-}
 
 // ─── Model configuration types ──────────────────────────────────────────────
 
@@ -33,6 +25,7 @@ export class VertexMaaSProvider implements VertexModelProvider {
   private region!: string;
   private authOptions?: any;
   private labels: Record<string, string> = {};
+  private readonly logger = new Logger("VertexMaaSProvider");
 
   private static readonly MODEL_CONFIG: Record<string, ModelConfig> = {
     "qwen3-coder-480b": {
@@ -91,7 +84,7 @@ export class VertexMaaSProvider implements VertexModelProvider {
       throw new Error("Failed to obtain Google Cloud access token");
     }
 
-    log(`  🔑 Fresh token obtained, baseURL=${baseURL}`);
+    this.logger.log(`  🔑 Fresh token obtained, baseURL=${baseURL}`);
     return new OpenAI({ baseURL, apiKey: accessToken });
   }
 
@@ -108,15 +101,15 @@ export class VertexMaaSProvider implements VertexModelProvider {
         max_tokens: 1,
         stream: false,
       });
-      log(`    🏓 MaaS ${maasPath} → ✅`);
+      this.logger.log(`    🏓 MaaS ${maasPath} → ✅`);
       return true;
     } catch (e: any) {
       if (isRetryableError(e)) {
-        log(`    🏓 MaaS ${maasPath} → ✅ (rate limited, but available)`);
+        this.logger.log(`    🏓 MaaS ${maasPath} → ✅ (rate limited, but available)`);
         return true;
       }
       checkAuthError(e);
-      log(`    🏓 MaaS ${maasPath} → ❌ ${e.message || e}`);
+      this.logger.log(`    🏓 MaaS ${maasPath} → ❌ ${e.message || e}`);
       return false;
     }
   }
@@ -148,11 +141,11 @@ export class VertexMaaSProvider implements VertexModelProvider {
       throw new Error(`Model spec not found in catalog for: ${modelId}`);
     }
 
-    log(`▶ MaaS Plugin provideLanguageModelChatResponse — model: ${modelId} (${config.maasPath}), region: ${this.region}, messages: ${messages.length}, thinking: ${config.thinking}`);
+    this.logger.log(`▶ MaaS Plugin provideLanguageModelChatResponse — model: ${modelId} (${config.maasPath}), region: ${this.region}, messages: ${messages.length}, thinking: ${config.thinking}`);
 
     const requestLabels = labels || this.labels;
     if (Object.keys(requestLabels).length > 0) {
-      log(`  🏷️  Labels: ${JSON.stringify(requestLabels)}`);
+      this.logger.log(`  🏷️  Labels: ${JSON.stringify(requestLabels)}`);
     }
 
     try {
@@ -171,11 +164,11 @@ export class VertexMaaSProvider implements VertexModelProvider {
         ...(tools?.length ? { tools, tool_choice: "auto" as const } : {}),
         ...(config.extraBody ?? {}),
       };
-      log(`  📤 Request keys: ${Object.keys(requestParams).join(", ")}`);
+      this.logger.log(`  📤 Request keys: ${Object.keys(requestParams).join(", ")}`);
 
-      const stream = await withRetry<Stream<OpenAI.Chat.Completions.ChatCompletionChunk>>(() => client.chat.completions.create(requestParams as any) as unknown as Promise<Stream<OpenAI.Chat.Completions.ChatCompletionChunk>>, { log, token });
+      const stream = await withRetry<Stream<OpenAI.Chat.Completions.ChatCompletionChunk>>(() => client.chat.completions.create(requestParams as any) as unknown as Promise<Stream<OpenAI.Chat.Completions.ChatCompletionChunk>>, { token });
 
-      log(`  Stream created successfully`);
+      this.logger.log(`  Stream created successfully`);
 
       const usage = await this.processStream(stream, config, charCount, progress, token);
 
@@ -190,12 +183,12 @@ export class VertexMaaSProvider implements VertexModelProvider {
           },
         };
         progress.report(new vscode.LanguageModelDataPart(new TextEncoder().encode(JSON.stringify(usagePayload)), "usage"));
-        log(`  📊 Reported token usage to VS Code: ${JSON.stringify(usagePayload)}`);
+        this.logger.log(`  📊 Reported token usage to VS Code: ${JSON.stringify(usagePayload)}`);
       }
 
       return { usage, charCount };
     } catch (e: any) {
-      log(`  ❌ MaaS provideLanguageModelChatResponse error: ${e}`);
+      this.logger.log(`  ❌ MaaS provideLanguageModelChatResponse error: ${e}`);
       checkAuthError(e);
       throw e;
     }
@@ -284,10 +277,10 @@ export class VertexMaaSProvider implements VertexModelProvider {
                 } else {
                   charCount.user_text += text.length;
                 }
-                log(`     📎 Mapped non-image DataPart (${part.mimeType}) as text (${text.length} chars)`);
+                this.logger.log(`     📎 Mapped non-image DataPart (${part.mimeType}) as text (${text.length} chars)`);
               }
             } catch {
-              log(`     ⚠️  Skipped non-image DataPart (${part.mimeType}) — could not decode`);
+              this.logger.log(`     ⚠️  Skipped non-image DataPart (${part.mimeType}) — could not decode`);
             }
           }
         }
@@ -323,12 +316,12 @@ export class VertexMaaSProvider implements VertexModelProvider {
       const systemText = systemParts.join("\n");
       mappedMessages.unshift({ role: "system", content: systemText });
     } else if (isDeepseek && hasTools && systemParts.length > 0) {
-      log(`  ⚠️  Omitting system prompt for DeepSeek model with tools (per GCP MaaS guidance)`);
+      this.logger.log(`  ⚠️  Omitting system prompt for DeepSeek model with tools (per GCP MaaS guidance)`);
     }
 
     // Ensure first message is user
     if (mappedMessages.length === 0 || mappedMessages[0].role !== "user") {
-      log(`  ⚠️  No user messages — inserting placeholder`);
+      this.logger.log(`  ⚠️  No user messages — inserting placeholder`);
       mappedMessages.unshift({ role: "user", content: [{ type: "text", text: " " }] });
     }
 
@@ -380,7 +373,7 @@ export class VertexMaaSProvider implements VertexModelProvider {
     for await (const chunk of stream) {
       chunkCount++;
       if (token.isCancellationRequested) {
-        log(`  Cancelled after ${chunkCount} chunks`);
+        this.logger.log(`  Cancelled after ${chunkCount} chunks`);
         break;
       }
 
@@ -443,11 +436,11 @@ export class VertexMaaSProvider implements VertexModelProvider {
               parsedInput = JSON.parse(acc.json);
             } catch {
               // Partial JSON at stream end — still emit what we have
-              log(`  ⚠️  Incomplete tool call JSON for ${acc.name}: ${acc.json.slice(0, 200)}`);
+              this.logger.log(`  ⚠️  Incomplete tool call JSON for ${acc.name}: ${acc.json.slice(0, 200)}`);
             }
             charCount.tool_use += acc.json.length + acc.name.length;
             progress.report(new vscode.LanguageModelToolCallPart(acc.id, acc.name, parsedInput));
-            log(`  🔧 Tool call emitted: ${acc.name}(${acc.json.slice(0, 100)}…)`);
+            this.logger.log(`  🔧 Tool call emitted: ${acc.name}(${acc.json.slice(0, 100)}…)`);
           }
         }
         toolAccumulator.clear();
@@ -467,15 +460,15 @@ export class VertexMaaSProvider implements VertexModelProvider {
             tokenUsage.output = completion.usage.completion_tokens ?? 0;
           }
         } else {
-          log(`  ⚠️  Stream type does not support finalChatCompletion — usage may be incomplete`);
+          this.logger.log(`  ⚠️  Stream type does not support finalChatCompletion — usage may be incomplete`);
         }
       } catch {
         // finalChatCompletion may throw if stream was interrupted
-        log(`  ⚠️  Could not retrieve final chat completion for usage`);
+        this.logger.log(`  ⚠️  Could not retrieve final chat completion for usage`);
       }
     }
 
-    log(`  ✅ Stream finished — ${chunkCount} chunks total, input=${tokenUsage.input}, output=${tokenUsage.output}`);
+    this.logger.log(`  ✅ Stream finished — ${chunkCount} chunks total, input=${tokenUsage.input}, output=${tokenUsage.output}`);
     return tokenUsage;
   }
 }
