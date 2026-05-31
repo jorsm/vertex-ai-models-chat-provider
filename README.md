@@ -25,9 +25,9 @@ This extension registers **Google Gemini**, **Anthropic Claude**, and **MaaS ope
 
 > ⚠️ **Important:** Before using this extension, ensure your Google Cloud project is properly configured to avoid authentication or permission errors.
 >
-> 1. **Enable APIs**: Enable the **Vertex AI API** (`aiplatform.googleapis.com`) in the Cloud Console ([Docs](https://cloud.google.com/vertex-ai/docs/start/cloud-environment)).
-> 2. **IAM Roles**: Your account requires the **Vertex AI User** (`roles/aiplatform.user`) role ([Docs](https://cloud.google.com/vertex-ai/docs/general/access-control)).
-> 3. **Model Access**: For Anthropic Claude models, find them in the **Vertex AI Model Garden** and click **Enable** ([Docs](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/use-claude)).
+> 1. **Enable APIs**: Enable the **Agent Platform API** (`aiplatform.googleapis.com`) in the Cloud Console ([Docs](https://docs.cloud.google.com/gemini-enterprise-agent-platform)).
+> 2. **IAM Roles**: Your account requires the **Agent Platform User** (`roles/aiplatform.user`) role ([Docs](https://docs.cloud.google.com/iam/docs/roles-permissions/aiplatform)).
+> 3. **Model Access**: For Anthropic Claude models, find them in the **Vertex AI Model Garden** and click **Enable** ([Docs](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude)).
 
 ## 🚀 Quick Start
 
