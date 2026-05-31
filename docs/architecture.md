@@ -83,6 +83,7 @@ The result of a region discovery operation, containing the successful `region` a
 ### activate
 [source](../src/extension.ts)
 The main entry point for the VS Code extension. It handles:
+- Initializing the global `Logger` for structured logging and diagnostics.
 - Configuration migration from legacy settings (`vertexAnthropic` to `vertexAiChat`), including Project ID and billing warning preferences.
 - Initializing the `AuthManager`, `UsageTrackerService`, and `CostStatusBar`.
 - Registering the `VertexChatModelDispatcher` as a language model chat provider for the `google-vertex` vendor.
@@ -101,10 +102,10 @@ The main entry point for the VS Code extension. It handles:
 [source](../src/extension.ts)
 A helper function that triggers the model discovery process on the dispatcher and provides UI feedback (Information, Warning, or Error messages) to the user based on the results.
 
-In the event of a `VertexAuthenticationError`, it clears stale models and provides a specialized workflow that:
+In the event of a failure (networking, project errors, or authentication), it clears any stale model list to prevent "silent fallbacks" in the chat UI. If a `VertexAuthenticationError` occurs, it provides a specialized workflow that:
 - Prompts the user to login via the Google Cloud SDK (`gcloud`).
-- Automatically opens a terminal and executes the `gcloud auth application-default login` command with the current project ID and `--quiet` flag.
-- Uses VS Code's shell integration to monitor terminal output in real-time via `onDidStartTerminalShellExecution`, automatically re-triggering discovery as soon as "Credentials saved to file" is detected in the terminal stream.
+- Automatically opens a terminal and executes the `gcloud auth application-default login` command, passing the current project ID and the `--quiet` flag.
+- Uses VS Code's shell integration API (`onDidStartTerminalShellExecution`) to monitor terminal output in real-time. As soon as "Credentials saved to file" is detected in the stream, it automatically re-triggers the discovery process.
 
 ---
 

@@ -22,7 +22,7 @@ The usage and billing module is centered around the `DashboardWebview`, which pr
 - **Cost Estimation**: Calculates raw token estimates based on standard publicly documented pricing for Gemini and Claude models. Users are warned that the Google Cloud Billing Console remains the final source of truth.
 - **Project Context**: Automatically generates deep links to the specific Google Cloud Billing page using the configured `vertexAiChat.projectId`.
 - **Real-time Status**: A status bar item provides immediate feedback on today's accumulated costs and the active authentication identity, updating automatically as interactions occur.
-- **Filtering**: Supports date range selection, model-specific filtering, and quick presets (Today, Last 7 Days, This Month).
+- **Filtering**: Supports date range selection, model-specific filtering via a dedicated dropdown, and quick presets (Today, Last 7 Days, This Month, All Time).
 - **Persistence**: Usage logs are tracked by the `UsageTrackerService`, which stores daily logs in `.jsonl` format within a `usage_logs` subdirectory of the extension's global storage. The dashboard can permanently dismiss cost warnings by updating the `vertexAiChat.hideBillingWarning` global configuration.
 
 ## API Reference
@@ -169,9 +169,10 @@ context.subscriptions.push(statusBar);
 
 ### Dashboard UI Components
 The dashboard renders several key metrics and interactive elements:
-- **Summary Cards**: Displays Total Cost, Total Tokens, Most Used Model, and Cached Tokens savings.
+- **Control Bar**: Includes quick date presets (Today, Last 7 Days, This Month, All Time), a **Model Selection** dropdown to filter metrics, and deep links to the Google Cloud Billing Console.
+- **Summary Cards**: Displays Total Cost, Total Tokens, Most Used Model, and Cached Tokens.
 - **Interactive Charts**:
     - **Costs**: Daily bar chart and model distribution pie chart.
-    - **Tokens**: Input vs. Output trends.
-    - **Payload Footprint**: Analysis of payload density across models.
-- **Summary Table**: Detailed breakdown of requests, costs, and token types per model.
+    - **Tokens**: Input vs. Output trends including cache hits.
+    - **Payload Footprint**: Analysis of payload density (System, User, Assistant, Images, Tools) across models.
+- **Summary Table**: Detailed breakdown of Model, Total Cost, Input Tokens, Output Tokens, Cached Tokens, and Request counts.
