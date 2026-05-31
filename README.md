@@ -1,9 +1,9 @@
-# Vertex AI Models Chat Provider for VS Code
+# Google Agent Platform for Copilot Chat - Vertex AI Models Chat Provider
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.110.0%2B-blue)](https://code.visualstudio.com/)
 
-### **Native Gemini & Claude, powered by Vertex AI.**
+## Native Gemini, Claude & open-weight models, powered by **Google Agent Platform** ( *Vertex AI* ) for **Copilot Chat**.
 
 Experience enterprise-grade AI directly within the **standard VS Code Chat panel**.
 
@@ -11,11 +11,11 @@ Experience enterprise-grade AI directly within the **standard VS Code Chat panel
   <img src="images/demo.gif" alt="Vertex AI Chat Demo" width="800">
 </p>
 
-This extension registers **Google Gemini** and **Anthropic Claude** as first-class providers—**no separate UI, no extra windows, no friction.**
+This extension registers **Google Gemini**, **Anthropic Claude**, and **MaaS open-weight models** as first-class providers—**no separate UI, no extra windows, no friction.**
 
 - **🔒 Zero API Keys** — Securely uses your native Google Cloud identity or Service Accounts.
 - **🏢 Automatic Billing** — Costs follow your project settings as you switch workspaces.
-- **⚡ Native Integration** — First-class support for Gemini and Claude within Copilot Chat.
+- **⚡ Native Integration** — First-class support for Gemini, Claude, and open-weight models within Copilot Chat.
 - **🛡️ Private Auth** — Support for Service Account JSON keys with "Zero-Pollution" local storage.
 - **📊 Cost Transparency** — Real-time session tracking, interactive usage dashboard, and opt-in labels for precise Google Cloud Billing attribution.
 
@@ -39,6 +39,7 @@ This extension registers **Google Gemini** and **Anthropic Claude** as first-cla
 4. **Chat**: Open the Chat panel (`Ctrl+Shift+I`) and select a **Vertex** model from the picker.
 
 ---
+
 ## 📖 Documentation & Wiki
 
 For detailed guides, troubleshooting, and advanced configuration, visit our [Wiki](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki):
@@ -50,6 +51,7 @@ For detailed guides, troubleshooting, and advanced configuration, visit our [Wik
 - [🔍 Diagnostics & Troubleshooting](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Diagnostics-&-Troubleshooting)
 
 ---
+
 ## 🛡️ Enterprise-Grade Authentication
 
 This extension moves away from traditional API keys in favor of **Identity and Project-based authentication**. By using your native Google Cloud credentials or Service Accounts, you gain several professional advantages:
@@ -60,6 +62,7 @@ This extension moves away from traditional API keys in favor of **Identity and P
 - **⚡ Dedicated Performance**: Leveraging your own GCP project ensures you aren't sharing rate limits with other users on a global API key.
 
 ### Supported Methods
+
 Choose the workflow that fits your environment:
 
 - **Standard ADC**: Uses your system's `gcloud` identity. Ideal for standard local development.
@@ -90,6 +93,9 @@ Choose the workflow that fits your environment:
 | :------------ | :----------- | :--------------------------------------- | :---------------------------- |
 | **Anthropic** | Claude       | Opus 4.7,Opus 4.6, Sonnet 4.6, Haiku 4.5 | Vision, Tools, Caching        |
 | **Google**    | Gemini       | 3.5 Flash, 3 Flash, 3.1 Pro              | High Thinking, Parallel Tools |
+| **MaaS**      | Open-Weight  | Qwen3-Coder, DeepSeek V3.2, Kimi K2      | Thinking, Tools               |
+
+> MaaS (Model-as-a-Service) brings open-weight third-party models via an OpenAI-compatible API on Vertex AI. See the [MaaS wiki page](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-as-a-Service-(MaaS)) for details.
 
 ---
 
@@ -117,6 +123,7 @@ Authentication methods are managed privately per-workspace to avoid platform-spe
 | **Clear Auth Method**  | `Vertex AI: Clear Authentication Method`      | Reset the workspace to use Default ADC (gcloud login).                   |
 
 ---
+
 ## 🔍 Diagnostics & Logs
 
 For detailed request/response mapping and troubleshooting:
