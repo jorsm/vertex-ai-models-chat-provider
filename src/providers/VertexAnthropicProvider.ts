@@ -1,10 +1,10 @@
 import { AnthropicVertex } from "@anthropic-ai/vertex-sdk";
 import { GoogleAuth } from "google-auth-library";
 import * as vscode from "vscode";
+import { Logger } from "../utils/Logger";
 import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
 import { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
-import { Logger } from "../utils/Logger";
 
 // ─── Provider Plugin ───────────────────────────────────────────────────────
 
@@ -99,7 +99,6 @@ export class VertexAnthropicProvider implements VertexModelProvider {
             stream: true,
             ...(systemBlocks ? { system: systemBlocks } : {}),
             ...(tools?.length ? { tools } : {}),
-            ...(Object.keys(requestLabels).length > 0 ? { labels: requestLabels } : {}),
           } as any),
         {
           token: token,
