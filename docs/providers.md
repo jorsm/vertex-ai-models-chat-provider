@@ -58,34 +58,34 @@ Sets the GCP Project ID and regional endpoint for the Anthropic Vertex client. I
 [source](../src/providers/VertexAnthropicProvider.ts)
 `setLabels(labels: Record<string, string>): void`
 
-Updates the internal labels mapping. These labels are included in every subsequent request to Vertex AI to facilitate cost tracking and resource labeling in the Google Cloud Console.
+Updates the internal labels mapping. These labels are logged and included in request metadata where supported to facilitate cost tracking and resource labeling in the Google Cloud Console.
 
 #### pingModel
 [source](../src/providers/VertexAnthropicProvider.ts)
 `pingModel(modelId: string): Promise<boolean>`
 
-Sends a minimal "ping" message with `max_tokens: 1` to verify the availability of the specified Claude model in the configured project and region. It handles transient rate-limiting errors (429) gracefully, treating them as confirmation that the model is reachable and available. It includes configured labels in the request metadata.
+Sends a minimal "ping" message with `max_tokens: 1` to verify the availability of the specified Claude model in the configured project and region. It handles transient rate-limiting errors (429) gracefully, treating them as confirmation that the model is reachable and available.
 
 #### provideTokenCount
 [source](../src/providers/VertexAnthropicProvider.ts)
 `provideTokenCount(text: string | vscode.LanguageModelChatRequestMessage, _token: vscode.CancellationToken): Promise<number>`
 
-Estimates token usage using a 4-characters-per-token heuristic for text strings or message objects.
+Estimates token usage using a 4-characters-per-token heuristic for text strings or message objects via the `estimateTokens` utility.
 
 #### provideLanguageModelChatResponse
 [source](../src/providers/VertexAnthropicProvider.ts)
 `provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>): Promise<ChatInferenceResult>`
 
 Handles chat inference for Anthropic models. This method:
-1. Maps VS Code messages to the Anthropic `messages` format, including support for `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart` (normalizing array-based content into a single newline-delimited string), and `LanguageModelDataPart` (handling both base64 images and UTF-8 decoding for non-image data). It ensures the conversation history starts with a user message by inserting a placeholder if necessary.
+1. Maps VS Code messages to the Anthropic `messages` format, supporting `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart` (normalizing array-based content into a single newline-delimited string), and `LanguageModelDataPart`. For `LanguageModelDataPart`, it automatically encodes `image/*` mimetypes as base64 and attempts to decode other data types as UTF-8 text. It ensures the conversation history starts with a user message by inserting a placeholder if necessary.
 2. Extracts system instructions from the message history to pass as top-level `system` blocks. Tool definitions are also accounted for in the system-level character consumption metrics.
 3. Automatically applies cache control strategies:
     - **Static Prefix Caching**: Applies `ephemeral` caching to the system blocks or tool definitions.
-    - **Chat History Caching**: Applies `ephemeral` caching to the second-to-last message in the history if the total history exceeds 1024 tokens.
+    - **Chat History Caching**: Applies `ephemeral` caching to the second-to-last message in the history if the estimated total history exceeds 1024 tokens.
 4. Executes the request using a robust retry mechanism for transient API failures (such as 429 or 503) with a configurable maximum duration to ensure request resilience.
 5. Manages streaming responses, reporting text deltas and tool call progress to VS Code after parsing partial JSON tool inputs.
-6. Captures and returns detailed usage statistics, including `input`, `output`, `cache_read`, and `cache_create` token metrics. It also reports these statistics back to VS Code via a `LanguageModelDataPart` (MIME type `usage`) to update the native Copilot Chat usage indicator.
-7. Integrates metadata labels (provided via the `labels` parameter or the provider's internal state) into the API request for downstream cost tracking and telemetry.
+6. Captures and returns detailed usage statistics, including `input`, `output`, `cache_read`, and `cache_create` token metrics. It also reports these statistics back to VS Code via a `LanguageModelDataPart` (MIME type `usage`) containing `prompt_tokens`, `completion_tokens`, `total_tokens`, and `cached_tokens` to update the native Copilot Chat usage indicator.
+7. Integrates metadata labels (provided via the `labels` parameter or the provider's internal state) into the API request context for downstream cost tracking and telemetry.
 
 ### VertexGoogleProvider
 [source](../src/providers/VertexGoogleProvider.ts)
