@@ -179,8 +179,6 @@
       "version": "qwen/qwen3-coder-480b-a35b-instruct-maas",
       "maxInputTokens": 262144,
       "maxOutputTokens": 65536,
-      "temperature": 0.1,
-      "top_p": 0.9,
       "capabilities": {
         "imageInput": false,
         "toolCalling": true
@@ -199,9 +197,7 @@
       "family": "deepseek",
       "version": "deepseek-ai/deepseek-v3.2-maas",
       "maxInputTokens": 131072,
-      "maxOutputTokens": 8192,
-      "temperature": 0.3,
-      "top_p": 0.95,
+      "maxOutputTokens": 65536,
       "capabilities": {
         "imageInput": false,
         "toolCalling": true
@@ -220,9 +216,7 @@
       "family": "kimi",
       "version": "moonshotai/kimi-k2-thinking-maas",
       "maxInputTokens": 262144,
-      "maxOutputTokens": 8192,
-      "temperature": 0.6,
-      "top_p": 0.95,
+      "maxOutputTokens": 262144,
       "capabilities": {
         "imageInput": false,
         "toolCalling": true
