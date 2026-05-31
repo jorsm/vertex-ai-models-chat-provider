@@ -166,9 +166,7 @@ export class VertexMaaSProvider implements VertexModelProvider {
       const requestParams = {
         model: config.maasPath,
         messages: mappedMessages as any,
-        temperature: modelSpec.temperature ?? 0.7,
-        top_p: modelSpec.top_p ?? 0.9,
-        max_tokens: modelSpec.maxOutputTokens ?? 4096,
+        max_tokens: modelSpec.maxOutputTokens,
         stream: true as const,
         ...(tools?.length ? { tools, tool_choice: "auto" as const } : {}),
         ...(config.extraBody ?? {}),

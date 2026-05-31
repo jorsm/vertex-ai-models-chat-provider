@@ -22,8 +22,6 @@ export interface ModelSpec {
   version: string;
   maxInputTokens: number;
   maxOutputTokens: number;
-  temperature?: number;
-  top_p?: number;
   capabilities: { imageInput: boolean; toolCalling: boolean };
   pricing: {
     input: number;
