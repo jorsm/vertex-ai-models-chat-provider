@@ -4,6 +4,13 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.1] — 2026-06-01
+
+### Fixed
+
+- **Removed Labels from Claude** — Removed GCP resource labels from Claude requests as the Anthropic SDK breaks when GCP labels are used with Anthropic models.
+- **Zod Version Fix** — Fixed Zod version dependency that was preventing a clean installation for the OpenAI compatible version.
+
 ## [0.5.0] — 2026-05-31
 
 ### Added
