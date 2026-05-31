@@ -1,7 +1,7 @@
 # docs/architecture.md
 
 > **Overview**
-> This document describes the architecture and API surface of the Vertex AI Models Chat Provider. The extension acts as a dispatcher between VS Code's Language Model API and various Google Cloud Vertex AI backends (Gemini and Anthropic Claude).
+> This document describes the architecture and API surface of the Vertex AI Models Chat Provider. The extension acts as a dispatcher between VS Code's Language Model API and various Google Cloud Vertex AI backends (Gemini, Anthropic Claude, and MaaS open-weight models).
 
 ## Table of Contents
 - [Table of Contents](#table-of-contents)
@@ -20,7 +20,7 @@
 ## Core Concepts
 The extension follows a provider-based architecture centered around the `VertexChatModelDispatcher`. 
 
-- **Multi-Vendor Support**: It manages a registry of specific vendor providers (e.g., `VertexAnthropicProvider`, `VertexGoogleProvider`) that handle the nuances of different LLM protocols while exposing a unified interface to VS Code.
+- **Multi-Vendor Support**: It manages a registry of specific vendor providers (e.g., `VertexAnthropicProvider`, `VertexGoogleProvider`, `VertexMaaSProvider`) that handle the nuances of different LLM protocols while exposing a unified interface to VS Code.
 - **Dynamic Discovery**: Instead of hardcoding endpoints, the extension performs region probing. It iterates through prioritized GCP regions (global, us-east5, etc.) to identify where specific models are enabled for the user's project.
 - **Unified Usage Tracking**: All interactions are intercepted to record token consumption (including Gemini high-thinking blocks and Anthropic prompt caching) into a local `UsageTrackerService`.
 - **VS Code Integration**: It implements the `vscode.LanguageModelChatProvider` interface, making Vertex AI models appear as native options in the Copilot Chat model picker.
@@ -49,12 +49,14 @@ Interface defining the metadata and capabilities for a supported model.
 
 **Properties:**
 - `id`: Unique identifier for the model.
-- `vendor`: The vendor name (e.g., "google", "anthropic").
+- `vendor`: The vendor name (e.g., "google", "anthropic", "maas").
 - `displayName`: Human-readable name shown in the UI.
 - `family`: Model family (e.g., "gemini", "claude").
 - `version`: The specific API version/model name.
 - `maxInputTokens`: Maximum allowed input tokens.
 - `maxOutputTokens`: Maximum allowed output tokens.
+- `temperature` (optional): Sampling temperature to use for the model.
+- `top_p` (optional): Top-p (nucleus) sampling parameter.
 - `capabilities`: Object containing `imageInput` and `toolCalling` booleans.
 - `pricing`: Object defining token costs:
     - `input`: Cost per 1 million input tokens.

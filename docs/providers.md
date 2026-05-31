@@ -176,11 +176,12 @@ Estimates token usage using a 4-characters-per-token heuristic.
 `provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>): Promise<ChatInferenceResult>`
 
 Handles chat inference for MaaS models using an OpenAI client. This method:
-1. Maps VS Code messages to OpenAI chat completion parameters. It supports `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart`, and `LanguageModelDataPart` (including base64 image conversion).
-2. Applies model-specific configuration, such as enabling `reasoning_content` for DeepSeek and Kimi models.
-3. Implements specialized logic for DeepSeek: per GCP guidance, the system prompt is omitted when tools are enabled to prevent model errors.
-4. Manages streaming via `openai/streaming`, extracting `reasoning_content` (thinking tokens) and accumulating incremental tool call deltas.
-5. Reports token usage back to VS Code via `LanguageModelDataPart` (MIME type `usage`), capturing prompt and completion token counts from the OpenAI usage payload.
-6. Ensures conversation history integrity by prepending a placeholder user message if the history starts with a system or assistant turn.
+1. Maps VS Code messages to OpenAI chat completion parameters. It supports `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart` (transformed into discrete `tool` role messages), and `LanguageModelDataPart` (including base64 image conversion or UTF-8 decoding for other data types).
+2. Looks up model-specific execution parameters (such as `temperature`, `top_p`, and `maxOutputTokens`) from the local model catalog and applies configuration for enabling `reasoning_content` for thinking models like DeepSeek and Kimi.
+3. Implements specialized logic for DeepSeek models: the system prompt is omitted when tools are enabled to prevent API validation errors, per GCP MaaS guidance.
+4. Ensures conversation history integrity by prepending a placeholder user message if the history starts with a system or assistant turn.
+5. Executes requests using a retry mechanism to handle transient failures.
+6. Manages streaming via `openai/streaming`, extracting thinking tokens from `reasoning_content` and accumulating incremental tool call deltas until the `finish_reason` is received.
+7. Reports token usage back to VS Code via `LanguageModelDataPart` (MIME type `usage`), capturing prompt, completion, and cached token counts from the OpenAI usage payload to update the Copilot Chat indicator.
 
 ## Examples
