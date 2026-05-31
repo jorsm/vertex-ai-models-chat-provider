@@ -2,8 +2,10 @@ import { GoogleAuth } from "google-auth-library";
 import OpenAI from "openai";
 import { Stream } from "openai/streaming";
 import * as vscode from "vscode";
+import localCatalog from "../models.json";
 import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
+import type { ModelSpec } from "../VertexChatModelDispatcher";
 import type { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
 
 // ─── Output channel for diagnostics ─────────────────────────────────────────
@@ -20,10 +22,6 @@ function log(msg: string): void {
 interface ModelConfig {
   maasPath: string;
   thinking: "none" | "reasoning_content";
-  temperature: number;
-  top_p: number;
-  /** Max output tokens. Higher for thinking models since reasoning eats into the budget. */
-  maxTokens: number;
   extraBody?: Record<string, unknown>;
 }
 
@@ -40,24 +38,15 @@ export class VertexMaaSProvider implements VertexModelProvider {
     "qwen3-coder-480b": {
       maasPath: "qwen/qwen3-coder-480b-a35b-instruct-maas",
       thinking: "none",
-      temperature: 0.1,
-      top_p: 0.9,
-      maxTokens: 4096,
     },
     "deepseek-v3.2": {
       maasPath: "deepseek-ai/deepseek-v3.2-maas",
       thinking: "reasoning_content",
-      temperature: 0.3,
-      top_p: 0.95,
-      maxTokens: 8192,
       extraBody: { chat_template_kwargs: { thinking: true } },
     },
     "kimi-k2-thinking": {
-      maasPath: "moonshot/kimi-k2-thinking-maas",
+      maasPath: "moonshotai/kimi-k2-thinking-maas",
       thinking: "reasoning_content",
-      temperature: 0.6,
-      top_p: 0.95,
-      maxTokens: 8192,
     },
   };
 
@@ -153,6 +142,12 @@ export class VertexMaaSProvider implements VertexModelProvider {
       throw new Error(`Unknown MaaS model: ${modelId}. Available: ${Object.keys(VertexMaaSProvider.MODEL_CONFIG).join(", ")}`);
     }
 
+    // Look up model spec from the catalog
+    const modelSpec = (localCatalog as any).candidateModels.find((m: ModelSpec) => m.id === modelId);
+    if (!modelSpec) {
+      throw new Error(`Model spec not found in catalog for: ${modelId}`);
+    }
+
     log(`▶ MaaS Plugin provideLanguageModelChatResponse — model: ${modelId} (${config.maasPath}), region: ${this.region}, messages: ${messages.length}, thinking: ${config.thinking}`);
 
     const requestLabels = labels || this.labels;
@@ -171,9 +166,9 @@ export class VertexMaaSProvider implements VertexModelProvider {
       const requestParams = {
         model: config.maasPath,
         messages: mappedMessages as any,
-        temperature: config.temperature,
-        top_p: config.top_p,
-        max_tokens: config.maxTokens,
+        temperature: modelSpec.temperature ?? 0.7,
+        top_p: modelSpec.top_p ?? 0.9,
+        max_tokens: modelSpec.maxOutputTokens ?? 4096,
         stream: true as const,
         ...(tools?.length ? { tools, tool_choice: "auto" as const } : {}),
         ...(config.extraBody ?? {}),

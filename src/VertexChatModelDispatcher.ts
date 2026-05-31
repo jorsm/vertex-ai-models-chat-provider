@@ -22,6 +22,8 @@ export interface ModelSpec {
   version: string;
   maxInputTokens: number;
   maxOutputTokens: number;
+  temperature?: number;
+  top_p?: number;
   capabilities: { imageInput: boolean; toolCalling: boolean };
   pricing: {
     input: number;
@@ -160,7 +162,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const authOptions = await this.authManager.getResolvedAuthOptions();
     /*
      * Resolve project ID: Strictly use the workspace setting.
-     * 
+     *
      * DESIGN CHOICE: We do NOT fall back to the project ID found in service account credentials.
      * The setting 'vertexAiChat.projectId' is the absolute source of truth for billing.
      * If the credentials provided (Service Account or ADC) do not match or have access
@@ -179,7 +181,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     /*
      * Validation: If using a Service Account, warn if its home project doesn't match our setting.
-     * 
+     *
      * NOTE: This is a warning, not an error, because cross-project IAM is a valid GCP pattern
      * (e.g., a Service Account created in Project A having 'Vertex AI User' role in Project B).
      */
