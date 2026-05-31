@@ -220,7 +220,7 @@
       "family": "kimi",
       "version": "moonshotai/kimi-k2-thinking-maas",
       "maxInputTokens": 262144,
-      "maxOutputTokens": 262144,
+      "maxOutputTokens": 8192,
       "temperature": 0.6,
       "top_p": 0.95,
       "capabilities": {

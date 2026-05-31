@@ -43,14 +43,11 @@ export interface VertexModelProvider {
     options: vscode.ProvideLanguageModelChatResponseOptions,
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
     token: vscode.CancellationToken,
-    labels?: Record<string, string>
+    labels?: Record<string, string>,
   ): Promise<ChatInferenceResult>;
 
   /**
    * Optional token counting heuristic, defaults to char-count based in dispatcher if not provided
    */
-  provideTokenCount?(
-    text: string | vscode.LanguageModelChatRequestMessage,
-    token: vscode.CancellationToken
-  ): Promise<number>;
+  provideTokenCount?(text: string | vscode.LanguageModelChatRequestMessage, token: vscode.CancellationToken): Promise<number>;
 }
