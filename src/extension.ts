@@ -64,7 +64,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("vertexAiChat.dumpTools", () => {
-      const outputChannel = vscode.window.createOutputChannel("Vertex AI Models Chat Provider: Tools Dump");
+      const outputChannel = vscode.window.createOutputChannel("Google Agent Platform: Tools Dump");
       outputChannel.show();
       outputChannel.appendLine("=== Installed Language Model Tools ===");
 
@@ -99,7 +99,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const newConfig = vscode.workspace.getConfiguration("vertexAiChat");
         const newProjectId = newConfig.get<string>("projectId") || "";
         if (newProjectId) {
-          vscode.window.showInformationMessage(`Vertex AI Models Chat Provider: Project changed to "${newProjectId}". Re-discovering models…`);
+          vscode.window.showInformationMessage(`Google Agent Platform: Project changed to "${newProjectId}". Re-discovering models…`);
         }
         provider.setProjectId(newProjectId);
         await runDiscovery(provider, authManager);
@@ -124,10 +124,10 @@ async function runDiscovery(provider: VertexChatModelDispatcher, authManager: Au
     if (result.availableModels.length > 0) {
       // Success: notify user of available models and the selected region
       const names = result.availableModels.map((m) => m.displayName).join(", ");
-      vscode.window.showInformationMessage(`Vertex AI Models Chat Provider: ${result.availableModels.length} model(s) available via ${result.region}: ${names}`);
+      vscode.window.showInformationMessage(`Google Agent Platform: ${result.availableModels.length} model(s) available via ${result.region}: ${names}`);
     } else {
       // No models found: warn user to check their project configuration
-      vscode.window.showWarningMessage("Vertex AI Models Chat Provider: No models available. Check your Vertex AI Model Garden setup.");
+      vscode.window.showWarningMessage("Google Agent Platform: No models available. Check your Google Cloud Model Garden setup.");
     }
   } catch (e: any) {
     // Clear any stale model list to prevent "silent fallbacks" in the chat UI
@@ -141,7 +141,7 @@ async function runDiscovery(provider: VertexChatModelDispatcher, authManager: Au
       if (selection === loginAction) {
         // Automation: open a terminal and run the auth command if the user clicks the button
         const terminal = vscode.window.createTerminal({
-          name: "Vertex AI: Authentication",
+          name: "Google Agent Platform: Authentication",
           iconPath: new vscode.ThemeIcon("key"),
         });
 
