@@ -4,6 +4,12 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.2] — 2026-06-03
+
+### Added
+
+- **xAI Grok 4.2 Support** — Added support for `Grok 4.2 Reasoning` via Vertex AI Models-as-a-Service (MaaS). Includes native reasoning extraction for deep-thinking responses.
+
 ## [0.5.1] — 2026-06-01
 
 ### Fixed

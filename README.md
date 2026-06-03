@@ -36,7 +36,7 @@ This extension registers **Google Gemini**, **Anthropic Claude**, and **MaaS ope
     - **Option A (Standard)**: Run `gcloud auth application-default login` in your terminal.
     - **Option B (Service Account)**: Run the command `Google Agent Platform: Paste Service Account JSON Key` in VS Code and paste your JSON key.
 3. **Configure**: Open VS Code Settings (`Ctrl+,`) and set your **GCP Project ID** in `vertexAiChat.projectId`.
-4. **Chat**: Open the Chat panel (`Ctrl+Shift+I`) and select a **Vertex** model from the picker.
+4. **Chat**: Open the Chat panel (`Ctrl+Shift+I`) and select a **Google Agent Platform** model from the picker.
 
 ---
 
@@ -89,11 +89,11 @@ Choose the workflow that fits your environment:
 
 ## 🤖 Supported Models
 
-| Vendor        | Model Family | Versions Supported                       | Features                      |
-| :------------ | :----------- | :--------------------------------------- | :---------------------------- |
-| **Anthropic** | Claude       | Opus 4.7,Opus 4.6, Sonnet 4.6, Haiku 4.5 | Vision, Tools, Caching        |
-| **Google**    | Gemini       | 3.5 Flash, 3 Flash, 3.1 Pro              | High Thinking, Parallel Tools |
-| **MaaS**      | Open-Weight  | Qwen3-Coder, DeepSeek V3.2, Kimi K2      | Thinking, Tools               |
+| Vendor        | Model Family | Versions Supported                               | Features                      |
+| :------------ | :----------- | :---------------------------------------------- | :---------------------------- |
+| **Anthropic** | Claude       | Opus 4.8, Sonnet 4.6, Haiku 4.5                 | Vision, Tools, Caching        |
+| **Google**    | Gemini       | 3.5 Flash, 3 Flash, 3.1 Pro                     | High Thinking, Parallel Tools |
+| **MaaS**      | Open-Weight  | Grok 4.2, DeepSeek V3.2, Qwen3-Coder, Kimi K2   | Thinking, Tools               |
 
 > MaaS (Model-as-a-Service) brings open-weight third-party models via an OpenAI-compatible API on Google Agent Platform. See the [MaaS wiki page](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-as-a-Service-(MaaS)) for details.
 

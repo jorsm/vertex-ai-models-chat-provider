@@ -227,6 +227,25 @@
         "cache_read": 0.06,
         "cache_create": 0.0
       }
+    },
+    {
+      "id": "grok-4.2-reasoning",
+      "vendor": "maas",
+      "displayName": "Grok 4.2 Reasoning",
+      "family": "grok",
+      "version": "xai/grok-4.20-reasoning",
+      "maxInputTokens": 131072,
+      "maxOutputTokens": 65536,
+      "capabilities": {
+        "imageInput": false,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 1.25,
+        "output": 2.50,
+        "cache_read": 0.20,
+        "cache_create": 0.0
+      }
     }
   ],
   "regionPriority": [

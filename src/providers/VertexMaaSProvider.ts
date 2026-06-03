@@ -41,6 +41,10 @@ export class VertexMaaSProvider implements VertexModelProvider {
       maasPath: "moonshotai/kimi-k2-thinking-maas",
       thinking: "reasoning_content",
     },
+    "grok-4.2-reasoning": {
+      maasPath: "xai/grok-4.20-reasoning",
+      thinking: "reasoning_content",
+    },
   };
 
   // ── Initialization ────────────────────────────────────────────────────
