@@ -4,6 +4,21 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.4] — 2026-06-19
+
+### Added
+
+- **Custom Model Catalogs** — Added support for user-level and workspace-level `models.json` overrides. Teams can now commit `.vscode/models.json` to share model configurations, while individuals can maintain private catalogs in extension storage.
+- **Dynamic Catalog Resolution** — Implemented a prioritized resolution chain (Workspace > User > Bundled) for model discovery and usage tracking.
+- **JSON Schema Validation** — Integrated automatic schema validation and autocomplete for custom model catalogs, ensuring correct configuration of vendors, pricing, and capabilities.
+- **Auto-Discovery Watcher** — Saving a custom `models.json` now automatically triggers model re-discovery and refreshes the Copilot Chat model picker.
+
+## [0.5.3] — 2026-06-11
+
+### Added
+
+- **Claude Fable 5 Support** — Added support for the high-end `Claude Fable 5` model via Vertex AI.
+
 ## [0.5.2] — 2026-06-03
 
 ### Added

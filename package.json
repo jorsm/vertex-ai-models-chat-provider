@@ -3,7 +3,7 @@
   "displayName": "Google Agent Platform for Copilot Chat (Vertex AI Models Chat Provider)",
   "description": "Native Gemini, Claude & open-weight models, powered by Google Agent Platform (Vertex AI) for Copilot Chat",
   "publisher": "jorsm",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "icon": "images/logo.png",
   "repository": {
     "type": "git",
