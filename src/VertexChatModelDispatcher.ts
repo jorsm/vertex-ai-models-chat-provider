@@ -2,7 +2,7 @@ import * as childProcess from "child_process";
 import * as util from "util";
 import * as vscode from "vscode";
 import { AuthManager } from "./AuthManager";
-import localCatalog from "./models.json";
+import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { VertexAnthropicProvider } from "./providers/VertexAnthropicProvider";
 import { VertexGoogleProvider } from "./providers/VertexGoogleProvider";
 import { VertexMaaSProvider } from "./providers/VertexMaaSProvider";
@@ -52,6 +52,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   private discoveryDone = false;
   private readonly usageTracker: UsageTrackerService;
   private readonly authManager: AuthManager;
+  private readonly catalogResolver: ModelCatalogResolver;
   private _discoveryPromise: Promise<DiscoveryResult> | null = null;
   private _labelsPromise: Promise<void> | null = null;
   private cachedUserEmail: string | undefined;
@@ -61,10 +62,11 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   private readonly _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChangeLanguageModelChatInformation = this._onDidChange.event;
 
-  constructor(projectId: string, usageTracker: UsageTrackerService, authManager: AuthManager) {
+  constructor(projectId: string, usageTracker: UsageTrackerService, authManager: AuthManager, catalogResolver: ModelCatalogResolver) {
     this.projectId = projectId;
     this.usageTracker = usageTracker;
     this.authManager = authManager;
+    this.catalogResolver = catalogResolver;
     this.registerProviders();
     this._labelsPromise = this.updateLabels();
 
@@ -85,6 +87,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     this.activeProviders.set(googleProvider.vendor, googleProvider);
 
     const maasProvider = new VertexMaaSProvider();
+    maasProvider.setCatalogResolver(this.catalogResolver);
     this.logger.log(`Registered plugin for vendor: ${maasProvider.vendor}`);
     this.activeProviders.set(maasProvider.vendor, maasProvider);
   }
@@ -146,7 +149,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   }
 
   private async _discoverModelsAndRegionImpl(): Promise<DiscoveryResult> {
-    const catalog = localCatalog as ModelCatalog;
+    const catalog = this.catalogResolver.getEffectiveCatalog();
     const candidates = catalog.candidateModels;
     const regions = catalog.regionPriority;
 
@@ -260,7 +263,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   }
 
   private mapModels(): vscode.LanguageModelChatInformation[] {
-    const models = this.availableModels.length > 0 ? this.availableModels : (localCatalog as ModelCatalog).candidateModels;
+    const models = this.availableModels.length > 0 ? this.availableModels : this.catalogResolver.getEffectiveCatalog().candidateModels;
 
     // Check if we are running in VS Code 1.120 or higher
     const versionParts = vscode.version.split(".");
@@ -322,7 +325,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     }
 
     const modelId = model.id;
-    const spec = (this.availableModels.length > 0 ? this.availableModels : (localCatalog as ModelCatalog).candidateModels).find((m) => m.id === modelId);
+    const spec = (this.availableModels.length > 0 ? this.availableModels : this.catalogResolver.getEffectiveCatalog().candidateModels).find((m) => m.id === modelId);
 
     this.logger.log(`▶ provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, vendor: ${spec?.vendor}, messages: ${messages.length}`);
 

@@ -4,16 +4,18 @@
 > This document describes the architecture and API surface of the Vertex AI Models Chat Provider. The extension acts as a dispatcher between VS Code's Language Model API and various Google Cloud Vertex AI backends (Gemini, Anthropic Claude, and MaaS open-weight models).
 
 ## Table of Contents
-- [Table of Contents](#table-of-contents)
-- [Core Concepts](#core-concepts)
-- [API Reference](#api-reference)
+- [docs/architecture.md](#docsarchitecturemd)
+  - [Table of Contents](#table-of-contents)
+  - [Core Concepts](#core-concepts)
+  - [API Reference](#api-reference)
     - [VertexChatModelDispatcher](#vertexchatmodeldispatcher)
     - [ModelSpec](#modelspec)
     - [ModelCatalog](#modelcatalog)
     - [DiscoveryResult](#discoveryresult)
+    - [ModelCatalogResolver](#modelcatalogresolver)
     - [activate](#activate)
     - [runDiscovery](#rundiscovery)
-- [Examples](#examples)
+  - [Examples](#examples)
 
 ---
 
@@ -80,12 +82,26 @@ The result of a region discovery operation, containing the successful `region` a
 - `region`: The successfully identified GCP region where models responded.
 - `availableModels`: Array of `ModelSpec` objects successfully pinged in the identified region.
 
+### ModelCatalogResolver
+[source](../src/ModelCatalogResolver.ts)
+Resolves the effective model catalog at runtime, enabling user- and workspace-level overrides of the bundled `models.json`. Resolution precedence is **Workspace (`.vscode/models.json`) > User (extension `globalStorageUri/models.json`) > Bundled (`src/models.json`)**. A custom file fully *replaces* the bundled catalog (it is not merged); the bundled catalog is used only as the seed template when a custom file is first created, and as the final fallback when no custom file exists or one fails to parse.
+
+**Methods:**
+- `getEffectiveCatalog()`: Returns the effective `ModelCatalog` following the precedence above. Results are cached until `invalidateCache()` is called. On a parse error in a custom file, logs the error, shows a one-shot error message, and falls back to the next tier (never throws — callers always get a usable catalog).
+- `getWorkspaceCatalogUri()`: Returns the URI of the workspace-level catalog for the first workspace folder, or `undefined` when no workspace folder is open. Does not create the file.
+- `getUserCatalogUri()`: Returns the URI of the user-level catalog in the extension's global storage. Does not create the file.
+- `ensureUserCatalogExists()`: Ensures the user-level catalog exists, seeding it from the bundled catalog if absent. Returns the URI.
+- `ensureWorkspaceCatalogExists()`: Ensures the workspace-level catalog exists for the first workspace folder, seeding it from the bundled catalog if absent. Returns `undefined` if no workspace folder is open.
+- `invalidateCache()`: Clears the cached effective catalog so the next `getEffectiveCatalog()` re-reads from disk.
+
+The extension registers two palette commands backed by this resolver: `vertexAiChat.openUserModelsFile` and `vertexAiChat.openWorkspaceModelsFile`. Both custom file paths are covered by `contributes.jsonValidation` globs in `package.json`, providing JSON schema validation and autocomplete in the editor. A `FileSystemWatcher` on both files invalidates the cache and re-runs discovery on save (debounced ~300ms), refreshing the Copilot Chat model picker.
+
 ### activate
 [source](../src/extension.ts)
 The main entry point for the VS Code extension. It handles:
 - Initializing the global `Logger` for structured logging and diagnostics.
 - Configuration migration from legacy settings (`vertexAnthropic` to `vertexAiChat`), including Project ID and billing warning preferences.
-- Initializing the `AuthManager`, `UsageTrackerService`, and `CostStatusBar`.
+- Initializing the `AuthManager`, `UsageTrackerService`, `CostStatusBar`, and `ModelCatalogResolver`.
 - Registering the `VertexChatModelDispatcher` as a language model chat provider for the `google-vertex` vendor.
 - Registering extension commands including:
     - `claudeBilling.showDashboard`: Opens the usage dashboard webview.
@@ -96,7 +112,10 @@ The main entry point for the VS Code extension. It handles:
     - `vertexAiChat.setServiceAccountPath`: Sets a local file path for a Service Account JSON key.
     - `vertexAiChat.selectAuthMethod`: Switches the active authentication method.
     - `vertexAiChat.clearAuthMethod`: Resets the workspace to use Default Application Credentials (ADC).
+    - `vertexAiChat.openUserModelsFile`: Creates (seeded from the bundled catalog) / opens the user-level `models.json` for editing.
+    - `vertexAiChat.openWorkspaceModelsFile`: Creates (seeded from the bundled catalog) / opens `.vscode/models.json` for editing.
 - Watching for configuration changes (specifically `vertexAiChat.projectId`, `enableUserLabel`, and `enableProjectLabel`) to trigger re-discovery and update metadata labels.
+- Watching the workspace and user custom `models.json` files via `FileSystemWatcher` to invalidate the catalog cache and re-run discovery on save (debounced ~300ms).
 
 ### runDiscovery
 [source](../src/extension.ts)

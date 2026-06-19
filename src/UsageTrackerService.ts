@@ -1,8 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { Logger } from "./utils/Logger";
-import * as modelsFile from "./models.json";
 
 export interface PayloadCharacters {
   system: number;
@@ -34,10 +34,12 @@ export class UsageTrackerService {
   public readonly onUsageUpdated = this._onUsageUpdated.event;
 
   private readonly storageDir: string;
+  private readonly catalogResolver: ModelCatalogResolver;
 
-  constructor(context: vscode.ExtensionContext) {
+  constructor(context: vscode.ExtensionContext, catalogResolver: ModelCatalogResolver) {
     // We use globalStorageUri.fsPath to get the native file system path
     this.storageDir = path.join(context.globalStorageUri.fsPath, "usage_logs");
+    this.catalogResolver = catalogResolver;
   }
 
   /**
@@ -47,8 +49,8 @@ export class UsageTrackerService {
    * @returns The total cost calculated based on the pricing map
    */
   public calculateCost(model: string, tokens: Required<TokenUsage>): number {
-    // Retrieve the model from models.json
-    const modelDef = modelsFile.candidateModels.find((m: any) => m.id === model);
+    // Retrieve the model from the effective catalog (workspace > user > bundled)
+    const modelDef = this.catalogResolver.getEffectiveCatalog().candidateModels.find((m: any) => m.id === model);
     const pricing = modelDef?.pricing;
 
     if (!pricing) {

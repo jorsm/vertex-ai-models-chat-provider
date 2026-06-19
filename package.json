@@ -3,7 +3,7 @@
   "displayName": "Google Agent Platform for Copilot Chat (Vertex AI Models Chat Provider)",
   "description": "Native Gemini, Claude & open-weight models, powered by Google Agent Platform (Vertex AI) for Copilot Chat",
   "publisher": "jorsm",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "icon": "images/logo.png",
   "repository": {
     "type": "git",
@@ -49,6 +49,24 @@
       {
         "command": "vertexAiChat.clearAuthMethod",
         "title": "Google Agent Platform: Clear Authentication Method (Use ADC)"
+      },
+      {
+        "command": "vertexAiChat.openUserModelsFile",
+        "title": "Google Agent Platform: Open User Models Catalog File"
+      },
+      {
+        "command": "vertexAiChat.openWorkspaceModelsFile",
+        "title": "Google Agent Platform: Open Workspace Models Catalog File"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": "**/.vscode/models.json",
+        "url": "./schemas/models.schema.json"
+      },
+      {
+        "fileMatch": "**/globalStorage/jorsm.vertex-ai-models-chat-provider/models.json",
+        "url": "./schemas/models.schema.json"
       }
     ],
     "menus": {

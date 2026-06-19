@@ -1,0 +1,137 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Vertex AI Models Chat Provider — Model Catalog",
+    "description": "Catalog of candidate models and prioritized GCP regions for the Google Agent Platform for Copilot Chat extension. A custom copy of this file (workspace `.vscode/models.json` or user-level) fully replaces the bundled catalog. Resolution precedence: Workspace > User > Bundled.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "candidateModels",
+        "regionPriority"
+    ],
+    "properties": {
+        "candidateModels": {
+            "type": "array",
+            "description": "Array of model definitions to probe during discovery. Only models that respond in the first matching region become available in the Copilot Chat picker.",
+            "items": {
+                "$ref": "#/definitions/ModelSpec"
+            }
+        },
+        "regionPriority": {
+            "type": "array",
+            "description": "Ordered list of GCP regions to probe (e.g. \"global\", \"us-east5\"). Discovery stops at the first region where at least one model responds.",
+            "items": {
+                "type": "string"
+            },
+            "examples": [
+                [
+                    "global",
+                    "us-east5",
+                    "europe-west1",
+                    "asia-southeast1"
+                ]
+            ]
+        }
+    },
+    "definitions": {
+        "ModelSpec": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "id",
+                "vendor",
+                "displayName",
+                "family",
+                "version",
+                "maxInputTokens",
+                "maxOutputTokens",
+                "capabilities",
+                "pricing"
+            ],
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "Unique identifier for the model, used by VS Code and the extension to reference it."
+                },
+                "vendor": {
+                    "type": "string",
+                    "enum": [
+                        "google",
+                        "anthropic",
+                        "maas"
+                    ],
+                    "description": "The vendor name. Determines which internal provider handles the model: \"google\" (Gemini), \"anthropic\" (Claude), or \"maas\" (open-weight models via Model-as-a-Service)."
+                },
+                "displayName": {
+                    "type": "string",
+                    "description": "Human-readable name shown in the Copilot Chat model picker."
+                },
+                "family": {
+                    "type": "string",
+                    "description": "Model family (e.g. \"gemini\", \"claude\", \"qwen\")."
+                },
+                "version": {
+                    "type": "string",
+                    "description": "The specific API version/model name sent to Vertex AI. For MaaS models this is the MaaS path (e.g. \"deepseek-ai/deepseek-v3.2-maas\")."
+                },
+                "maxInputTokens": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Maximum allowed input tokens for the model."
+                },
+                "maxOutputTokens": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Maximum allowed output tokens for the model."
+                },
+                "capabilities": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "imageInput",
+                        "toolCalling"
+                    ],
+                    "properties": {
+                        "imageInput": {
+                            "type": "boolean",
+                            "description": "Whether the model accepts image inputs (vision)."
+                        },
+                        "toolCalling": {
+                            "type": "boolean",
+                            "description": "Whether the model supports tool/function calling."
+                        }
+                    }
+                },
+                "pricing": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "input",
+                        "output"
+                    ],
+                    "properties": {
+                        "input": {
+                            "type": "number",
+                            "minimum": 0,
+                            "description": "Cost per 1 million input tokens (USD)."
+                        },
+                        "output": {
+                            "type": "number",
+                            "minimum": 0,
+                            "description": "Cost per 1 million output tokens (USD)."
+                        },
+                        "cache_read": {
+                            "type": "number",
+                            "minimum": 0,
+                            "description": "Optional cost per 1 million cached tokens read."
+                        },
+                        "cache_create": {
+                            "type": "number",
+                            "minimum": 0,
+                            "description": "Optional cost per 1 million cached tokens written."
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

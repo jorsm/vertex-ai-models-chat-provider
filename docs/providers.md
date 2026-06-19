@@ -36,7 +36,7 @@ The provider architecture uses a unified `VertexModelProvider` interface to supp
 
 - **Google Gemini Integration**: Managed by `VertexGoogleProvider`, supporting Gemini 3 Flash and 3.1 Pro models.
 - **Anthropic Claude Integration**: Managed by `VertexAnthropicProvider`, supporting Claude Opus, Sonnet, and Haiku models (including versions 3, 3.5, and 4.x).
-- **Models-as-a-Service (MaaS)**: Managed by `VertexMaaSProvider`, providing access to third-party models like DeepSeek-V3.2, Qwen 3 Coder, and Kimi K2 through an OpenAI-compatible Vertex AI endpoint.
+- **Models-as-a-Service (MaaS)**: Managed by `VertexMaaSProvider`, providing access to third-party models like DeepSeek-V3.2, Qwen 3 Coder, Grok 4.2, and Kimi K2 through an OpenAI-compatible Vertex AI endpoint.
 - **Thinking Models**: Specialized support for "High Thinking" models via model ID suffixes (e.g., `-high`), which triggers specific `thinkingConfig` parameters.
 - **Thought Signatures**: A mechanism to maintain reasoning continuity across conversational turns by caching and re-injecting signatures into the message history.
 - **Parallel Tool Execution**: Implementation of tool call buffering and message merging to satisfy Gemini's requirements for grouped function responses.
@@ -145,13 +145,13 @@ Main entry point for chat inference. This method:
 
 ### VertexMaaSProvider
 [source](../src/providers/VertexMaaSProvider.ts)
-The `VertexMaaSProvider` class implements the `VertexModelProvider` interface for third-party models available on Vertex AI via the Models-as-a-Service (MaaS) endpoint. It utilizes an OpenAI-compatible interface to communicate with Vertex AI endpoints for models such as DeepSeek, Qwen, and Kimi.
+The `VertexMaaSProvider` class implements the `VertexModelProvider` interface for third-party models available on Vertex AI via the Models-as-a-Service (MaaS) endpoint. It utilizes an OpenAI-compatible interface to communicate with Vertex AI endpoints for models such as DeepSeek, Qwen, Grok, and Kimi.
 
 #### initialize
 [source](../src/providers/VertexMaaSProvider.ts)
 `initialize(projectId: string, region: string, authOptions?: any): void`
 
-Sets the GCP Project ID and regional endpoint. It configures the provider to use OpenAI SDK pointing to the Google Cloud Vertex MaaS `baseURL`. It supports authentication via standard Application Default Credentials or provided Service Account credentials.
+Sets the GCP Project ID and regional endpoint. It configures the provider to use OpenAI SDK pointing to the Google Cloud Vertex MaaS `baseURL`. It supports authentication via standard Application Default Credentials or provided Service Account credentials (JSON keys or file paths). The provider dynamically respects the project ID from active VS Code settings to support workspace-specific billing.
 
 #### setLabels
 [source](../src/providers/VertexMaaSProvider.ts)
@@ -163,7 +163,7 @@ Updates internal labels for request tracking.
 [source](../src/providers/VertexMaaSProvider.ts)
 `pingModel(modelVersion: string): Promise<boolean>`
 
-Verifies the availability of the model path (e.g., `deepseek-ai/deepseek-v3.2-maas`) by sending a minimal OpenAI-format chat completion request.
+Verifies the availability of the model path (e.g., `deepseek-ai/deepseek-v3.2-maas`) by sending a minimal OpenAI-format chat completion request. It handles 429 rate-limiting responses as confirmation of availability.
 
 #### provideTokenCount
 [source](../src/providers/VertexMaaSProvider.ts)
@@ -177,11 +177,11 @@ Estimates token usage using a 4-characters-per-token heuristic.
 
 Handles chat inference for MaaS models using an OpenAI client. This method:
 1. Maps VS Code messages to OpenAI chat completion parameters. It supports `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart` (transformed into discrete `tool` role messages), and `LanguageModelDataPart` (including base64 image conversion or UTF-8 decoding for other data types).
-2. Looks up model-specific execution parameters (such as `temperature`, `top_p`, and `maxOutputTokens`) from the local model catalog and applies configuration for enabling `reasoning_content` for thinking models like DeepSeek and Kimi.
+2. Looks up model-specific execution parameters (such as `maxOutputTokens`) from the local model catalog and applies `extraBody` configurations, such as `chat_template_kwargs: { thinking: true }` to enable `reasoning_content` for thinking models like DeepSeek.
 3. Implements specialized logic for DeepSeek models: the system prompt is omitted when tools are enabled to prevent API validation errors, per GCP MaaS guidance.
 4. Ensures conversation history integrity by prepending a placeholder user message if the history starts with a system or assistant turn.
 5. Executes requests using a retry mechanism to handle transient failures.
-6. Manages streaming via `openai/streaming`, extracting thinking tokens from `reasoning_content` and accumulating incremental tool call deltas until the `finish_reason` is received.
-7. Reports token usage back to VS Code via `LanguageModelDataPart` (MIME type `usage`), capturing prompt, completion, and cached token counts from the OpenAI usage payload to update the Copilot Chat indicator.
+6. Manages streaming via `openai/streaming`, extracting thinking tokens from `reasoning_content` (silently consumed to satisfy the thinking process while providing answer content) and accumulating incremental tool call deltas until the `finish_reason` is received.
+7. Reports token usage back to VS Code via `LanguageModelDataPart` (MIME type `usage`), capturing prompt, completion, and cached token counts from the OpenAI usage payload to update the Copilot Chat indicator. It also attempts to retrieve final usage metrics from the stream even if interrupted.
 
 ## Examples

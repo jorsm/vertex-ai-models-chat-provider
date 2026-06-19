@@ -2,7 +2,7 @@ import { GoogleAuth } from "google-auth-library";
 import OpenAI from "openai";
 import { Stream } from "openai/streaming";
 import * as vscode from "vscode";
-import localCatalog from "../models.json";
+import { ModelCatalogResolver } from "../ModelCatalogResolver";
 import { Logger } from "../utils/Logger";
 import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
@@ -25,6 +25,7 @@ export class VertexMaaSProvider implements VertexModelProvider {
   private region!: string;
   private authOptions?: any;
   private labels: Record<string, string> = {};
+  private catalogResolver?: ModelCatalogResolver;
   private readonly logger = new Logger("VertexMaaSProvider");
 
   private static readonly MODEL_CONFIG: Record<string, ModelConfig> = {
@@ -53,6 +54,11 @@ export class VertexMaaSProvider implements VertexModelProvider {
     this.projectId = projectId;
     this.region = region;
     this.authOptions = authOptions;
+  }
+
+  /** Injects the catalog resolver so model specs are read from the effective (custom or bundled) catalog. */
+  setCatalogResolver(resolver: ModelCatalogResolver): void {
+    this.catalogResolver = resolver;
   }
 
   setLabels(labels: Record<string, string>): void {
@@ -139,8 +145,9 @@ export class VertexMaaSProvider implements VertexModelProvider {
       throw new Error(`Unknown MaaS model: ${modelId}. Available: ${Object.keys(VertexMaaSProvider.MODEL_CONFIG).join(", ")}`);
     }
 
-    // Look up model spec from the catalog
-    const modelSpec = (localCatalog as any).candidateModels.find((m: ModelSpec) => m.id === modelId);
+    // Look up model spec from the effective catalog (workspace > user > bundled)
+    const catalog = this.catalogResolver?.getEffectiveCatalog();
+    const modelSpec = catalog?.candidateModels.find((m: ModelSpec) => m.id === modelId);
     if (!modelSpec) {
       throw new Error(`Model spec not found in catalog for: ${modelId}`);
     }

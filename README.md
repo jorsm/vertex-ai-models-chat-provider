@@ -89,11 +89,11 @@ Choose the workflow that fits your environment:
 
 ## 🤖 Supported Models
 
-| Vendor        | Model Family | Versions Supported                               | Features                      |
-| :------------ | :----------- | :---------------------------------------------- | :---------------------------- |
-| **Anthropic** | Claude       | Opus 4.8, Sonnet 4.6, Haiku 4.5                 | Vision, Tools, Caching        |
-| **Google**    | Gemini       | 3.5 Flash, 3 Flash, 3.1 Pro                     | High Thinking, Parallel Tools |
-| **MaaS**      | Open-Weight  | Grok 4.2, DeepSeek V3.2, Qwen3-Coder, Kimi K2   | Thinking, Tools               |
+| Vendor        | Model Family | Versions Supported                            | Features                      |
+| :------------ | :----------- | :-------------------------------------------- | :---------------------------- |
+| **Anthropic** | Claude       | Fable 5, Opus 4.8, Sonnet 4.6, Haiku 4.5      | Vision, Tools, Caching        |
+| **Google**    | Gemini       | 3.5 Flash, 3 Flash, 3.1 Pro                   | High Thinking, Parallel Tools |
+| **MaaS**      | Open-Weight  | Grok 4.2, DeepSeek V3.2, Qwen3-Coder, Kimi K2 | Thinking, Tools               |
 
 > MaaS (Model-as-a-Service) brings open-weight third-party models via an OpenAI-compatible API on Google Agent Platform. See the [MaaS wiki page](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-as-a-Service-(MaaS)) for details.
 
@@ -124,7 +124,27 @@ Authentication methods are managed privately per-workspace to avoid platform-spe
 
 ---
 
-## 🔍 Diagnostics & Logs
+## Custom Model Catalog
+
+By default, the extension ships with a bundled `models.json` catalog of supported models and the GCP regions to probe. You can override this catalog at two levels so teams can configure their own models per organization policies:
+
+- **Workspace level** — `.vscode/models.json` in the first workspace folder. Commit it to share a model set with your team.
+- **User level** — a private `models.json` stored in the extension's global storage, applying across all your workspaces.
+
+**Resolution precedence:** Workspace > User > Bundled. A custom file fully *replaces* the bundled catalog (it is not merged). On first run, each command seeds the file from the bundled catalog so you start from a known-good template.
+
+| Action                         | Command                                             | Description                                                                                               |
+| :----------------------------- | :-------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
+| **Open Workspace models.json** | `Google Agent Platform: Open Workspace models.json` | Create (seeded from bundled) / open `.vscode/models.json` for editing. Requires an open workspace folder. |
+| **Open User models.json**      | `Google Agent Platform: Open User models.json`      | Create (seeded from bundled) / open your private user-level `models.json` for editing.                    |
+
+Both files get **JSON schema validation and autocomplete** (model `vendor` enum, required fields, pricing structure) automatically. Saving a custom catalog triggers model re-discovery and refreshes the Copilot Chat model picker within ~300ms.
+
+> **Note:** Multi-root workspaces use the *first* folder for `.vscode/models.json`. If a custom file contains invalid JSON, the extension logs an error, shows a one-shot message, and falls back to the next tier.
+
+---
+
+## �🔍 Diagnostics & Logs
 
 For detailed request/response mapping and troubleshooting:
 

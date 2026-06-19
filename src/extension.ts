@@ -3,6 +3,7 @@ import { AuthManager } from "./AuthManager";
 import { generateCommitMessage } from "./CommitMessage";
 import { CostStatusBar } from "./CostStatusBar";
 import { DashboardWebview } from "./DashboardWebview";
+import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { UsageTrackerService } from "./UsageTrackerService";
 import { VertexChatModelDispatcher } from "./VertexChatModelDispatcher";
 import { Logger } from "./utils/Logger";
@@ -30,11 +31,14 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   }
 
-  const usageTracker = new UsageTrackerService(context);
+  const catalogResolver = new ModelCatalogResolver(context);
+  context.subscriptions.push(catalogResolver);
+
+  const usageTracker = new UsageTrackerService(context, catalogResolver);
   const costStatusBar = new CostStatusBar(usageTracker, authManager);
   context.subscriptions.push(costStatusBar);
 
-  const provider = new VertexChatModelDispatcher(projectId, usageTracker, authManager);
+  const provider = new VertexChatModelDispatcher(projectId, usageTracker, authManager, catalogResolver);
 
   // Register dashboard command
   context.subscriptions.push(
@@ -88,6 +92,76 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Register command for SCM "Generate Commit Message" button in the CHANGES toolbar
   context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.generateCommitMessage", (resourceUri?: vscode.Uri) => generateCommitMessage(provider.getGoogleProvider(), usageTracker, resourceUri)));
+
+  // ── Custom model catalog commands ────────────────────────────────────
+  // Each command seeds the file from the bundled catalog on first run, then opens it
+  // in the editor. Both files are covered by contributes.jsonValidation for autocomplete.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("vertexAiChat.openUserModelsFile", async () => {
+      try {
+        const uri = await catalogResolver.ensureUserCatalogExists();
+        await vscode.window.showTextDocument(uri);
+        vscode.window.showInformationMessage("Google Agent Platform: Opened your user-level models.json. Edit and save to update available models.");
+      } catch (e: any) {
+        vscode.window.showErrorMessage(`Google Agent Platform: Could not open user models.json: ${e.message || e}`);
+      }
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("vertexAiChat.openWorkspaceModelsFile", async () => {
+      if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+        vscode.window.showWarningMessage("Google Agent Platform: Open a workspace folder first to create a workspace models.json.");
+        return;
+      }
+      try {
+        const uri = await catalogResolver.ensureWorkspaceCatalogExists();
+        if (!uri) {
+          vscode.window.showWarningMessage("Google Agent Platform: Open a workspace folder first to create a workspace models.json.");
+          return;
+        }
+        await vscode.window.showTextDocument(uri);
+        vscode.window.showInformationMessage("Google Agent Platform: Opened .vscode/models.json. Commit it to share models with your team.");
+      } catch (e: any) {
+        vscode.window.showErrorMessage(`Google Agent Platform: Could not open workspace models.json: ${e.message || e}`);
+      }
+    }),
+  );
+
+  // ── Auto-refresh on custom catalog save ──────────────────────────────
+  // Watch both custom files; on any change/create/delete, invalidate the cache and
+  // re-run discovery so the Copilot Chat model picker reflects edits. Debounced to
+  // avoid double-firing on rapid saves.
+  let refreshTimer: NodeJS.Timeout | null = null;
+  const triggerCatalogRefresh = () => {
+    if (refreshTimer) {
+      clearTimeout(refreshTimer);
+    }
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      catalogResolver.invalidateCache();
+      runDiscovery(provider, authManager).catch((err) => Logger.getLogger("extension").log(`⚠️ Catalog refresh discovery failed: ${err}`));
+    }, 300);
+  };
+
+  // Workspace file watcher (only when a workspace folder is open)
+  const wsFolder = vscode.workspace.workspaceFolders?.[0];
+  if (wsFolder) {
+    const wsPattern = new vscode.RelativePattern(wsFolder, ".vscode/models.json");
+    const wsWatcher = vscode.workspace.createFileSystemWatcher(wsPattern);
+    wsWatcher.onDidChange(triggerCatalogRefresh);
+    wsWatcher.onDidCreate(triggerCatalogRefresh);
+    wsWatcher.onDidDelete(triggerCatalogRefresh);
+    context.subscriptions.push(wsWatcher);
+  }
+
+  // User file watcher (globalStorage path)
+  const userPattern = new vscode.RelativePattern(context.globalStorageUri, "models.json");
+  const userWatcher = vscode.workspace.createFileSystemWatcher(userPattern);
+  userWatcher.onDidChange(triggerCatalogRefresh);
+  userWatcher.onDidCreate(triggerCatalogRefresh);
+  userWatcher.onDidDelete(triggerCatalogRefresh);
+  context.subscriptions.push(userWatcher);
 
   // If projectId is present, run discovery in the background on activation
   runDiscovery(provider, authManager);
