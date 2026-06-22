@@ -146,7 +146,7 @@ export class VertexMaaSProvider implements VertexModelProvider {
     }
 
     // Look up model spec from the effective catalog (workspace > user > bundled)
-    const catalog = this.catalogResolver?.getEffectiveCatalog();
+    const catalog = await this.catalogResolver?.getEffectiveCatalog();
     const modelSpec = catalog?.candidateModels.find((m: ModelSpec) => m.id === modelId);
     if (!modelSpec) {
       throw new Error(`Model spec not found in catalog for: ${modelId}`);

@@ -1,5 +1,3 @@
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import * as vscode from "vscode";
 import bundledCatalog from "./models.json";
 import { Logger } from "./utils/Logger";
@@ -19,7 +17,6 @@ import { ModelCatalog } from "./VertexChatModelDispatcher";
 export class ModelCatalogResolver implements vscode.Disposable {
   private readonly logger = new Logger("ModelCatalogResolver");
   private readonly userCatalogUri: vscode.Uri;
-  private readonly userCatalogPath: string;
 
   /** Cached effective catalog + its source. Invalidated by `invalidateCache()` (e.g. on file save). */
   private cached: { catalog: ModelCatalog; source: "workspace" | "user" | "bundled" } | null = null;
@@ -29,7 +26,6 @@ export class ModelCatalogResolver implements vscode.Disposable {
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.userCatalogUri = vscode.Uri.joinPath(context.globalStorageUri, "models.json");
-    this.userCatalogPath = this.userCatalogUri.fsPath;
   }
 
   dispose(): void {
@@ -63,7 +59,7 @@ export class ModelCatalogResolver implements vscode.Disposable {
    */
   async ensureUserCatalogExists(): Promise<vscode.Uri> {
     await this.ensureStorageDir();
-    await this.seedIfAbsent(this.userCatalogPath);
+    await this.seedIfAbsent(this.userCatalogUri);
     this.invalidateCache();
     return this.userCatalogUri;
   }
@@ -77,9 +73,7 @@ export class ModelCatalogResolver implements vscode.Disposable {
     if (!uri) {
       return undefined;
     }
-    const filePath = uri.fsPath;
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await this.seedIfAbsent(filePath);
+    await this.seedIfAbsent(uri);
     this.invalidateCache();
     return uri;
   }
@@ -92,7 +86,7 @@ export class ModelCatalogResolver implements vscode.Disposable {
    * file, logs the error, shows a one-shot error message, and falls back to the next tier
    * (never throws — callers always get a usable catalog).
    */
-  getEffectiveCatalog(): ModelCatalog {
+  async getEffectiveCatalog(): Promise<ModelCatalog> {
     if (this.cached) {
       return this.cached.catalog;
     }
@@ -100,7 +94,7 @@ export class ModelCatalogResolver implements vscode.Disposable {
     // 1. Workspace
     const wsUri = this.getWorkspaceCatalogUri();
     if (wsUri) {
-      const parsed = this.tryReadAndParse(wsUri.fsPath, "workspace");
+      const parsed = await this.tryReadAndParse(wsUri, "workspace");
       if (parsed) {
         this.cached = { catalog: parsed, source: "workspace" };
         return parsed;
@@ -108,7 +102,7 @@ export class ModelCatalogResolver implements vscode.Disposable {
     }
 
     // 2. User
-    const parsed = this.tryReadAndParse(this.userCatalogPath, "user");
+    const parsed = await this.tryReadAndParse(this.userCatalogUri, "user");
     if (parsed) {
       this.cached = { catalog: parsed, source: "user" };
       return parsed;
@@ -128,37 +122,38 @@ export class ModelCatalogResolver implements vscode.Disposable {
 
   private async ensureStorageDir(): Promise<void> {
     try {
-      await fs.access(this.context.globalStorageUri.fsPath);
-    } catch {
-      await fs.mkdir(this.context.globalStorageUri.fsPath, { recursive: true });
+      await vscode.workspace.fs.createDirectory(this.context.globalStorageUri);
+    } catch (e) {
+      this.logger.log(`Error creating storage directory: ${e}`);
     }
   }
 
   /**
-   * Writes the bundled catalog (pretty-printed) to `filePath` only if it does not already exist.
+   * Writes the bundled catalog (pretty-printed) to `uri` only if it does not already exist.
    * Never overwrites an existing custom file.
    */
-  private async seedIfAbsent(filePath: string): Promise<void> {
+  private async seedIfAbsent(uri: vscode.Uri): Promise<void> {
     try {
-      await fs.access(filePath);
+      await vscode.workspace.fs.stat(uri);
       return; // already exists — leave the user's edits alone
     } catch {
       // not found — seed
     }
     const seed = JSON.stringify(bundledCatalog, null, 2);
-    await fs.writeFile(filePath, seed, "utf8");
-    this.logger.log(`Seeded custom models.json from bundled catalog at: ${filePath}`);
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(seed, "utf8"));
+    this.logger.log(`Seeded custom models.json from bundled catalog at: ${uri.fsPath}`);
   }
 
   /**
-   * Synchronously reads + parses a custom catalog file. Returns `null` if the file is
+   * Reads + parses a custom catalog file. Returns `null` if the file is
    * absent, fails to parse, or doesn't match the `ModelCatalog` shape. Handles error
    * reporting with a one-shot popup per file path.
    */
-  private tryReadAndParse(filePath: string, _tier: "workspace" | "user"): ModelCatalog | null {
+  private async tryReadAndParse(uri: vscode.Uri, _tier: "workspace" | "user"): Promise<ModelCatalog | null> {
     let raw: string;
     try {
-      raw = require("fs").readFileSync(filePath, "utf8");
+      const bytes = await vscode.workspace.fs.readFile(uri);
+      raw = new TextDecoder().decode(bytes);
     } catch {
       // File doesn't exist (or unreadable) — not an error, just absent.
       return null;
@@ -168,12 +163,12 @@ export class ModelCatalogResolver implements vscode.Disposable {
     try {
       parsed = JSON.parse(raw);
     } catch (e: any) {
-      this.reportParseError(filePath, `Invalid JSON: ${e.message || e}`);
+      this.reportParseError(uri.fsPath, `Invalid JSON: ${e.message || e}`);
       return null;
     }
 
     if (!this.isValidCatalog(parsed)) {
-      this.reportParseError(filePath, "Missing required 'candidateModels' array or 'regionPriority' array.");
+      this.reportParseError(uri.fsPath, "Missing required 'candidateModels' array or 'regionPriority' array.");
       return null;
     }
 

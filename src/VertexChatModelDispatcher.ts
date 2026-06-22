@@ -149,7 +149,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   }
 
   private async _discoverModelsAndRegionImpl(): Promise<DiscoveryResult> {
-    const catalog = this.catalogResolver.getEffectiveCatalog();
+    const catalog = await this.catalogResolver.getEffectiveCatalog();
     const candidates = catalog.candidateModels;
     const regions = catalog.regionPriority;
 
@@ -258,12 +258,13 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
   // ── Chat provider interface ───────────────────────────────────────────
 
-  provideLanguageModelChatInformation(_options: vscode.PrepareLanguageModelChatModelOptions, _token: vscode.CancellationToken): vscode.ProviderResult<vscode.LanguageModelChatInformation[]> {
-    return this.mapModels();
+  async provideLanguageModelChatInformation(_options: vscode.PrepareLanguageModelChatModelOptions, _token: vscode.CancellationToken): Promise<vscode.LanguageModelChatInformation[]> {
+    return await this.mapModels();
   }
 
-  private mapModels(): vscode.LanguageModelChatInformation[] {
-    const models = this.availableModels.length > 0 ? this.availableModels : this.catalogResolver.getEffectiveCatalog().candidateModels;
+  private async mapModels(): Promise<vscode.LanguageModelChatInformation[]> {
+    const catalog = await this.catalogResolver.getEffectiveCatalog();
+    const models = this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels;
 
     // Check if we are running in VS Code 1.120 or higher
     const versionParts = vscode.version.split(".");
@@ -325,7 +326,8 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     }
 
     const modelId = model.id;
-    const spec = (this.availableModels.length > 0 ? this.availableModels : this.catalogResolver.getEffectiveCatalog().candidateModels).find((m) => m.id === modelId);
+    const catalog = await this.catalogResolver.getEffectiveCatalog();
+    const spec = (this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels).find((m) => m.id === modelId);
 
     this.logger.log(`▶ provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, vendor: ${spec?.vendor}, messages: ${messages.length}`);
 

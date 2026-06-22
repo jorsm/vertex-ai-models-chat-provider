@@ -48,9 +48,10 @@ export class UsageTrackerService {
    * @param tokens The fully populated token breakdown
    * @returns The total cost calculated based on the pricing map
    */
-  public calculateCost(model: string, tokens: Required<TokenUsage>): number {
+  public async calculateCost(model: string, tokens: Required<TokenUsage>): Promise<number> {
     // Retrieve the model from the effective catalog (workspace > user > bundled)
-    const modelDef = this.catalogResolver.getEffectiveCatalog().candidateModels.find((m: any) => m.id === model);
+    const catalog = await this.catalogResolver.getEffectiveCatalog();
+    const modelDef = catalog.candidateModels.find((m: any) => m.id === model);
     const pricing = modelDef?.pricing;
 
     if (!pricing) {
@@ -95,7 +96,7 @@ export class UsageTrackerService {
       characters: usage.characters || { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 },
     };
 
-    const cost = this.calculateCost(model, tokens);
+    const cost = await this.calculateCost(model, tokens);
 
     const logEntry: UsageLogEntry = {
       timestamp: date.toISOString(), // Standardizing on ISO-8601 UTC

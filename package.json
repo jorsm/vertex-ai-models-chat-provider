@@ -16,6 +16,10 @@
   "categories": [
     "Other"
   ],
+  "extensionKind": [
+    "ui",
+    "workspace"
+  ],
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
