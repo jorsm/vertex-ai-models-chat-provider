@@ -4,6 +4,25 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.5] — 2026-07-15
+
+### Added
+
+- **Remote Development Support** — The extension can now run in either the local/UI or workspace extension host, supporting Remote SSH, Dev Containers, Codespaces, and similar VS Code remote workflows.
+- **Portable Service Account Imports** — Service Account JSON files selected through VS Code are imported as encrypted snapshots into `SecretStorage`, so authentication no longer depends on a path being accessible from the extension host.
+- **Stored Credential Management** — Added a command to remove stored Service Accounts. Re-importing an existing friendly name can replace its stored credential after confirmation.
+
+### Changed
+
+- **Local ADC Recovery** — When the extension runs locally against a remote workspace, the authentication recovery action runs the local `gcloud` installation and refreshes models after a successful login.
+- **Optional Git Integration** — AI commit-message generation now activates the built-in Git extension when available and degrades gracefully when Git runs in a different extension host. Chat models, workspace file access, and tool calling remain available.
+- **URI-Based Catalog Access** — Custom model catalogs now use VS Code's URI-aware filesystem APIs so workspace catalogs work across local and remote filesystems.
+
+### Fixed
+
+- **Remote Authentication Boundary** — Fixed the one-click ADC login action opening a terminal on the remote machine when the extension was installed locally.
+- **Service Account File Boundary** — Fixed selected Service Account files being reduced to host-specific filesystem paths.
+
 ## [0.5.4] — 2026-06-19
 
 ### Added
