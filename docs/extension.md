@@ -21,7 +21,8 @@ The extension follows a standard VS Code extension architecture with several spe
 *   **Service Initialization**: Orchestrates the `UsageTrackerService`, `CostStatusBar`, and `VertexChatModelDispatcher`.
 *   **Provider Registration**: Registers a `LanguageModelChatProvider` under the name "Google Cloud Vertex AI", allowing the models to be used within the native VS Code Chat interface.
 *   **Model Discovery**: Implements a discovery mechanism that probes GCP regions to identify available models. This process is triggered on activation, configuration changes, or manually via command.
-*   **Command Registration**: Exposes several commands for UI interaction, including dashboard access, manual model refreshing, tool debugging, and AI-powered commit message generation.
+*   **Remote Host Support**: Can run in either the local/UI or workspace extension host. Local/UI is preferred so remote workspaces can use credentials and `gcloud` from the client machine.
+*   **Command Registration**: Exposes commands for dashboard access, model refresh, tool debugging, Service Account lifecycle management, and optional AI-powered commit-message generation.
 
 ## API Reference
 
@@ -41,7 +42,12 @@ Initializes the extension's internal state and registers its contributions with 
     - `claudeBilling.showDashboard`: Opens the local usage and cost dashboard.
     - `vertexAiChat.refreshModels`: Manually triggers the model discovery process.
     - `vertexAiChat.dumpTools`: Dumps metadata and schemas for all installed `vscode.lm.tools` to an output channel for debugging.
-    - `vertexAiChat.generateCommitMessage`: Invokes the AI logic to generate a commit message based on Git changes.
+    - `vertexAiChat.generateCommitMessage`: Invokes the AI logic to generate a commit message when the Git extension API is available in the same extension host.
+    - `vertexAiChat.setServiceAccountKey`: Validates and stores pasted Service Account JSON in `SecretStorage`.
+    - `vertexAiChat.setServiceAccountPath`: Imports a selected JSON file as a secure snapshot; the source path is not retained.
+    - `vertexAiChat.removeServiceAccount`: Removes a named stored credential.
+    - `vertexAiChat.selectAuthMethod`: Selects a stored Service Account, imports a new one, removes one, or switches to ADC.
+    - `vertexAiChat.clearAuthMethod`: Resets the workspace authentication method to ADC.
 6.  Registers the chat provider with the `vscode.lm` API.
 7.  Starts an initial background discovery of models.
 8.  Sets up a listener for `onDidChangeConfiguration` to update the project ID and re-run discovery if changed.
@@ -57,6 +63,7 @@ An internal helper function that coordinates with the `VertexChatModelDispatcher
 - Calls `provider.discoverModelsAndRegion()`.
 - Displays an information message listing the available models and the discovered region upon success.
 - Displays a warning if no models are found or an error message if the discovery process fails.
+- On authentication failure, offers a `gcloud` recovery action. A local/UI extension in a remote window runs local `gcloud`; other placements retain the integrated-terminal workflow. Confirmed success triggers discovery again.
 
 ## Examples
 

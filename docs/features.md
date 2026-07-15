@@ -22,7 +22,7 @@
 The extension provides an AI-powered commit message generator that integrates directly with the VS Code Source Control Management (SCM) view. It analyzes staged `git diff` outputs and produces professional messages following the [Conventional Commits](https://www.conventionalcommits.org/) specification. 
 
 Key aspects of the generation logic include:
-- **Git Integration**: Uses the `vscode.git` extension to identify staged changes and retrieve diff data using `diffIndexWithHEAD`.
+- **Optional Git Integration**: Activates and uses the `vscode.git` extension, when its API is available in the same extension host, to identify staged changes and retrieve diff data using `diffIndexWithHEAD`.
 - **Contextual Analysis**: Sends the diff to the `gemini-3-flash-preview` model, emphasizing the "why" and "what" of the changes rather than just listing line modifications.
 - **Strict Formatting**: The system prompt enforces specific constraints: imperative present tense, no trailing periods, and a 72-character limit for subject lines.
 - **Streaming UI**: The generated message is streamed directly into the SCM input box, providing immediate feedback to the developer.
@@ -61,3 +61,5 @@ stateless JWT verification to support horizontal scaling.
 
 ### Git SCM Integration
 The function is typically triggered via the magic wand icon in the SCM view title bar or via the Command Palette. It automatically handles the "⏳ Generating..." state within the input box until the stream is complete and logs the final generated message to the internal diagnostics channel.
+
+The Git API cannot cross VS Code extension-host boundaries. In a remote window, Git may run in the workspace host while this extension runs in the local/UI host. The command then shows a warning and stops; model discovery, chat, workspace file access through VS Code, and tool calling are unaffected.

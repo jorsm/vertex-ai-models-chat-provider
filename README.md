@@ -17,6 +17,7 @@ This extension registers **Google Gemini**, **Anthropic Claude**, and **MaaS ope
 - **🏢 Automatic Billing** — Costs follow your project settings as you switch workspaces.
 - **⚡ Native Integration** — First-class support for Gemini, Claude, and open-weight models within Copilot Chat.
 - **🛡️ Private Auth** — Support for Service Account JSON keys with "Zero-Pollution" local storage.
+- **🌐 Remote Development** — Run the extension locally with local ADC while coding over Remote SSH, Dev Containers, or Codespaces.
 - **📊 Cost Transparency** — Real-time session tracking, interactive usage dashboard, and opt-in labels for precise Google Cloud Billing attribution.
 
 ---
@@ -34,7 +35,7 @@ This extension registers **Google Gemini**, **Anthropic Claude**, and **MaaS ope
 1. **Install**: Find **Google Agent Platform for Copilot Chat** in the VS Code Marketplace and click Install.
 2. **Authenticate**: Choose one of the following methods:
     - **Option A (Standard)**: Run `gcloud auth application-default login` in your terminal.
-    - **Option B (Service Account)**: Run the command `Google Agent Platform: Paste Service Account JSON Key` in VS Code and paste your JSON key.
+    - **Option B (Service Account)**: Run `Google Agent Platform: Paste Service Account JSON Key` or `Google Agent Platform: Import Service Account JSON File`.
 3. **Configure**: Open VS Code Settings (`Ctrl+,`) and set your **GCP Project ID** in `vertexAiChat.projectId`.
 4. **Chat**: Open the Chat panel (`Ctrl+Shift+I`) and select a **Google Agent Platform** model from the picker.
 
@@ -67,8 +68,16 @@ Choose the workflow that fits your environment:
 
 - **Standard ADC**: Uses your system's `gcloud` identity. Ideal for standard local development.
 - **Encrypted Secrets**: Paste a Service Account JSON key directly into VS Code. It is stored securely in your OS keychain (via `SecretStorage`) and never touches your repository or `settings.json`.
-- **Local File Paths**: Reference a JSON key file on your machine. The path is stored privately in your workspace state, preventing platform-specific conflicts in shared repos.
+- **Imported JSON Files**: Select a Service Account JSON file through VS Code. Its contents are imported into `SecretStorage`.
 - **Environment Variables**: Automatically respects `GOOGLE_APPLICATION_CREDENTIALS` if set.
+
+### Remote Development
+
+The extension declares both local/UI and workspace extension-host support, preferring the local/UI host. In a Remote SSH, Dev Container, or Codespaces window, install it locally to keep using the ADC and `gcloud` installation on your client machine—even if the remote environment has no Google Cloud CLI.
+
+When authentication expires, **Login with local gcloud** runs on the client and refreshes model discovery after a successful login. Service Account imports are URI-aware and are copied into the extension host's `SecretStorage`, so the selected file does not need to remain available afterward.
+
+The AI commit-message command is an optional integration with VS Code's built-in Git extension. In a remote window Git may run in a different extension host; in that case commit-message generation reports that it is unavailable, while chat models, workspace file access, and tool calling continue to work normally.
 
 ---
 
@@ -113,14 +122,15 @@ Choose the workflow that fits your environment:
 
 ### Private Configuration (Command-Managed)
 
-Authentication methods are managed privately per-workspace to avoid platform-specific path conflicts and Git pollution.
+Authentication methods are managed privately per workspace to avoid host-specific path conflicts and Git pollution.
 
-| Action                 | Command                                                   | Description                                                              |
-| :--------------------- | :-------------------------------------------------------- | :----------------------------------------------------------------------- |
-| **Paste JSON Key**     | `Google Agent Platform: Paste Service Account JSON Key`   | Save a JSON key to the encrypted OS store and activate it.               |
-| **Select JSON File**   | `Google Agent Platform: Select Service Account JSON File` | Pick a local JSON key file. Path is stored privately in workspace state. |
-| **Select Auth Method** | `Google Agent Platform: Select Authentication Method`     | Switch between Stored Secrets, File Paths, or Default ADC.               |
-| **Clear Auth Method**  | `Google Agent Platform: Clear Authentication Method`      | Reset the workspace to use Default ADC (gcloud login).                   |
+| Action                    | Command                                                        | Description                                                                        |
+| :------------------------ | :------------------------------------------------------------- | :--------------------------------------------------------------------------------- |
+| **Paste JSON Key**        | `Google Agent Platform: Paste Service Account JSON Key`        | Validate, securely store, and activate pasted Service Account JSON.                |
+| **Import JSON File**      | `Google Agent Platform: Import Service Account JSON File`      | Import a validated snapshot into `SecretStorage`; the source path is not retained. |
+| **Remove Stored Account** | `Google Agent Platform: Remove Stored Service Account`         | Delete a named credential; removing the active one switches the workspace to ADC.  |
+| **Select Auth Method**    | `Google Agent Platform: Select Authentication Method`          | Switch between stored Service Accounts and default ADC.                            |
+| **Clear Auth Method**     | `Google Agent Platform: Clear Authentication Method (Use ADC)` | Reset the workspace to use default ADC.                                            |
 
 ---
 

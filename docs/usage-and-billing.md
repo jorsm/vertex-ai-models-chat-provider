@@ -52,7 +52,7 @@ Cleans up the webview panel and disposes of all internal event listeners and sub
 [source](../src/CostStatusBar.ts)
 Manages a persistent status bar item that displays today's total estimated cost and the active authentication identity. It updates in real-time as usage is recorded or authentication methods change, using dynamic icons to reflect the active auth type:
 - **$(key)**: Encrypted Service Account secret.
-- **$(file)**: Local JSON key file path.
+- **$(file)**: Legacy linked Service Account file retained for existing workspace configurations. New file selections are imported as encrypted secrets.
 - **$(cloud)**: Google Application Default Credentials (ADC).
 - **$(pulse)**: Default or disconnected state.
 

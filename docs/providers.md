@@ -151,7 +151,7 @@ The `VertexMaaSProvider` class implements the `VertexModelProvider` interface fo
 [source](../src/providers/VertexMaaSProvider.ts)
 `initialize(projectId: string, region: string, authOptions?: any): void`
 
-Sets the GCP Project ID and regional endpoint. It configures the provider to use OpenAI SDK pointing to the Google Cloud Vertex MaaS `baseURL`. It supports authentication via standard Application Default Credentials or provided Service Account credentials (JSON keys or file paths). The provider dynamically respects the project ID from active VS Code settings to support workspace-specific billing.
+Sets the GCP Project ID and regional endpoint. It configures the provider to use the OpenAI SDK pointing to the Google Cloud Vertex MaaS `baseURL`. It supports standard Application Default Credentials and Service Account credentials imported into VS Code `SecretStorage`; legacy workspace configurations that link a key file remain readable. The provider dynamically respects the project ID from active VS Code settings to support workspace-specific billing.
 
 #### setLabels
 [source](../src/providers/VertexMaaSProvider.ts)
