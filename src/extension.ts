@@ -12,6 +12,7 @@ import { VertexAuthenticationError } from "./utils/retry";
 export async function activate(context: vscode.ExtensionContext) {
   // Initialize the logger
   Logger.initialize();
+  Logger.getLogger("extension").log(`Running as ${context.extension.extensionKind === vscode.ExtensionKind.UI ? "UI/local" : "workspace/remote"} extension host; remote workspace: ${vscode.env.remoteName || "none"}`);
 
   const authManager = new AuthManager(context);
   let config = vscode.workspace.getConfiguration("vertexAiChat");
@@ -61,9 +62,15 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   // Auth management commands
-  context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.setServiceAccountKey", () => authManager.setServiceAccountKey().then(() => runDiscovery(provider, authManager))));
-  context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.setServiceAccountPath", () => authManager.setServiceAccountPath().then(() => runDiscovery(provider, authManager))));
-  context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.selectAuthMethod", () => authManager.selectAuthMethod().then(() => runDiscovery(provider, authManager))));
+  const refreshAfterAuthChange = async (changeAuth: () => Promise<boolean>) => {
+    if (await changeAuth()) {
+      await runDiscovery(provider, authManager);
+    }
+  };
+  context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.setServiceAccountKey", () => refreshAfterAuthChange(() => authManager.setServiceAccountKey())));
+  context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.setServiceAccountPath", () => refreshAfterAuthChange(() => authManager.importServiceAccountFile())));
+  context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.removeServiceAccount", () => refreshAfterAuthChange(() => authManager.removeServiceAccount())));
+  context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.selectAuthMethod", () => refreshAfterAuthChange(() => authManager.selectAuthMethod())));
   context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.clearAuthMethod", () => authManager.clearAuthMethod().then(() => runDiscovery(provider, authManager))));
 
   context.subscriptions.push(
@@ -209,38 +216,12 @@ async function runDiscovery(provider: VertexChatModelDispatcher, authManager: Au
 
     if (e instanceof VertexAuthenticationError) {
       // Specialized handling for expired/invalid Google Cloud credentials
-      const loginAction = "Login with gcloud";
+      const loginAction = authManager.getGcloudLoginActionLabel();
       const selection = await vscode.window.showErrorMessage(e.message, loginAction);
 
       if (selection === loginAction) {
-        // Automation: open a terminal and run the auth command if the user clicks the button
-        const terminal = vscode.window.createTerminal({
-          name: "Google Agent Platform: Authentication",
-          iconPath: new vscode.ThemeIcon("key"),
-        });
-
-        // Use the shell integration API to watch the terminal output in real-time.
-        // As soon as gcloud prints "Credentials saved to file", we trigger a refresh
-        // so the user doesn't have to wait for the command to finish or manually click anything.
-        const disposable = vscode.window.onDidStartTerminalShellExecution(async (event) => {
-          if (event.terminal === terminal) {
-            for await (const data of event.execution.read()) {
-              if (data.includes("Credentials saved to file")) {
-                vscode.window.showInformationMessage("Vertex AI: Authentication successful! Refreshing models…");
-                runDiscovery(provider, authManager);
-                disposable.dispose(); // Cleanup the listener
-                break;
-              }
-            }
-          }
-        });
-
-        terminal.show();
-        // Use the configured project ID to avoid unnecessary API prompts on the default project,
-        // and --quiet to exit cleanly after credentials are saved.
         const projectId = vscode.workspace.getConfiguration("vertexAiChat").get<string>("projectId") || "";
-        const command = projectId ? `gcloud auth application-default login --project ${projectId} --quiet` : "gcloud auth application-default login --quiet";
-        terminal.sendText(command);
+        await authManager.reauthenticate(projectId, () => runDiscovery(provider, authManager));
       }
     } else {
       // Generic fallback for other discovery failures (e.g., networking, project ID errors)

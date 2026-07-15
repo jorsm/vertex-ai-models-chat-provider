@@ -4,7 +4,7 @@ import * as util from "util";
 import * as vscode from "vscode";
 import { Logger } from "./utils/Logger";
 
-const execAsync = util.promisify(childProcess.exec);
+const execFileAsync = util.promisify(childProcess.execFile);
 
 export type AuthMethodType = "secret" | "file" | "adc";
 
@@ -23,6 +23,14 @@ const SECRETS_PREFIX = "sa_key_";
 const GLOBAL_INDEX_KEY = "vertexAiChat.serviceAccountNames";
 const WORKSPACE_AUTH_METHOD_KEY = "vertexAiChat.activeAuthMethod";
 const SUPPRESS_WARNING_KEY = "vertexAiChat.suppressAuthWarning";
+
+interface ServiceAccountCredentials {
+  type: "service_account";
+  project_id: string;
+  client_email: string;
+  private_key: string;
+  [key: string]: unknown;
+}
 
 export class AuthManager {
   private readonly logger = new Logger("AuthManager");
@@ -108,6 +116,7 @@ export class AuthManager {
     return undefined;
   }
 
+  /** Legacy support for workspaces that stored a linked credential path. */
   private resolveFromFile(filePath: string): AuthOptions | undefined {
     if (fs.existsSync(filePath)) {
       try {
@@ -139,81 +148,109 @@ export class AuthManager {
   /**
    * Command: Paste a new Service Account JSON key.
    */
-  public async setServiceAccountKey(): Promise<void> {
+  public async setServiceAccountKey(): Promise<boolean> {
     const json = await vscode.window.showInputBox({
       prompt: "Paste the content of your Service Account JSON key",
       placeHolder: '{ "type": "service_account", ... }',
       ignoreFocusOut: true,
       validateInput: (value) => {
         try {
-          const parsed = JSON.parse(value);
-          if (parsed.type !== "service_account") {
-            return "Not a valid service account JSON (missing type: service_account)";
-          }
+          this.parseServiceAccount(value);
           return null;
-        } catch (e) {
-          return "Invalid JSON format";
+        } catch (e: any) {
+          return e.message || "Invalid service account JSON";
         }
       },
     });
 
     if (!json) {
-      return;
+      return false;
     }
 
-    const defaultName = vscode.workspace.name || "default";
-    const name = await vscode.window.showInputBox({
-      prompt: "Enter a friendly name for this Service Account",
-      value: defaultName,
-      placeHolder: "e.g. Client-A, Personal-Lab",
-    });
-
-    if (!name) {
-      return;
-    }
-
-    await this.context.secrets.store(SECRETS_PREFIX + name, json);
-
-    // Update global index
-    const names = this.context.globalState.get<string[]>(GLOBAL_INDEX_KEY) || [];
-    if (!names.includes(name)) {
-      names.push(name);
-      await this.context.globalState.update(GLOBAL_INDEX_KEY, names);
-    }
-
-    await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "secret", value: name });
-    await this.context.workspaceState.update(SUPPRESS_WARNING_KEY, false);
-    this._onAuthUpdated.fire();
-    vscode.window.showInformationMessage(`Vertex AI: Service Account '${name}' saved and activated for this workspace.`);
+    const credentials = this.parseServiceAccount(json);
+    return this.storeServiceAccount(json, credentials.project_id || vscode.workspace.name || "default");
   }
 
   /**
-   * Command: Select an existing Service Account JSON file.
+   * Command: Import a Service Account JSON file into VS Code SecretStorage.
+   * The selected file is a snapshot; subsequent file edits require re-importing it.
    */
-  public async setServiceAccountPath(): Promise<void> {
+  public async importServiceAccountFile(): Promise<boolean> {
     const uris = await vscode.window.showOpenDialog({
       canSelectFiles: true,
       canSelectFolders: false,
       canSelectMany: false,
       filters: { JSON: ["json"] },
-      title: "Select Service Account JSON Key File",
+      title: "Import Service Account JSON into VS Code Secret Storage",
+      openLabel: "Import Credential",
     });
 
     if (!uris || uris.length === 0) {
-      return;
+      return false;
     }
 
-    const filePath = uris[0].fsPath;
-    await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "file", value: filePath });
-    await this.context.workspaceState.update(SUPPRESS_WARNING_KEY, false);
-    this._onAuthUpdated.fire();
-    vscode.window.showInformationMessage(`Vertex AI: Using Service Account file: ${filePath}`);
+    try {
+      const bytes = await vscode.workspace.fs.readFile(uris[0]);
+      const json = new TextDecoder().decode(bytes);
+      const credentials = this.parseServiceAccount(json);
+      return await this.storeServiceAccount(json, credentials.project_id || vscode.workspace.name || "default");
+    } catch (e: any) {
+      this.logger.log(`Failed to import service account file '${uris[0].toString()}': ${e}`);
+      vscode.window.showErrorMessage(`Vertex AI: Could not import the service account file. ${e.message || e}`);
+      return false;
+    }
+  }
+
+  /** Backwards-compatible method name for callers using the previous API. */
+  public async setServiceAccountPath(): Promise<boolean> {
+    return this.importServiceAccountFile();
+  }
+
+  /**
+   * Command: Remove a stored Service Account secret.
+   */
+  public async removeServiceAccount(): Promise<boolean> {
+    const names = this.context.globalState.get<string[]>(GLOBAL_INDEX_KEY) || [];
+    if (names.length === 0) {
+      vscode.window.showInformationMessage("Vertex AI: No stored Service Accounts to remove.");
+      return false;
+    }
+
+    const name = await vscode.window.showQuickPick(names, {
+      placeHolder: "Select a stored Service Account to remove",
+    });
+    if (!name) {
+      return false;
+    }
+
+    const removeAction = "Remove";
+    const confirmation = await vscode.window.showWarningMessage(`Remove stored Service Account '${name}'?`, { modal: true }, removeAction);
+    if (confirmation !== removeAction) {
+      return false;
+    }
+
+    await this.context.secrets.delete(SECRETS_PREFIX + name);
+    await this.context.globalState.update(
+      GLOBAL_INDEX_KEY,
+      names.filter((candidate) => candidate !== name),
+    );
+
+    const active = this.context.workspaceState.get<AuthMethod>(WORKSPACE_AUTH_METHOD_KEY);
+    const removedActiveCredential = active?.type === "secret" && active.value === name;
+    if (removedActiveCredential) {
+      await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "adc" });
+      await this.context.workspaceState.update(SUPPRESS_WARNING_KEY, false);
+      this._onAuthUpdated.fire();
+    }
+
+    vscode.window.showInformationMessage(`Vertex AI: Removed stored Service Account '${name}'.`);
+    return removedActiveCredential;
   }
 
   /**
    * Command: Pick from known secrets, files, or ADC.
    */
-  public async selectAuthMethod(): Promise<void> {
+  public async selectAuthMethod(): Promise<boolean> {
     const names = this.context.globalState.get<string[]>(GLOBAL_INDEX_KEY) || [];
     const current = this.context.workspaceState.get<AuthMethod>(WORKSPACE_AUTH_METHOD_KEY);
 
@@ -224,8 +261,8 @@ export class AuthManager {
         alwaysShow: true,
       },
       {
-        label: "$(file) Use Local File Path...",
-        description: current?.type === "file" ? `(Current: ${current.value})` : "",
+        label: "$(file) Import Service Account JSON File...",
+        description: "Store a secure snapshot in VS Code",
       },
     ];
 
@@ -237,6 +274,10 @@ export class AuthManager {
           description: current?.type === "secret" && current.value === name ? "(Current)" : "",
         });
       }
+      items.push({
+        label: "$(trash) Remove Stored Service Account...",
+        description: "Delete a credential from VS Code Secret Storage",
+      });
     }
 
     const selection = await vscode.window.showQuickPick(items, {
@@ -244,13 +285,15 @@ export class AuthManager {
     });
 
     if (!selection) {
-      return;
+      return false;
     }
 
     if (selection.label.includes("gcloud login")) {
       await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "adc" });
-    } else if (selection.label.includes("Local File Path")) {
-      await this.setServiceAccountPath();
+    } else if (selection.label.includes("Import Service Account")) {
+      return this.importServiceAccountFile();
+    } else if (selection.label.includes("Remove Stored Service Account")) {
+      return this.removeServiceAccount();
     } else if (selection.label.startsWith("$(key)")) {
       const name = selection.label.replace("$(key) ", "");
       await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "secret", value: name });
@@ -258,6 +301,7 @@ export class AuthManager {
 
     await this.context.workspaceState.update(SUPPRESS_WARNING_KEY, false);
     this._onAuthUpdated.fire();
+    return true;
   }
 
   /**
@@ -281,7 +325,7 @@ export class AuthManager {
 
     // Fallback to gcloud if using ADC
     try {
-      const { stdout } = await execAsync("gcloud config get-value account");
+      const { stdout } = await execFileAsync("gcloud", ["config", "get-value", "account"]);
       const email = stdout.trim();
       if (email && email !== "(unset)") {
         return email;
@@ -293,19 +337,208 @@ export class AuthManager {
   }
 
   /**
-   * Encapsulates the gcloud login terminal workflow.
+   * Runs gcloud authentication on the correct side of a remote window.
+   * A locally running UI extension uses a local child process; a workspace extension
+   * (or a normal local window) keeps the interactive terminal workflow.
    */
-  public async reauthenticate(): Promise<void> {
+  public async reauthenticate(projectId: string, onSuccess?: () => void | Promise<void>): Promise<void> {
+    const isLocalExtensionInRemoteWindow = this.isLocalExtensionInRemoteWindow();
+
+    if (isLocalExtensionInRemoteWindow) {
+      const succeeded = await this.runLocalGcloudLogin(projectId);
+      if (!succeeded) {
+        return;
+      }
+
+      await this.activateAdc();
+      vscode.window.showInformationMessage("Vertex AI: Local Application Default Credentials updated successfully. Refreshing models…");
+      await onSuccess?.();
+      return;
+    }
+
+    this.openGcloudLoginTerminal(projectId, onSuccess);
+  }
+
+  private parseServiceAccount(json: string): ServiceAccountCredentials {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(json);
+    } catch {
+      throw new Error("Invalid JSON format");
+    }
+
+    if (typeof parsed !== "object" || parsed === null || (parsed as Record<string, unknown>).type !== "service_account") {
+      throw new Error("Not a valid service account JSON (missing type: service_account)");
+    }
+
+    const credentials = parsed as ServiceAccountCredentials;
+    if (typeof credentials.project_id !== "string" || typeof credentials.client_email !== "string" || typeof credentials.private_key !== "string" || !credentials.project_id || !credentials.client_email || !credentials.private_key) {
+      throw new Error("Service account JSON is missing project_id, client_email, or private_key");
+    }
+    return credentials;
+  }
+
+  public getGcloudLoginActionLabel(): string {
+    return this.isLocalExtensionInRemoteWindow() ? "Login with local gcloud" : "Login with gcloud";
+  }
+
+  private isLocalExtensionInRemoteWindow(): boolean {
+    return this.context.extension.extensionKind === vscode.ExtensionKind.UI && vscode.env.remoteName !== undefined;
+  }
+
+  private async storeServiceAccount(json: string, suggestedName: string): Promise<boolean> {
+    const enteredName = await vscode.window.showInputBox({
+      prompt: "Enter a friendly name for this Service Account",
+      value: suggestedName,
+      placeHolder: "e.g. Client-A, Personal-Lab",
+      validateInput: (value) => (value.trim().length === 0 ? "Enter a non-empty name" : null),
+    });
+    if (!enteredName) {
+      return false;
+    }
+    const name = enteredName.trim();
+
+    const names = this.context.globalState.get<string[]>(GLOBAL_INDEX_KEY) || [];
+    if (names.includes(name)) {
+      const replaceAction = "Replace";
+      const confirmation = await vscode.window.showWarningMessage(`A stored Service Account named '${name}' already exists. Replace it with this imported credential?`, { modal: true }, replaceAction);
+      if (confirmation !== replaceAction) {
+        return false;
+      }
+    }
+
+    await this.context.secrets.store(SECRETS_PREFIX + name, json);
+    if (!names.includes(name)) {
+      await this.context.globalState.update(GLOBAL_INDEX_KEY, [...names, name]);
+    }
+    await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "secret", value: name });
+    await this.context.workspaceState.update(SUPPRESS_WARNING_KEY, false);
+    this._onAuthUpdated.fire();
+    vscode.window.showInformationMessage(`Vertex AI: Service Account '${name}' securely stored and activated for this workspace.`);
+    return true;
+  }
+
+  private getGcloudLoginArgs(projectId: string): string[] {
+    const args = ["auth", "application-default", "login"];
+    if (projectId) {
+      args.push("--project", projectId);
+    }
+    args.push("--quiet");
+    return args;
+  }
+
+  private async runLocalGcloudLogin(projectId: string): Promise<boolean> {
+    const args = this.getGcloudLoginArgs(projectId);
+    const result = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: "Vertex AI: Authenticating with local gcloud…",
+        cancellable: true,
+      },
+      (_progress, token) =>
+        new Promise<{ success: boolean; cancelled?: boolean; error?: NodeJS.ErrnoException; exitCode?: number | null }>((resolve) => {
+          let settled = false;
+          const finish = (value: { success: boolean; cancelled?: boolean; error?: NodeJS.ErrnoException; exitCode?: number | null }) => {
+            if (!settled) {
+              settled = true;
+              resolve(value);
+            }
+          };
+
+          const child = childProcess.spawn("gcloud", args, {
+            shell: false,
+            windowsHide: true,
+          });
+          child.stdout?.resume();
+          child.stderr?.resume();
+
+          const cancellation = token.onCancellationRequested(() => {
+            child.kill();
+            finish({ success: false, cancelled: true });
+          });
+
+          child.once("error", (error: NodeJS.ErrnoException) => {
+            cancellation.dispose();
+            finish({ success: false, error });
+          });
+          child.once("close", (exitCode) => {
+            cancellation.dispose();
+            finish({ success: exitCode === 0, exitCode });
+          });
+        }),
+    );
+
+    if (result.success) {
+      this.logger.log("Local gcloud ADC login completed successfully.");
+      return true;
+    }
+    if (result.cancelled) {
+      this.logger.log("Local gcloud ADC login cancelled by the user.");
+      vscode.window.showInformationMessage("Vertex AI: Local gcloud authentication was cancelled.");
+      return false;
+    }
+    if (result.error?.code === "ENOENT") {
+      this.logger.log("Local gcloud ADC login failed because the gcloud executable was not found.");
+      vscode.window.showErrorMessage("Vertex AI: gcloud CLI was not found on your local machine. Install Google Cloud CLI or import/paste a Service Account credential.");
+      return false;
+    }
+
+    this.logger.log(`Local gcloud ADC login failed with exit code ${result.exitCode ?? "unknown"}: ${result.error?.message || "unknown error"}`);
+    vscode.window.showErrorMessage(`Vertex AI: Local gcloud authentication failed${result.exitCode === undefined ? "" : ` with exit code ${result.exitCode}`}. Check your local gcloud installation and try again.`);
+    return false;
+  }
+
+  private openGcloudLoginTerminal(projectId: string, onSuccess?: () => void | Promise<void>): void {
     const terminal = vscode.window.createTerminal({
       name: "Vertex AI: Authentication",
       iconPath: new vscode.ThemeIcon("key"),
     });
 
-    terminal.show();
-    terminal.sendText("gcloud auth application-default login");
+    const args = this.getGcloudLoginArgs(projectId);
+    const command = ["gcloud", ...args.map((arg) => this.quoteShellArgument(arg))].join(" ");
+    let completed = false;
+    const cleanup = () => {
+      endListener.dispose();
+      closeListener.dispose();
+    };
+    const endListener = vscode.window.onDidEndTerminalShellExecution((event) => {
+      if (event.terminal !== terminal || completed || !event.execution.commandLine.value.includes("gcloud auth application-default login")) {
+        return;
+      }
+      completed = true;
+      cleanup();
+      if (event.exitCode !== 0) {
+        vscode.window.showErrorMessage(`Vertex AI: gcloud authentication failed${event.exitCode === undefined ? "" : ` with exit code ${event.exitCode}`}. Review the authentication terminal for details.`);
+        return;
+      }
 
-    // We can't easily wait for the terminal to finish here without complex state tracking,
-    // but the extension.ts already has some logic for this using onDidStartTerminalShellExecution.
-    // We'll keep that logic in extension.ts or move it if needed, but for now this triggers the command.
+      void (async () => {
+        await this.activateAdc();
+        vscode.window.showInformationMessage("Vertex AI: Application Default Credentials updated successfully. Refreshing models…");
+        await onSuccess?.();
+      })().catch((error) => this.logger.log(`Post-authentication refresh failed: ${error}`));
+    });
+    const closeListener = vscode.window.onDidCloseTerminal((closedTerminal) => {
+      if (closedTerminal === terminal) {
+        cleanup();
+      }
+    });
+
+    terminal.show();
+    terminal.sendText(command);
+    vscode.window.showInformationMessage("Vertex AI: Complete gcloud authentication in the terminal. Models will refresh automatically when shell integration reports success; otherwise run Refresh Models.");
+  }
+
+  private quoteShellArgument(value: string): string {
+    if (/^[A-Za-z0-9._:/=-]+$/.test(value)) {
+      return value;
+    }
+    return `'${value.replace(/'/g, `'\\''`)}'`;
+  }
+
+  private async activateAdc(): Promise<void> {
+    await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "adc" });
+    await this.context.workspaceState.update(SUPPRESS_WARNING_KEY, false);
+    this._onAuthUpdated.fire();
   }
 }

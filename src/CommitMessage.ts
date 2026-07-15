@@ -74,9 +74,19 @@ ${diffString}`;
 
 const logger = new Logger("CommitMessage");
 
-function getGitAPI(): any {
-  const gitExtension = vscode.extensions.getExtension<any>("vscode.git")?.exports;
-  return gitExtension?.getAPI(1) ?? null;
+async function getGitAPI(): Promise<any> {
+  const gitExtension = vscode.extensions.getExtension<any>("vscode.git");
+  if (!gitExtension) {
+    return null;
+  }
+
+  try {
+    const gitExports = gitExtension.isActive ? gitExtension.exports : await gitExtension.activate();
+    return gitExports?.getAPI(1) ?? null;
+  } catch (error) {
+    logger.log(`Git extension API activation failed: ${error}`);
+    return null;
+  }
 }
 
 function resolveRepository(git: any, resourceUri?: vscode.Uri): any {
@@ -93,9 +103,10 @@ function resolveRepository(git: any, resourceUri?: vscode.Uri): any {
  * commit message into the SCM input box.
  */
 export async function generateCommitMessage(provider: VertexGoogleProvider, usageTracker: UsageTrackerService, resourceUri?: vscode.Uri): Promise<void> {
-  const git = getGitAPI();
+  const git = await getGitAPI();
   if (!git) {
-    vscode.window.showWarningMessage("Vertex AI Models Chat Provider: Git extension is not available.");
+    const remoteContext = vscode.env.remoteName ? ` in this ${vscode.env.remoteName} remote window` : " in this extension host";
+    vscode.window.showWarningMessage(`Vertex AI Models Chat Provider: Commit-message generation is unavailable${remoteContext} because the Git extension API cannot be reached.`);
     return;
   }
 
