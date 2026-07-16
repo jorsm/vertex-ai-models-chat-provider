@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { AuthManager } from "./AuthManager";
+import { AuthConfigurationError, AuthManager } from "./AuthManager";
 import { generateCommitMessage } from "./CommitMessage";
 import { CostStatusBar } from "./CostStatusBar";
 import { DashboardWebview } from "./DashboardWebview";
@@ -12,7 +12,9 @@ import { VertexAuthenticationError } from "./utils/retry";
 export async function activate(context: vscode.ExtensionContext) {
   // Initialize the logger
   Logger.initialize();
-  Logger.getLogger("extension").log(`Running as ${context.extension.extensionKind === vscode.ExtensionKind.UI ? "UI/local" : "workspace/remote"} extension host; remote workspace: ${vscode.env.remoteName || "none"}`);
+  const extensionHostKind = context.extension.extensionKind === vscode.ExtensionKind.UI ? "UI" : "workspace";
+  const extensionHostLocation = vscode.env.remoteName ? `remote (${vscode.env.remoteName})` : "local";
+  Logger.getLogger("extension").log(`Running in the ${extensionHostLocation} ${extensionHostKind} extension host.`);
 
   const authManager = new AuthManager(context);
   let config = vscode.workspace.getConfiguration("vertexAiChat");
@@ -214,7 +216,13 @@ async function runDiscovery(provider: VertexChatModelDispatcher, authManager: Au
     // Clear any stale model list to prevent "silent fallbacks" in the chat UI
     provider.clearModels();
 
-    if (e instanceof VertexAuthenticationError) {
+    if (e instanceof AuthConfigurationError) {
+      const selectAction = "Select Authentication Method";
+      const selection = await vscode.window.showErrorMessage(e.message, selectAction);
+      if (selection === selectAction && (await authManager.selectAuthMethod())) {
+        await runDiscovery(provider, authManager);
+      }
+    } else if (e instanceof VertexAuthenticationError) {
       // Specialized handling for expired/invalid Google Cloud credentials
       const loginAction = authManager.getGcloudLoginActionLabel();
       const selection = await vscode.window.showErrorMessage(e.message, loginAction);
