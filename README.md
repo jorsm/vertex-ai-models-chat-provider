@@ -17,7 +17,6 @@ This extension registers **Google Gemini**, **Anthropic Claude**, and **MaaS ope
 - **🏢 Automatic Billing** — Costs follow your project settings as you switch workspaces.
 - **⚡ Native Integration** — First-class support for Gemini, Claude, and open-weight models within Copilot Chat.
 - **🛡️ Private Auth** — Support for Service Account JSON keys with "Zero-Pollution" local storage.
-- **🌐 Remote Development** — Run the extension locally with local ADC while coding over Remote SSH, Dev Containers, or Codespaces.
 - **📊 Cost Transparency** — Real-time session tracking, interactive usage dashboard, and opt-in labels for precise Google Cloud Billing attribution.
 
 ---
@@ -57,7 +56,7 @@ For detailed guides, troubleshooting, and advanced configuration, visit our [Wik
 
 This extension moves away from traditional API keys in favor of **Identity and Project-based authentication**. By using your native Google Cloud credentials or Service Accounts, you gain several professional advantages:
 
-- **🔒 Secure by Design**: No sensitive API keys to paste, rotate, or leak. Credentials stay in your OS keychain (via `SecretStorage`) or the `gcloud` secure store.
+- **🔒 Secure by Design**: Service Account credentials stay in VS Code's encrypted `SecretStorage`; ADC remains under the control of the Google authentication environment. Credentials are never written to workspace settings or the repository.
 - **🏢 Automatic Billing Switching**: Simply set a Project ID in your workspace settings. Billing follows your context as you switch between different client or internal projects.
 - **📈 Centralized Governance**: Admins can manage model quotas and IAM permissions centrally. Opt-in request labeling provides granular visibility into cost distribution across your organization.
 - **⚡ Dedicated Performance**: Leveraging your own GCP project ensures you aren't sharing rate limits with other users on a global API key.
@@ -66,18 +65,18 @@ This extension moves away from traditional API keys in favor of **Identity and P
 
 Choose the workflow that fits your environment:
 
-- **Standard ADC**: Uses your system's `gcloud` identity. Ideal for standard local development.
+- **Standard ADC**: Uses Application Default Credentials available in the extension host, including `gcloud`, attached workload credentials, and other standard ADC sources.
 - **Encrypted Secrets**: Paste a Service Account JSON key directly into VS Code. It is stored securely in your OS keychain (via `SecretStorage`) and never touches your repository or `settings.json`.
-- **Imported JSON Files**: Select a Service Account JSON file through VS Code. Its contents are imported into `SecretStorage`.
+- **Imported JSON Files**: Select a Service Account JSON file through VS Code. Its contents are imported into `SecretStorage`; the original file is never modified or deleted.
 - **Environment Variables**: Automatically respects `GOOGLE_APPLICATION_CREDENTIALS` if set.
 
 ### Remote Development
 
-The extension declares both local/UI and workspace extension-host support, preferring the local/UI host. In a Remote SSH, Dev Container, or Codespaces window, install it locally to keep using the ADC and `gcloud` installation on your client machine—even if the remote environment has no Google Cloud CLI.
+The extension runs in the workspace extension host so its language-model provider is available to Copilot Chat. In Remote SSH, Dev Containers, Codespaces, and similar environments, install the extension in the remote workspace.
 
-When authentication expires, **Login with local gcloud** runs on the client and refreshes model discovery after a successful login. Service Account imports are URI-aware and are copied into the extension host's `SecretStorage`, so the selected file does not need to remain available afterward.
+Remote authentication is resolved in that workspace environment. Use ADC configured on the remote host, an attached workload identity, `GOOGLE_APPLICATION_CREDENTIALS`, or paste/import a Service Account JSON into the extension. Stored credentials are retrieved into the remote extension process while authenticating, so only use them on remote hosts you trust.
 
-The AI commit-message command is an optional integration with VS Code's built-in Git extension. In a remote window Git may run in a different extension host; in that case commit-message generation reports that it is unavailable, while chat models, workspace file access, and tool calling continue to work normally.
+Service Account imports copy a validated snapshot into `SecretStorage`. The extension never modifies or deletes the source file, and removing a stored account affects only this extension—it does not revoke or alter the Google Cloud key.
 
 ---
 
@@ -85,7 +84,7 @@ The AI commit-message command is an optional integration with VS Code's built-in
 
 - **🧠 Advanced Gemini Support**: Full support for **Gemini 3 Flash & Pro**, including "High Thinking" modes with thought block rendering and signature preservation.
 - **⚡ Anthropic Performance**: Native support for **Claude Opus, Sonnet, and Haiku**, featuring automated **Prompt Caching (Ephemeral)** to reduce latency and costs for long conversations.
-- **🔑 Smart Auth Recovery**: Intelligent detection of expired credentials or missing keys with one-click recovery and "Silent Fallback" logic to ensure zero-friction development.
+- **🔑 Smart Auth Recovery**: Detects expired ADC credentials and offers a `gcloud` recovery action. Missing or invalid explicitly selected Service Accounts fail closed and require a new authentication selection.
 - **🪄 AI Commit Messages**: Generate professional, conventional commit messages from staged Git changes with one click from the Source Control view.
 - **🏷️ Cost Attribution Labels**: Opt-in to propagate user email and workspace names as GCP labels for granular cost tracking in the Google Cloud Console.
 - **📊 Local Usage Dashboard and Real Time Costs Estimation**: An interactive, ECharts-powered dashboard to track your individual costs, token consumption, and payload metrics—all stored locally and updated in real time.
@@ -124,13 +123,13 @@ The AI commit-message command is an optional integration with VS Code's built-in
 
 Authentication methods are managed privately per workspace to avoid host-specific path conflicts and Git pollution.
 
-| Action                    | Command                                                        | Description                                                                        |
-| :------------------------ | :------------------------------------------------------------- | :--------------------------------------------------------------------------------- |
-| **Paste JSON Key**        | `Google Agent Platform: Paste Service Account JSON Key`        | Validate, securely store, and activate pasted Service Account JSON.                |
-| **Import JSON File**      | `Google Agent Platform: Import Service Account JSON File`      | Import a validated snapshot into `SecretStorage`; the source path is not retained. |
-| **Remove Stored Account** | `Google Agent Platform: Remove Stored Service Account`         | Delete a named credential; removing the active one switches the workspace to ADC.  |
-| **Select Auth Method**    | `Google Agent Platform: Select Authentication Method`          | Switch between stored Service Accounts and default ADC.                            |
-| **Clear Auth Method**     | `Google Agent Platform: Clear Authentication Method (Use ADC)` | Reset the workspace to use default ADC.                                            |
+| Action                    | Command                                                        | Description                                                                     |
+| :------------------------ | :------------------------------------------------------------- | :------------------------------------------------------------------------------ |
+| **Paste JSON Key**        | `Google Agent Platform: Paste Service Account JSON Key`        | Validate, securely store, and activate pasted Service Account JSON.             |
+| **Import JSON File**      | `Google Agent Platform: Import Service Account JSON File`      | Import a validated snapshot into `SecretStorage`; the source file is unchanged. |
+| **Remove Stored Account** | `Google Agent Platform: Remove Stored Service Account`         | Delete only this extension's copy; Google Cloud resources are unchanged.        |
+| **Select Auth Method**    | `Google Agent Platform: Select Authentication Method`          | Switch between stored Service Accounts and default ADC.                         |
+| **Clear Auth Method**     | `Google Agent Platform: Clear Authentication Method (Use ADC)` | Reset the workspace to use default ADC.                                         |
 
 ---
 

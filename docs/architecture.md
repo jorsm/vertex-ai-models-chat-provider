@@ -26,7 +26,7 @@ The extension follows a provider-based architecture centered around the `VertexC
 - **Dynamic Discovery**: Instead of hardcoding endpoints, the extension performs region probing. It iterates through prioritized GCP regions (global, us-east5, etc.) to identify where specific models are enabled for the user's project.
 - **Unified Usage Tracking**: All interactions are intercepted to record token consumption (including Gemini high-thinking blocks and Anthropic prompt caching) into a local `UsageTrackerService`.
 - **VS Code Integration**: It implements the `vscode.LanguageModelChatProvider` interface, making Vertex AI models appear as native options in the Copilot Chat model picker.
-- **Extension Host Flexibility**: `extensionKind` prefers the local/UI host but permits the workspace host. URI-based workspace access keeps model catalogs functional in Remote SSH, Dev Containers, and Codespaces, while a locally installed extension can use client-side ADC.
+- **Workspace-Host Execution**: `extensionKind` requires the workspace host so Copilot Chat and the language-model provider share an extension host. In remote environments, ADC and Service Account credentials are resolved by the remotely installed extension.
 
 ## API Reference
 
@@ -110,8 +110,8 @@ The main entry point for the VS Code extension. It handles:
     - `vertexAiChat.dumpTools`: Dumps the schema of all installed language model tools to an output channel for debugging.
     - `vertexAiChat.generateCommitMessage`: Generates AI-powered commit messages from staged changes when the built-in Git API is available in the same extension host.
     - `vertexAiChat.setServiceAccountKey`: Securely saves a Service Account JSON key to OS storage.
-    - `vertexAiChat.setServiceAccountPath`: Imports a selected Service Account JSON file into `SecretStorage`. The command identifier is retained for compatibility, but no new file path is stored.
-    - `vertexAiChat.removeServiceAccount`: Deletes a named Service Account from `SecretStorage`; removing the active credential resets the workspace to ADC.
+    - `vertexAiChat.setServiceAccountPath`: Imports a selected Service Account JSON file into `SecretStorage`. The command identifier is retained for compatibility; no new path is stored and the source file is unchanged.
+    - `vertexAiChat.removeServiceAccount`: Deletes only the extension's stored copy of a named Service Account; removing the active credential resets the workspace to ADC without changing Google Cloud resources.
     - `vertexAiChat.selectAuthMethod`: Switches the active authentication method.
     - `vertexAiChat.clearAuthMethod`: Resets the workspace to use Default Application Credentials (ADC).
     - `vertexAiChat.openUserModelsFile`: Creates (seeded from the bundled catalog) / opens the user-level `models.json` for editing.
@@ -123,12 +123,10 @@ The main entry point for the VS Code extension. It handles:
 [source](../src/extension.ts)
 A helper function that triggers the model discovery process on the dispatcher and provides UI feedback (Information, Warning, or Error messages) to the user based on the results.
 
-In the event of a failure (networking, project errors, or authentication), it clears any stale model list to prevent "silent fallbacks" in the chat UI. If a `VertexAuthenticationError` occurs, it provides a specialized workflow that:
+In the event of a failure (networking, project errors, or authentication), it clears any stale model list to prevent silent model fallbacks in the chat UI. Authentication failures use two explicit workflows:
 
-- Prompts the user to log in through the Google Cloud SDK (`gcloud`) with a label that identifies local authentication in remote windows.
-- When the extension runs in the local/UI host against a remote workspace, spawns the local `gcloud auth application-default login` process directly and reports missing CLI, cancellation, or non-zero exit errors.
-- In a normal local window or when installed in the workspace host, opens an integrated terminal and uses VS Code shell execution completion when available.
-- Switches the active method to ADC and re-runs discovery after a confirmed successful login.
+- A `VertexAuthenticationError` offers `gcloud auth application-default login` in the workspace environment, switches the active method to ADC, and re-runs discovery after confirmed success.
+- An `AuthConfigurationError` from a missing or invalid explicitly selected Service Account fails closed and offers the authentication-method picker. It never substitutes an ambient ADC identity.
 
 ---
 

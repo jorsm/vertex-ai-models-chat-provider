@@ -62,4 +62,4 @@ stateless JWT verification to support horizontal scaling.
 ### Git SCM Integration
 The function is typically triggered via the magic wand icon in the SCM view title bar or via the Command Palette. It automatically handles the "⏳ Generating..." state within the input box until the stream is complete and logs the final generated message to the internal diagnostics channel.
 
-The Git API cannot cross VS Code extension-host boundaries. In a remote window, Git may run in the workspace host while this extension runs in the local/UI host. The command then shows a warning and stops; model discovery, chat, workspace file access through VS Code, and tool calling are unaffected.
+The Git API must be available in the same extension host. Because this extension runs with the workspace, remote Git integrations normally share its host; if the built-in Git API is unavailable, the command reports that limitation and stops without affecting the chat provider.
