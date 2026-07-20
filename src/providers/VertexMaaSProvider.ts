@@ -6,8 +6,8 @@ import { ModelCatalogResolver } from "../ModelCatalogResolver";
 import { Logger } from "../utils/Logger";
 import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
-import { ModelSpec } from "./VertexModelProvider";
 import type { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
+import { ModelSpec } from "./VertexModelProvider";
 
 // ─── Model configuration types ──────────────────────────────────────────────
 
