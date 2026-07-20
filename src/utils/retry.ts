@@ -177,6 +177,7 @@ export function isRetryableError(e: any): boolean {
     msg.includes("fetch failed") ||
     msg.includes("network error") ||
     msg.includes("socket hang up") ||
+    msg.includes("terminated") ||
     msg.includes("timeout") ||
     msg.includes("sorry, your request failed") // Common message from Google APIs under heavy load
   ) {
