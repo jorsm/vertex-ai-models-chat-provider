@@ -4,11 +4,32 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.7] — 2026-07-20
+
+### Added
+
+- **Dynamic Output Token Limits** — Anthropic and Google providers now respect the `maxOutputTokens` defined in the model catalog instead of being hardcoded to 4096. This enables full-length responses (up to 128k tokens) for supported models.
+- **Improved Transient Error Handling** — Added `terminated` to the list of retryable errors to handle unexpected network connection drops during initial request handshakes.
+- **Configuration Guardrails** — The extension now detects missing GCP Project IDs during discovery and provides clear actionable error messages.
+
+### Changed
+
+- **Refactored Provider Interface** — Improved internal performance by passing model metadata directly to inference methods, eliminating redundant disk I/O for catalog lookups.
+- **Fail-Closed Authentication** — Explicitly selected Service Accounts now strictly adhere to the selection; the extension will no longer fall back to ambient system credentials if the selected method fails.
+
+## [0.5.6] — 2026-07-17
+
+### Changed
+
+- **Workspace-Host Remote Support** — The extension now runs with the workspace so its language-model provider is available to Copilot Chat in Remote SSH, Dev Containers, Codespaces, and similar environments. Remote users must install the extension in the remote workspace and provide ADC or a Service Account there.
+- **Fail-Closed Authentication** — A missing or invalid explicitly selected Service Account no longer falls back to an ambient ADC identity.
+- Service Account JSON pasted into the extension is now masked while entering it.
+
 ## [0.5.5] — 2026-07-15
 
 ### Added
 
-- **Remote Development Support** — The extension can now run in either the local/UI or workspace extension host, supporting Remote SSH, Dev Containers, Codespaces, and similar VS Code remote workflows.
+- ~~**Remote Development Support** — The extension can now run in either the local/UI or workspace extension host, supporting Remote SSH, Dev Containers, Codespaces, and similar VS Code remote workflows.~~
 - **Portable Service Account Imports** — Service Account JSON files selected through VS Code are imported as encrypted snapshots into `SecretStorage`, so authentication no longer depends on a path being accessible from the extension host.
 - **Stored Credential Management** — Added a command to remove stored Service Accounts. Re-importing an existing friendly name can replace its stored credential after confirmation.
 

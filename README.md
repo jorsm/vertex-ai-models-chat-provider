@@ -83,8 +83,8 @@ Service Account imports copy a validated snapshot into `SecretStorage`. The exte
 ## ✨ Key Features
 
 - **🧠 Advanced Gemini Support**: Full support for **Gemini 3 Flash & Pro**, including "High Thinking" modes with thought block rendering and signature preservation.
-- **⚡ Anthropic Performance**: Native support for **Claude Opus, Sonnet, and Haiku**, featuring automated **Prompt Caching (Ephemeral)** to reduce latency and costs for long conversations.
-- **🔑 Smart Auth Recovery**: Detects expired ADC credentials and offers a `gcloud` recovery action. Missing or invalid explicitly selected Service Accounts fail closed and require a new authentication selection.
+- **⚡ Anthropic Performance**: Native support for **Claude Opus, Sonnet, and Haiku**, featuring automated **Prompt Caching (Ephemeral)** and dynamic output limits (up to 128k tokens) to handle large-scale generation.
+- **🔑 Smart Auth Recovery**: Detects expired ADC credentials and offers a `gcloud` recovery action. Explicitly selected Service Accounts use **Fail-Closed** logic—if the stored secret is missing or invalid, the extension stops rather than falling back to an ambient system identity.
 - **🪄 AI Commit Messages**: Generate professional, conventional commit messages from staged Git changes with one click from the Source Control view.
 - **🏷️ Cost Attribution Labels**: Opt-in to propagate user email and workspace names as GCP labels for granular cost tracking in the Google Cloud Console.
 - **📊 Local Usage Dashboard and Real Time Costs Estimation**: An interactive, ECharts-powered dashboard to track your individual costs, token consumption, and payload metrics—all stored locally and updated in real time.
@@ -99,9 +99,11 @@ Service Account imports copy a validated snapshot into `SecretStorage`. The exte
 
 | Vendor        | Model Family | Versions Supported                            | Features                      |
 | :------------ | :----------- | :-------------------------------------------- | :---------------------------- |
-| **Anthropic** | Claude       | Fable 5, Opus 4.8, Sonnet 4.6, Haiku 4.5      | Vision, Tools, Caching        |
+| **Anthropic** | Claude       | Fable 5*, Opus 4.8, Sonnet 4.6, Haiku 4.5     | Vision, Tools, Caching        |
 | **Google**    | Gemini       | 3.5 Flash, 3 Flash, 3.1 Pro                   | High Thinking, Parallel Tools |
 | **MaaS**      | Open-Weight  | Grok 4.2, DeepSeek V3.2, Qwen3-Coder, Kimi K2 | Thinking, Tools               |
+
+\* Claude Fable 5 may require manual data-sharing opt-in for your GCP project. See [Enabling Claude Fable 5](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Enabling-Claude-Fable-5) for details.
 
 > MaaS (Model-as-a-Service) brings open-weight third-party models via an OpenAI-compatible API on Google Agent Platform. See the [MaaS wiki page](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-as-a-Service-(MaaS)) for details.
 
