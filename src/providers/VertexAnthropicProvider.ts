@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 import { Logger } from "../utils/Logger";
 import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
-import { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
+import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 
 // ─── Provider Plugin ───────────────────────────────────────────────────────
 
@@ -72,13 +72,18 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
     token: vscode.CancellationToken,
     labels?: Record<string, string>,
+    spec?: ModelSpec,
   ): Promise<ChatInferenceResult> {
     this.logger.log(`▶ Anthropic Plugin provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, messages: ${messages.length}`);
 
     const requestLabels = labels || this.labels;
     if (Object.keys(requestLabels).length > 0) {
+      this.logger.log(`  ⚠️ Labels for Anthropic request are not supported by the Anthropic Vertex API.`);
       this.logger.log(`  🏷️  Labels: ${JSON.stringify(requestLabels)}`);
     }
+
+    const maxTokens = spec?.maxOutputTokens ?? 4096;
+
     try {
       const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
 
@@ -88,14 +93,14 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
       this.applyCacheControl(tools, systemBlocks, mappedMessages);
 
-      this.logMappedMessages(modelId, mappedMessages, systemBlocks, tools);
+      this.logMappedMessages(modelId, mappedMessages, systemBlocks, tools, maxTokens);
 
       const stream = await withRetry<any>(
         () =>
           this.client.messages.create({
             model: modelId,
             messages: mappedMessages,
-            max_tokens: 4096,
+            max_tokens: maxTokens,
             stream: true,
             ...(systemBlocks ? { system: systemBlocks } : {}),
             ...(tools?.length ? { tools } : {}),
@@ -358,7 +363,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
   // ── Logging helpers ───────────────────────────────────────────────────
 
-  private logMappedMessages(modelId: string, mappedMessages: any[], systemBlocks: any[] | undefined, tools: any[] | undefined): void {
+  private logMappedMessages(modelId: string, mappedMessages: any[], systemBlocks: any[] | undefined, tools: any[] | undefined, maxTokens: number): void {
     this.logger.log(`  ── Mapped messages summary ──`);
     for (let i = 0; i < mappedMessages.length; i++) {
       const mm = mappedMessages[i];
@@ -368,7 +373,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
     const sysCharCount = systemBlocks ? systemBlocks.reduce((a: number, b: any) => a + b.text.length, 0) : 0;
     const sysLog = systemBlocks ? sysCharCount + " chars" : "none";
-    this.logger.log(`  Sending: model=${modelId}, max_tokens=4096, msgs=${mappedMessages.length}, system=${sysLog}, tools=${tools?.length ?? 0}`);
+    this.logger.log(`  Sending: model=${modelId}, max_tokens=${maxTokens}, msgs=${mappedMessages.length}, system=${sysLog}, tools=${tools?.length ?? 0}`);
   }
 
   // ── Stream processing ─────────────────────────────────────────────────

@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { Logger } from "../utils/Logger";
 import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
-import { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
+import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 
 export class VertexGoogleProvider implements VertexModelProvider {
   vendor = "google";
@@ -452,6 +452,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
     token: vscode.CancellationToken,
     labels?: Record<string, string>,
+    spec?: ModelSpec,
   ): Promise<ChatInferenceResult> {
     const { actualId, config } = this.resolveModelId(modelId);
     this.logger.log(`▶ Google provideLanguageModelChatResponse called — requested: ${modelId} -> executed: ${actualId}, msgs: ${messages.length}`);
@@ -470,6 +471,10 @@ export class VertexGoogleProvider implements VertexModelProvider {
       const { mappedContents, systemInstruction } = this.extractMessages(messages, charCount, modelId, actualId);
 
       const generationConfig: any = { ...config };
+
+      if (spec?.maxOutputTokens) {
+        generationConfig.maxOutputTokens = spec.maxOutputTokens;
+      }
 
       if (systemInstruction.trim().length > 0) {
         generationConfig.systemInstruction = systemInstruction.trim();

@@ -6,7 +6,7 @@ import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { VertexAnthropicProvider } from "./providers/VertexAnthropicProvider";
 import { VertexGoogleProvider } from "./providers/VertexGoogleProvider";
 import { VertexMaaSProvider } from "./providers/VertexMaaSProvider";
-import { VertexModelProvider } from "./providers/VertexModelProvider";
+import { ModelSpec, VertexModelProvider } from "./providers/VertexModelProvider";
 import { UsageTrackerService } from "./UsageTrackerService";
 import { Logger } from "./utils/Logger";
 import { estimateTokens } from "./utils/tokens";
@@ -14,28 +14,6 @@ import { estimateTokens } from "./utils/tokens";
 const execAsync = util.promisify(childProcess.exec);
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-
-export interface ModelSpec {
-  id: string;
-  vendor: string;
-  displayName: string;
-  family: string;
-  version: string;
-  maxInputTokens: number;
-  maxOutputTokens: number;
-  capabilities: { imageInput: boolean; toolCalling: boolean };
-  pricing: {
-    input: number;
-    output: number;
-    cache_read?: number;
-    cache_create?: number;
-  };
-}
-
-export interface ModelCatalog {
-  candidateModels: ModelSpec[];
-  regionPriority: string[];
-}
 
 export interface DiscoveryResult {
   region: string;
@@ -217,7 +195,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
       }
 
       if (available.length > 0) {
-        this.logger.log(`✅ Region "${region}" — ${available.length} model(s) available: ${available.map((m) => m.id).join(", ")}`);
+        this.logger.log(`✅ Region "${region}" — ${available.length} model(s) available: ${available.map((m: ModelSpec) => m.id).join(", ")}`);
 
         this.region = region;
         this.availableModels = available;
@@ -270,7 +248,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const versionParts = vscode.version.split(".");
     const isV120OrHigher = Number.parseInt(versionParts[0]) > 1 || (Number.parseInt(versionParts[0]) === 1 && Number.parseInt(versionParts[1]) >= 120);
 
-    return models.map((m) => {
+    return models.map((m: ModelSpec) => {
       const pricingInfo = `$${m.pricing.input}/1M in, $${m.pricing.output}/1M out`;
       const info: any = {
         id: m.id,
@@ -298,7 +276,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   }
 
   async provideTokenCount(modelChatInfo: vscode.LanguageModelChatInformation, text: string | vscode.LanguageModelChatRequestMessage, token: vscode.CancellationToken): Promise<number> {
-    const spec = this.availableModels.find((m) => m.id === modelChatInfo.id);
+    const spec = this.availableModels.find((m: ModelSpec) => m.id === modelChatInfo.id);
     const provider = this.activeProviders.get(spec?.vendor || "");
 
     if (provider?.provideTokenCount) {
@@ -327,7 +305,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     const modelId = model.id;
     const catalog = await this.catalogResolver.getEffectiveCatalog();
-    const spec = (this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels).find((m) => m.id === modelId);
+    const spec = (this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels).find((m: ModelSpec) => m.id === modelId);
 
     this.logger.log(`▶ provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, vendor: ${spec?.vendor}, messages: ${messages.length}`);
 
@@ -389,12 +367,12 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     }
 
     try {
-      const result = await provider.provideLanguageModelChatResponse(modelId, messages, options, progress, token, requestLabels);
+      const result = await provider.provideLanguageModelChatResponse(modelId, messages, options, progress, token, requestLabels, spec);
       this.logger.log(`  ✅ Successfully completed request via plugin ${provider.vendor}`);
 
       if (result.usage.input > 0 || result.usage.output > 0) {
         this.usageTracker
-          .recordUsage(model.id, {
+          .recordUsage(modelId, {
             input: result.usage.input,
             output: result.usage.output,
             cache_read: result.usage.cache_read,

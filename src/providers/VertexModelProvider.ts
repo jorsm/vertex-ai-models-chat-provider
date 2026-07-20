@@ -21,6 +21,28 @@ export interface ChatInferenceResult {
   charCount: CharacterCounts;
 }
 
+export interface ModelSpec {
+  id: string;
+  vendor: string;
+  displayName: string;
+  family: string;
+  version: string;
+  maxInputTokens: number;
+  maxOutputTokens: number;
+  capabilities: { imageInput: boolean; toolCalling: boolean };
+  pricing: {
+    input: number;
+    output: number;
+    cache_read?: number;
+    cache_create?: number;
+  };
+}
+
+export interface ModelCatalog {
+  candidateModels: ModelSpec[];
+  regionPriority: string[];
+}
+
 export interface VertexModelProvider {
   /** The vendor identifier used in models.json (e.g., 'anthropic', 'gemini') */
   vendor: string;
@@ -44,6 +66,7 @@ export interface VertexModelProvider {
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
     token: vscode.CancellationToken,
     labels?: Record<string, string>,
+    spec?: ModelSpec,
   ): Promise<ChatInferenceResult>;
 
   /**

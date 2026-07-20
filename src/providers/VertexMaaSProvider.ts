@@ -6,7 +6,7 @@ import { ModelCatalogResolver } from "../ModelCatalogResolver";
 import { Logger } from "../utils/Logger";
 import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
-import type { ModelSpec } from "../VertexChatModelDispatcher";
+import { ModelSpec } from "./VertexModelProvider";
 import type { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
 
 // ─── Model configuration types ──────────────────────────────────────────────
@@ -139,15 +139,20 @@ export class VertexMaaSProvider implements VertexModelProvider {
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
     token: vscode.CancellationToken,
     labels?: Record<string, string>,
+    spec?: ModelSpec,
   ): Promise<ChatInferenceResult> {
     const config = VertexMaaSProvider.MODEL_CONFIG[modelId];
     if (!config) {
       throw new Error(`Unknown MaaS model: ${modelId}. Available: ${Object.keys(VertexMaaSProvider.MODEL_CONFIG).join(", ")}`);
     }
 
-    // Look up model spec from the effective catalog (workspace > user > bundled)
-    const catalog = await this.catalogResolver?.getEffectiveCatalog();
-    const modelSpec = catalog?.candidateModels.find((m: ModelSpec) => m.id === modelId);
+    // Use passed spec if available, otherwise resolve from catalog
+    let modelSpec = spec;
+    if (!modelSpec) {
+      const catalog = await this.catalogResolver?.getEffectiveCatalog();
+      modelSpec = catalog?.candidateModels.find((m: ModelSpec) => m.id === modelId);
+    }
+
     if (!modelSpec) {
       throw new Error(`Model spec not found in catalog for: ${modelId}`);
     }

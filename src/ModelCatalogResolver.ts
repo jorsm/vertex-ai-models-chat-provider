@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import bundledCatalog from "./models.json";
+import { ModelCatalog } from "./providers/VertexModelProvider";
 import { Logger } from "./utils/Logger";
-import { ModelCatalog } from "./VertexChatModelDispatcher";
 
 /**
  * Resolves the effective model catalog at runtime with precedence:
