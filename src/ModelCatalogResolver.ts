@@ -113,6 +113,16 @@ export class ModelCatalogResolver implements vscode.Disposable {
     return this.cached.catalog;
   }
 
+  /**
+   * Returns the source of the active catalog: 'workspace', 'user', or 'bundled'.
+   */
+  async getActiveSource(): Promise<"workspace" | "user" | "bundled"> {
+    if (!this.cached) {
+      await this.getEffectiveCatalog();
+    }
+    return this.cached!.source;
+  }
+
   /** Clears the cache so the next `getEffectiveCatalog()` re-reads from disk. */
   invalidateCache(): void {
     this.cached = null;
