@@ -39,11 +39,11 @@
       }
     },
     {
-      "id": "claude-sonnet-4-6",
+      "id": "claude-sonnet-5",
       "vendor": "anthropic",
-      "displayName": "Claude Sonnet 4.6",
+      "displayName": "Claude Sonnet 5",
       "family": "claude",
-      "version": "claude-sonnet-4-6",
+      "version": "claude-sonnet-5",
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "capabilities": {
@@ -74,6 +74,25 @@
         "output": 5.0,
         "cache_read": 0.1,
         "cache_create": 1.25
+      }
+    },
+    {
+      "id": "gemini-3.6-flash",
+      "vendor": "google",
+      "displayName": "Gemini 3.6 Flash",
+      "family": "gemini",
+      "version": "gemini-3.6-flash",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 1.5,
+        "output": 7.0,
+        "cache_read": 0.15,
+        "cache_create": 0.0
       }
     },
     {
