@@ -382,7 +382,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
           .catch((err) => this.logger.log(`  ⚠️ Failed to record usage: ${err}`));
       }
     } catch (e) {
-      this.logger.log(`  ❌ provideLanguageModelChatResponse error: ${e}`);
+      this.logger.error(`  ❌ provideLanguageModelChatResponse error`, e);
       throw e;
     }
   }

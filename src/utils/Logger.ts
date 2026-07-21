@@ -42,4 +42,8 @@ export class Logger {
     // Also log to the debug console for local development
     console.log(formattedMessage);
   }
+
+  public error(message: string, error: unknown): void {
+    this.log(`${message}\n${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+  }
 }

@@ -138,7 +138,7 @@ function handleRetryAttempt(attempt: number, maxRetries: number, delayMs: number
     timestamp: new Date().toISOString(),
   });
 
-  logger.log(`⚠️ Retryable error encountered: "${errorMsg}". Retrying in ${Math.round(delayMs)}ms (attempt ${attempt}/${maxRetries})...`);
+  logger.error(`⚠️ Retryable error encountered: "${errorMsg}". Retrying in ${Math.round(delayMs)}ms (attempt ${attempt}/${maxRetries})...`, e);
 }
 
 // Native Node.js / Fetch network error codes that are safe to retry
@@ -149,6 +149,7 @@ const NETWORK_ERROR_CODES = new Set([
   "ENOTFOUND", // DNS lookup failed
   "EAI_AGAIN", // Temporary DNS error
   "UND_ERR_CONNECT_TIMEOUT", // Undici/Node.js fetch specific timeout
+  "UND_ERR_SOCKET", // Undici/Node.js socket closed while streaming
 ]);
 
 /**
@@ -177,7 +178,6 @@ export function isRetryableError(e: any): boolean {
     msg.includes("fetch failed") ||
     msg.includes("network error") ||
     msg.includes("socket hang up") ||
-    msg.includes("terminated") ||
     msg.includes("timeout") ||
     msg.includes("sorry, your request failed") // Common message from Google APIs under heavy load
   ) {
