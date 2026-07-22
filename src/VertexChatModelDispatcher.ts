@@ -168,31 +168,47 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     for (const region of regions) {
       this.logger.log(`  Probing region "${region}"…`);
-      const available: ModelSpec[] = [];
 
-      for (const model of candidates) {
+      // Initialize each active provider once for this region
+      for (const provider of this.activeProviders.values()) {
+        provider.initialize(effectiveProjectId, region, authOptions);
+      }
+
+      // Probe all candidate models in parallel
+      const probePromises = candidates.map(async (model) => {
         const provider = this.activeProviders.get(model.vendor);
         if (!provider) {
           this.logger.log(`  ⚠️  No provider registered for vendor "${model.vendor}", skipping ${model.id}`);
-          continue;
+          return null;
         }
 
-        provider.initialize(effectiveProjectId, region, authOptions);
         try {
           const ok = await provider.pingModel(model.version);
           if (ok) {
-            available.push(model);
+            return model;
           }
         } catch (e: any) {
-          // If we hit an authentication error, we should stop trying other regions
-          // and bubble the error up to the UI.
+          // If we hit an authentication error, we should bubble it up immediately
           if (e.name === "VertexAuthenticationError") {
-            this.logger.log(`❌ Authentication error during discovery: ${e.message}`);
+            this.logger.log(`❌ Authentication error during discovery for ${model.id}: ${e.message}`);
             throw e;
           }
           this.logger.log(`  ⚠️ Ping failed for ${model.id} in ${region}: ${e.message || e}`);
         }
+        return null;
+      });
+
+      let results: (ModelSpec | null)[];
+      try {
+        results = await Promise.all(probePromises);
+      } catch (e: any) {
+        if (e.name === "VertexAuthenticationError") {
+          throw e;
+        }
+        throw e;
       }
+
+      const available = results.filter((m): m is ModelSpec => m !== null);
 
       if (available.length > 0) {
         this.logger.log(`✅ Region "${region}" — ${available.length} model(s) available: ${available.map((m: ModelSpec) => m.id).join(", ")}`);
@@ -382,7 +398,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
           .catch((err) => this.logger.log(`  ⚠️ Failed to record usage: ${err}`));
       }
     } catch (e) {
-      this.logger.log(`  ❌ provideLanguageModelChatResponse error: ${e}`);
+      this.logger.error(`  ❌ provideLanguageModelChatResponse error`, e);
       throw e;
     }
   }

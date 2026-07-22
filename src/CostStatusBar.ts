@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { AuthManager } from "./AuthManager";
+import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { UsageTrackerService } from "./UsageTrackerService";
 import { Logger } from "./utils/Logger";
 
@@ -7,12 +8,14 @@ export class CostStatusBar implements vscode.Disposable {
   private readonly statusBarItem: vscode.StatusBarItem;
   private readonly usageTracker: UsageTrackerService;
   private readonly authManager: AuthManager;
+  private readonly catalogResolver: ModelCatalogResolver;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly logger = new Logger("CostStatusBar");
 
-  constructor(usageTracker: UsageTrackerService, authManager: AuthManager) {
+  constructor(usageTracker: UsageTrackerService, authManager: AuthManager, catalogResolver: ModelCatalogResolver) {
     this.usageTracker = usageTracker;
     this.authManager = authManager;
+    this.catalogResolver = catalogResolver;
 
     // Create the status bar item aligned to the right (priority 100 to stick near the edge)
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -38,7 +41,7 @@ export class CostStatusBar implements vscode.Disposable {
     this.statusBarItem.show();
   }
 
-  private async updateStatusBar(): Promise<void> {
+  public async updateStatusBar(): Promise<void> {
     try {
       const todayCost = await this.usageTracker.getTodayTotalCost();
       const identity = await this.authManager.getIdentity();
@@ -75,6 +78,15 @@ export class CostStatusBar implements vscode.Disposable {
         }
       }
 
+      // Determine catalog source
+      const catalogSource = await this.catalogResolver.getActiveSource();
+      let catalogDesc = "Bundled Catalog";
+      if (catalogSource === "workspace") {
+        catalogDesc = "Workspace Override (`.vscode/models.json`)";
+      } else if (catalogSource === "user") {
+        catalogDesc = "User Override";
+      }
+
       // Format to 2 decimal places with $
       const formattedCost = `$${todayCost.toFixed(2)}`;
       this.statusBarItem.text = `${icon} Today: ${formattedCost}`;
@@ -88,6 +100,7 @@ export class CostStatusBar implements vscode.Disposable {
       tooltip.appendMarkdown(`**Project:** \`${projectId || "(Unset)"}\`\n`);
       tooltip.appendMarkdown(`*Source: ${projectSource}*\n\n`);
       tooltip.appendMarkdown(`**Auth Method:** ${methodDesc}\n\n`);
+      tooltip.appendMarkdown(`**Model Catalog:** ${catalogDesc}\n\n`);
       tooltip.appendMarkdown(`${identityText}\n\n`);
       tooltip.appendMarkdown(`---\n\n`);
       tooltip.appendMarkdown(`$(dashboard) Click to open Dashboard`);

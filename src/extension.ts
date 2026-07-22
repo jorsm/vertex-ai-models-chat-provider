@@ -38,7 +38,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(catalogResolver);
 
   const usageTracker = new UsageTrackerService(context, catalogResolver);
-  const costStatusBar = new CostStatusBar(usageTracker, authManager);
+  const costStatusBar = new CostStatusBar(usageTracker, authManager, catalogResolver);
   context.subscriptions.push(costStatusBar);
 
   const provider = new VertexChatModelDispatcher(projectId, usageTracker, authManager, catalogResolver);
@@ -149,6 +149,7 @@ export async function activate(context: vscode.ExtensionContext) {
     refreshTimer = setTimeout(() => {
       refreshTimer = null;
       catalogResolver.invalidateCache();
+      costStatusBar.updateStatusBar().catch((err) => Logger.getLogger("extension").log(`⚠️ Status bar catalog refresh failed: ${err}`));
       runDiscovery(provider, authManager).catch((err) => Logger.getLogger("extension").log(`⚠️ Catalog refresh discovery failed: ${err}`));
     }, 300);
   };
