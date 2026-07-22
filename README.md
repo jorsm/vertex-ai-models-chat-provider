@@ -97,11 +97,11 @@ Service Account imports copy a validated snapshot into `SecretStorage`. The exte
 
 ## 🤖 Supported Models
 
-| Vendor        | Model Family | Versions Supported                            | Features                      |
-| :------------ | :----------- | :-------------------------------------------- | :---------------------------- |
-| **Anthropic** | Claude       | Fable 5*, Opus 4.8, Sonnet 4.6, Haiku 4.5     | Vision, Tools, Caching        |
-| **Google**    | Gemini       | 3.5 Flash, 3 Flash, 3.1 Pro                   | High Thinking, Parallel Tools |
-| **MaaS**      | Open-Weight  | Grok 4.2, DeepSeek V3.2, Qwen3-Coder, Kimi K2 | Thinking, Tools               |
+| Vendor        | Model Family | Versions Supported                                  | Features                      |
+| :------------ | :----------- | :-------------------------------------------------- | :---------------------------- |
+| **Anthropic** | Claude       | Fable 5*, Opus 4.8, Sonnet 5, Sonnet 4.6, Haiku 4.5 | Vision, Tools, Caching        |
+| **Google**    | Gemini       | 3.6 Flash, 3.5 Flash, 3 Flash, 3.1 Pro              | High Thinking, Parallel Tools |
+| **MaaS**      | Open-Weight  | Grok 4.2, DeepSeek V3.2, Qwen3-Coder, Kimi K2       | Thinking, Tools               |
 
 \* Claude Fable 5 may require manual data-sharing opt-in for your GCP project. See [Enabling Claude Fable 5](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Enabling-Claude-Fable-5) for details.
 

@@ -4,6 +4,20 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.8] — 2026-07-22
+
+### Added
+
+- **Gemini 3.6 Flash** — Added support for the new `gemini-3.6-flash` model.
+- **Claude Sonnet 5** — Added the new `claude-sonnet-5` catalog entry.
+- **Model Catalog Source in Status Bar** — The status bar tooltip now shows whether the active model catalog is bundled or provided via a workspace or user override.
+
+### Changed
+
+- **Faster Model Discovery** — Candidate models within each region are now probed in parallel instead of sequentially, reducing discovery latency. Providers are initialized once per region before probing starts.
+- **Improved Error Logging** — Errors during inference and retries are now logged with full stack traces via a dedicated `Logger.error` method.
+- **Retry Logic Refinement** — Added `UND_ERR_SOCKET` to the retryable network error codes and removed the overly broad `"terminated"` message match to avoid retrying non-transient failures.
+
 ## [0.5.7] — 2026-07-20
 
 ### Added
