@@ -4,6 +4,12 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.9] — 2026-08-13
+
+### Added
+
+- **Gemini 3.7 Flash** — Added support for the new `gemini-3.7-flash` model.
+
 ## [0.5.8] — 2026-07-22
 
 ### Added
