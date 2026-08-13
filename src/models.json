@@ -96,6 +96,25 @@
       }
     },
     {
+      "id": "gemini-3.7-flash",
+      "vendor": "google",
+      "displayName": "Gemini 3.7 Flash",
+      "family": "gemini",
+      "version": "gemini-3.7-flash",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 1.5,
+        "output": 7.0,
+        "cache_read": 0.15,
+        "cache_create": 0.0
+      }
+    },
+    {
       "id": "gemini-3.6-flash",
       "vendor": "google",
       "displayName": "Gemini 3.6 Flash",
