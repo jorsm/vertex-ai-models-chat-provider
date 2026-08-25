@@ -4,6 +4,12 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.10] — 2026-08-25
+
+### Added
+
+- **Claude Opus 5** — Added support for the new `claude-opus-5` model.
+
 ## [0.5.9] — 2026-08-13
 
 ### Added
