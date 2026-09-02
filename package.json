@@ -116,24 +116,24 @@
         "vertexAiChat.enableUserLabel": {
           "type": "boolean",
           "default": false,
-          "description": "Include a user identifier as a 'vscode-vertex-ai-user' label in Google Agent Platform calls. Values are automatically sanitized to meet GCP label requirements (lowercase, numbers, hyphens, underscores)."
+          "description": "Include a user identifier as a 'vscode-vertex-ai-user' label in Gemini and Claude calls. Values are sanitized to meet GCP label requirements. A warning is shown if no valid custom or automatic value can be resolved."
         },
         "vertexAiChat.userLabelValue": {
           "type": "string",
           "default": "",
           "scope": "resource",
-          "description": "Custom value for the user label. If empty, the name is derived automatically from the active identity. Values are automatically sanitized to meet GCP label requirements (lowercase, numbers, hyphens, underscores)."
+          "description": "Custom value for the user label. If empty, the value is derived from the active identity. Use a stable non-sensitive identifier where possible. Values are automatically sanitized to meet GCP label requirements."
         },
         "vertexAiChat.enableProjectLabel": {
           "type": "boolean",
           "default": false,
-          "description": "Include the current VS Code project name as a 'vscode-vertex-ai-project' label in Google Agent Platform calls. Values are automatically sanitized to meet GCP label requirements."
+          "description": "Include the current VS Code project name as a 'vscode-vertex-ai-project' label in Gemini and Claude calls. Values are sanitized to meet GCP label requirements. A warning is shown if no valid custom or automatic value can be resolved."
         },
         "vertexAiChat.projectLabelValue": {
           "type": "string",
           "default": "",
           "scope": "resource",
-          "description": "Custom value for the project label. If empty, the name is derived automatically. Values are automatically sanitized to meet GCP label requirements."
+          "description": "Custom value for the project label. If empty, the workspace name is derived automatically. Use a stable low-cardinality value. Values are automatically sanitized to meet GCP label requirements."
         }
       }
     }

@@ -86,7 +86,7 @@ Service Account imports copy a validated snapshot into `SecretStorage`. The exte
 - **⚡ Anthropic Performance**: Native support for **Claude Opus, Sonnet, and Haiku**, featuring automated **Prompt Caching (Ephemeral)** and dynamic output limits (up to 128k tokens) to handle large-scale generation.
 - **🔑 Smart Auth Recovery**: Detects expired ADC credentials and offers a `gcloud` recovery action. Explicitly selected Service Accounts use **Fail-Closed** logic—if the stored secret is missing or invalid, the extension stops rather than falling back to an ambient system identity.
 - **🪄 AI Commit Messages**: Generate professional, conventional commit messages from staged Git changes with one click from the Source Control view.
-- **🏷️ Cost Attribution Labels**: Opt-in to propagate user email and workspace names as GCP labels for granular cost tracking in the Google Cloud Console.
+- **🏷️ Cost Attribution Labels**: Opt-in labels for Gemini and Claude requests make Google Cloud Billing and BigQuery cost attribution easier, with a clear warning when an enabled label cannot be resolved.
 - **📊 Local Usage Dashboard and Real Time Costs Estimation**: An interactive, ECharts-powered dashboard to track your individual costs, token consumption, and payload metrics—all stored locally and updated in real time.
 
 - **🔍 Smart Discovery**: Automatically probes regional endpoints (`global`, `us-east5`, `europe-west1`, `asia-southeast1`) to find and register only the models available in your specific GCP project.
@@ -119,7 +119,17 @@ Service Account imports copy a validated snapshot into `SecretStorage`. The exte
 | `vertexAiChat.retryMaxDurationMinutes` | `integer` | `30`    | Maximum retry duration for transient failures (429, 503).               |
 | `vertexAiChat.hideBillingWarning`      | `boolean` | `false` | Hide the cost warning banner in the dashboard.                          |
 | `vertexAiChat.enableUserLabel`         | `boolean` | `false` | **Opt-in.** Include user email as `vscode-vertex-ai-user` label.        |
+| `vertexAiChat.userLabelValue`          | `string`  | `""`    | Optional stable user identifier. Takes precedence over the active identity. |
 | `vertexAiChat.enableProjectLabel`      | `boolean` | `false` | **Opt-in.** Include workspace name as `vscode-vertex-ai-project` label. |
+| `vertexAiChat.projectLabelValue`       | `string`  | `""`    | Optional stable project identifier. Takes precedence over workspace-name detection. |
+
+### Cost attribution labels
+
+When enabled, labels are attached to **Gemini and Anthropic Claude** requests. Google documents [how labels are added to Agent Platform API calls](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/capabilities/add-labels-to-api-calls); the extension uses the documented Gemini request field and the documented Claude request header. MaaS requests do not currently receive billing labels.
+
+The extension sanitizes values to lowercase letters, numbers, `_`, and `-`, prefixes a leading non-letter, and limits the result to 63 characters. For the user key, a non-empty `userLabelValue` wins; otherwise the active identity is used. For the project key, a workspace/folder-level `projectLabelValue` wins; otherwise the workspace name, active editor folder, then first workspace folder is used. If an enabled label has no usable custom or fallback value, the extension logs a warning in the Google Agent Platform output channel and shows one VS Code warning notification; that request omits only the unresolved label.
+
+Use a stable, low-cardinality custom identifier (for example, `team-platform` or `employee-123`) rather than putting personal or sensitive data in labels. Labels are forwarded to Cloud Billing for PayGo usage, not Provisioned Throughput, and Google can stop forwarding a key after too many distinct values. See Google's [label guidance and limitations](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/capabilities/add-labels-to-api-calls) and [BigQuery billing-export schema](https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery-tables/standard-usage) before building reports.
 
 ### Private Configuration (Command-Managed)
 

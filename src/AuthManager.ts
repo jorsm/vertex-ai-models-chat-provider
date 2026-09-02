@@ -307,10 +307,11 @@ export class AuthManager {
     // Fallback to gcloud if using ADC
     try {
       const { stdout } = await execFileAsync("gcloud", ["config", "get-value", "account"]);
-      const email = stdout.trim();
-      if (email && email !== "(unset)") {
+      const email = stdout.split(/\r?\n/, 1)[0]?.trim();
+      if (email && email !== "(unset)" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return email;
       }
+      this.logger.log("Could not extract email from gcloud account output.");
     } catch (e) {
       this.logger.log(`Failed to get gcloud account email: ${e}`);
     }

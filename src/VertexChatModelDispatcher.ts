@@ -34,6 +34,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   private _discoveryPromise: Promise<DiscoveryResult> | null = null;
   private _labelsPromise: Promise<void> | null = null;
   private cachedUserEmail: string | undefined;
+  private readonly missingLabelWarnings = new Set<"user" | "project">();
   private readonly logger = new Logger("VertexChatModelDispatcher");
 
   /** Fires when the available model list changes — VS Code re-queries provideLanguageModelChatInformation. */
@@ -105,6 +106,33 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
       sanitized = "v_" + sanitized;
     }
     return sanitized.substring(0, 63);
+  }
+
+  private getValidLabelValue(value: string | undefined): string | undefined {
+    const trimmed = value?.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    const sanitized = this.sanitizeLabelValue(trimmed);
+    return sanitized || undefined;
+  }
+
+  private warnMissingLabelValue(label: "user" | "project"): void {
+    const setting = label === "user" ? "vertexAiChat.userLabelValue" : "vertexAiChat.projectLabelValue";
+    const fallback = label === "user" ? "an active account identity" : "a workspace name";
+    const labelKey = `vscode-vertex-ai-${label}`;
+    const message = `${label[0].toUpperCase()}${label.slice(1)} label is enabled, but no valid custom value or ${fallback} is available. Requests will be sent without '${labelKey}'. Set '${setting}' or disable the label.`;
+
+    if (!this.missingLabelWarnings.has(label)) {
+      this.missingLabelWarnings.add(label);
+      this.logger.log(`⚠️ ${message}`);
+      void vscode.window.showWarningMessage(`Google Agent Platform: ${message}`);
+    }
+  }
+
+  private clearMissingLabelWarning(label: "user" | "project"): void {
+    this.missingLabelWarnings.delete(label);
   }
 
   getAnthropicProvider(): VertexAnthropicProvider {
@@ -343,43 +371,53 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     if (config.get<boolean>("enableUserLabel")) {
       // 0. Check for a custom user label value in settings
-      let userValue = config.get<string>("userLabelValue");
+      let userLabelValue = this.getValidLabelValue(config.get<string>("userLabelValue"));
 
-      if (!userValue) {
+      if (!userLabelValue) {
         // 1. Fallback to cached identity
-        userValue = this.cachedUserEmail;
+        userLabelValue = this.getValidLabelValue(this.cachedUserEmail);
       }
 
-      if (userValue) {
-        requestLabels["vscode-vertex-ai-user"] = this.sanitizeLabelValue(userValue);
+      if (userLabelValue) {
+        this.clearMissingLabelWarning("user");
+        requestLabels["vscode-vertex-ai-user"] = userLabelValue;
+      } else {
+        this.warnMissingLabelValue("user");
       }
+    } else {
+      this.clearMissingLabelWarning("user");
     }
 
     if (config.get<boolean>("enableProjectLabel")) {
       // 0. Check for a custom project label value in settings (Workspace/Folder level only)
       const inspection = config.inspect<string>("projectLabelValue");
-      let projectName = inspection?.workspaceValue || inspection?.workspaceFolderValue;
+      let projectLabelValue = this.getValidLabelValue(inspection?.workspaceValue || inspection?.workspaceFolderValue);
 
-      if (!projectName) {
+      if (!projectLabelValue) {
         // 1. Try to use the workspace name (e.g. from .code-workspace file)
-        projectName = vscode.workspace.name;
+        projectLabelValue = this.getValidLabelValue(vscode.workspace.name);
 
-        if (!projectName) {
+        if (!projectLabelValue) {
           // 2. Fallback to the active editor's workspace folder
           if (activeEditor) {
-            projectName = vscode.workspace.getWorkspaceFolder(activeEditor.document.uri)?.name;
+            projectLabelValue = this.getValidLabelValue(vscode.workspace.getWorkspaceFolder(activeEditor.document.uri)?.name);
           }
         }
 
-        if (!projectName) {
+        if (!projectLabelValue) {
           // 3. Final fallback to the first workspace folder
-          projectName = vscode.workspace.workspaceFolders?.[0]?.name;
+          projectLabelValue = this.getValidLabelValue(vscode.workspace.workspaceFolders?.[0]?.name);
         }
       }
 
-      if (projectName) {
-        requestLabels["vscode-vertex-ai-project"] = this.sanitizeLabelValue(projectName);
+      if (projectLabelValue) {
+        this.clearMissingLabelWarning("project");
+        requestLabels["vscode-vertex-ai-project"] = projectLabelValue;
+      } else {
+        this.warnMissingLabelValue("project");
       }
+    } else {
+      this.clearMissingLabelWarning("project");
     }
 
     try {
