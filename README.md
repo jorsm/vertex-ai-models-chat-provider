@@ -53,6 +53,7 @@ For Remote SSH, Dev Containers, and Codespaces, install the extension and config
 - **🔍 Smart discovery:** Probes the available Google Cloud regions and registers only the models that your selected project can access.
 - **🛡️ Safe credential handling:** Stored Service Accounts are encrypted in VS Code; an explicitly selected but invalid credential fails closed instead of falling back silently.
 - **🏷️ Cost attribution labels:** Gemini and Claude PayGo calls can carry user and workspace labels. An enabled label that cannot be resolved produces a clear VS Code and output-channel warning.
+- **📈 Usage dashboard and status bar:** Track local token usage and estimated cost by model, then open the dashboard from the status bar for trends and detailed breakdowns.
 - **🪄 AI commit messages:** Generate a Conventional Commit-style message from staged Git changes in the Source Control view.
 
 ## 🤖 Supported models
@@ -66,6 +67,10 @@ Models are discovered for your project and region, so only models your project c
 | MaaS | Grok 4.2 Reasoning, DeepSeek V3.2, Qwen3 Coder 480B, Kimi K2 Thinking | [MaaS guide](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-as-a-Service-(MaaS)) |
 
 Claude Fable 5 and 5.1 require Model Garden access and are subject to Google's [Advanced AI Safety Addendum](https://cloud.google.com/terms/advanced-ai-safety-addendum). Review the [Fable 5.1 documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/fable-5-1) before enabling it.
+
+### Use your own model catalog
+
+Need a different model set or region order? Create a workspace `.vscode/models.json` with **Google Agent Platform: Open Workspace models.json**, or a private user catalog with **Open User Models Catalog File**. Both are seeded from the bundled catalog and receive JSON schema validation. A custom catalog fully replaces the bundled catalog, so include every model you want available. See [Model Discovery & Project Switching](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-Discovery-&-Project-Switching) for precedence, multi-root behavior, and examples.
 
 ## 💳 Billing and labels
 
