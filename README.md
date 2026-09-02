@@ -99,11 +99,13 @@ Service Account imports copy a validated snapshot into `SecretStorage`. The exte
 
 | Vendor        | Model Family | Versions Supported                                          | Features                      |
 | :------------ | :----------- | :---------------------------------------------------------- | :---------------------------- |
-| **Anthropic** | Claude       | Fable 5*, Opus 5, Opus 4.8, Sonnet 5, Sonnet 4.6, Haiku 4.5 | Vision, Tools, Caching        |
-| **Google**    | Gemini       | 3.7, 3.6 and 3.5 Flash, 3 Flash, 3.1 Pro                    | High Thinking, Parallel Tools |
+| **Anthropic** | Claude       | Fable 5.1*, Fable 5*, Opus 5, Opus 4.8, Sonnet 5, Sonnet 4.6, Haiku 4.5 | Vision, Tools, Caching |
+| **Google**    | Gemini       | 3.8, 3.7, 3.6 and 3.5 Flash, 3 Flash, 3.1 Pro                         | High Thinking, Parallel Tools |
 | **MaaS**      | Open-Weight  | Grok 4.2, DeepSeek V3.2, Qwen3-Coder, Kimi K2               | Thinking, Tools               |
 
-\* Claude Fable 5 may require manual data-sharing opt-in for your GCP project. See [Enabling Claude Fable 5](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Enabling-Claude-Fable-5) for details.
+\* [Claude Fable 5](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/fable-5) and [Claude Fable 5.1](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/fable-5-1) require Model Garden enablement and are subject to Google's Advanced AI Safety Addendum. Review the model documentation before use; prompts and responses can be retained for abuse monitoring for up to 30 days.
+
+> [Gemini 3.8 Flash](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-8-flash) is catalogued with its global introductory PayGo rates ($0.75 input / $3.75 output per 1M tokens) through December 31, 2026. The local dashboard is an estimate—see [Google's pricing page](https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing) for the current regional and future rates.
 
 > MaaS (Model-as-a-Service) brings open-weight third-party models via an OpenAI-compatible API on Google Agent Platform. See the [MaaS wiki page](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-as-a-Service-(MaaS)) for details.
 
