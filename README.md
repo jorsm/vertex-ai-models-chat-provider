@@ -48,23 +48,23 @@ For Remote SSH, Dev Containers, and Codespaces, install the extension and config
 
 ## ✨ Key features
 
+- **🏷️ Cost attribution labels:** Gemini and Claude PayGo calls can carry user and workspace labels. An enabled label that cannot be resolved produces a clear VS Code and output-channel warning.
+- **📈 Usage dashboard and status bar:** Track local daily token usage and estimated cost in real time, then open the dashboard from the status bar for trends and detailed breakdowns.
+- **🪄 AI commit messages:** Generate a Conventional Commit-style message from staged Git changes in the Source Control view.
 - **🧠 Gemini thinking and tools:** Supports Gemini thinking modes, thought-signature continuity, vision, and parallel tool calling where available.
 - **⚡ Claude performance:** Supports Claude vision, tools, up to 128K output tokens, and ephemeral prompt caching for long conversations.
 - **🔍 Smart discovery:** Probes the available Google Cloud regions and registers only the models that your selected project can access.
 - **🛡️ Safe credential handling:** Stored Service Accounts are encrypted in VS Code; an explicitly selected but invalid credential fails closed instead of falling back silently.
-- **🏷️ Cost attribution labels:** Gemini and Claude PayGo calls can carry user and workspace labels. An enabled label that cannot be resolved produces a clear VS Code and output-channel warning.
-- **📈 Usage dashboard and status bar:** Track local token usage and estimated cost by model, then open the dashboard from the status bar for trends and detailed breakdowns.
-- **🪄 AI commit messages:** Generate a Conventional Commit-style message from staged Git changes in the Source Control view.
 
 ## 🤖 Supported models
 
 Models are discovered for your project and region, so only models your project can access appear in the picker.
 
-| Provider | Current catalog | Details |
-| :-- | :-- | :-- |
-| Google | Gemini 3.8, 3.7, 3.6, 3.5, and 3 Flash; Gemini 3.1 Pro | [Gemini model documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini) |
-| Anthropic | Claude Fable 5.1 and 5; Opus 5 and 4.8; Sonnet 5 and 4.6; Haiku 4.5 | [Claude on Google Cloud](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude) |
-| MaaS | Grok 4.2 Reasoning, DeepSeek V3.2, Qwen3 Coder 480B, Kimi K2 Thinking | [MaaS guide](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-as-a-Service-(MaaS)) |
+| Provider  | Current catalog                                                       | Details                                                                                                               |
+| :-------- | :-------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
+| Google    | Gemini 3.8, 3.7, 3.6, 3.5, and 3 Flash; Gemini 3.1 Pro                | [Gemini model documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini)            |
+| Anthropic | Claude Fable 5.1 and 5; Opus 5 and 4.8; Sonnet 5 and 4.6; Haiku 4.5   | [Claude on Google Cloud](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude) |
+| MaaS      | Grok 4.2 Reasoning, DeepSeek V3.2, Qwen3 Coder 480B, Kimi K2 Thinking | [MaaS guide](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-as-a-Service-(MaaS))                  |
 
 Claude Fable 5 and 5.1 require Model Garden access and are subject to Google's [Advanced AI Safety Addendum](https://cloud.google.com/terms/advanced-ai-safety-addendum). Review the [Fable 5.1 documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/fable-5-1) before enabling it.
 
@@ -80,14 +80,14 @@ Labels are not forwarded to Billing for Provisioned Throughput. Prefer explicit,
 
 ## 📖 Guides and reference
 
-| Topic | Where to go |
-| :-- | :-- |
-| Authentication and workspace settings | [Setup & Configuration](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Setup-&-Configuration) · [Service Account Authentication](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Service-Account-Authentication) |
-| Usage dashboard and BigQuery reporting | [Usage & Billing](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Usage-&-Billing) · [Advanced Billing Reports](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Advanced-Billing-Reports) |
-| Custom model catalogs and discovery | [Model Discovery & Project Switching](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-Discovery-&-Project-Switching) |
-| Diagnostics | [Diagnostics & Troubleshooting](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Diagnostics-&-Troubleshooting) |
-| Architecture and provider behavior | [Architecture](docs/architecture.md) · [Providers](docs/providers.md) · [Usage & Billing internals](docs/usage-and-billing.md) |
-| Current Google Cloud pricing | [Agent Platform generative AI pricing](https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing) |
+| Topic                                  | Where to go                                                                                                                                                                                                                                 |
+| :------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Authentication and workspace settings  | [Setup & Configuration](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Setup-&-Configuration) · [Service Account Authentication](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Service-Account-Authentication) |
+| Usage dashboard and BigQuery reporting | [Usage & Billing](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Usage-&-Billing) · [Advanced Billing Reports](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Advanced-Billing-Reports)                         |
+| Custom model catalogs and discovery    | [Model Discovery & Project Switching](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-Discovery-&-Project-Switching)                                                                                                     |
+| Diagnostics                            | [Diagnostics & Troubleshooting](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Diagnostics-&-Troubleshooting)                                                                                                                 |
+| Architecture and provider behavior     | [Architecture](docs/architecture.md) · [Providers](docs/providers.md) · [Usage & Billing internals](docs/usage-and-billing.md)                                                                                                              |
+| Current Google Cloud pricing           | [Agent Platform generative AI pricing](https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing)                                                                                                                     |
 
 ## License
 

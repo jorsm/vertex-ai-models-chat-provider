@@ -8,8 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- **Claude Fable 5.1** — Added the `claude-fable-5-1` model, including its 1M-token context window, 128K-token output limit, image and tool support, and current global PayGo pricing.
-- **Gemini 3.8 Flash** — Added the `gemini-3.8-flash` model, including its 1M-token context window, 64K-token output limit, image and tool support, and introductory global PayGo pricing through December 31, 2026.
+- **Claude Fable 5.1** — Added the `claude-fable-5-1` model.
+- **Gemini 3.8 Flash** — Added the `gemini-3.8-flash` model using the introductory global PayGo pricing through December 31, 2026.
 
 ### Fixed
 
