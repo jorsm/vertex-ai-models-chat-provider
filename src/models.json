@@ -39,6 +39,25 @@
       }
     },
     {
+      "id": "claude-fable-5-1",
+      "vendor": "anthropic",
+      "displayName": "Claude Fable 5.1",
+      "family": "claude",
+      "version": "claude-fable-5-1",
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 10.0,
+        "output": 50.0,
+        "cache_read": 0.25,
+        "cache_create": 12.5
+      }
+    },
+    {
       "id": "claude-fable-5",
       "vendor": "anthropic",
       "displayName": "Claude Fable 5",
@@ -115,6 +134,25 @@
       }
     },
     {
+      "id": "gemini-3.8-flash",
+      "vendor": "google",
+      "displayName": "Gemini 3.8 Flash",
+      "family": "gemini",
+      "version": "gemini-3.8-flash",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 0.75,
+        "output": 3.75,
+        "cache_read": 0.075,
+        "cache_create": 0.0
+      }
+    },
+    {
       "id": "gemini-3.7-flash",
       "vendor": "google",
       "displayName": "Gemini 3.7 Flash",
@@ -127,9 +165,9 @@
         "toolCalling": true
       },
       "pricing": {
-        "input": 1.5,
-        "output": 7.0,
-        "cache_read": 0.15,
+        "input": 0.75,
+        "output": 3.75,
+        "cache_read": 0.075,
         "cache_create": 0.0
       }
     },
@@ -146,9 +184,9 @@
         "toolCalling": true
       },
       "pricing": {
-        "input": 1.5,
-        "output": 7.0,
-        "cache_read": 0.15,
+        "input": 0.75,
+        "output": 3.75,
+        "cache_read": 0.075,
         "cache_create": 0.0
       }
     },

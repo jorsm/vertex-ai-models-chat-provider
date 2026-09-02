@@ -41,6 +41,7 @@ The provider architecture uses a unified `VertexModelProvider` interface to supp
 - **Thought Signatures**: A mechanism to maintain reasoning continuity across conversational turns by caching and re-injecting signatures into the message history.
 - **Parallel Tool Execution**: Implementation of tool call buffering and message merging to satisfy Gemini's requirements for grouped function responses.
 - **Prompt Caching (Ephemeral)**: Automated caching strategy for Anthropic models to reduce latency and costs for long conversations by marking system prompts, tools, and long conversation histories for ephemeral caching.
+- **Billing labels**: Gemini requests use the `labels` generation configuration and Anthropic requests use the documented base64 JSON `X-Vertex-AI-Labels` header. These labels are forwarded to Cloud Billing only for PayGo usage. MaaS currently logs resolved labels but does not attach them to its OpenAI-compatible request.
 
 ## API Reference
 
@@ -58,7 +59,7 @@ Sets the GCP Project ID and regional endpoint for the Anthropic Vertex client. I
 [source](../src/providers/VertexAnthropicProvider.ts)
 `setLabels(labels: Record<string, string>): void`
 
-Updates the internal labels mapping. These labels are logged and included in request metadata where supported to facilitate cost tracking and resource labeling in the Google Cloud Console.
+Updates the internal labels mapping. For non-empty request labels, the provider serializes the mapping as base64 JSON in the documented `X-Vertex-AI-Labels` header passed through the Anthropic Vertex SDK. This supports Cloud Billing attribution for Anthropic PayGo requests.
 
 #### pingModel
 [source](../src/providers/VertexAnthropicProvider.ts)
@@ -85,7 +86,7 @@ Handles chat inference for Anthropic models. This method:
 4. Executes the request using a robust retry mechanism for transient API failures (such as 429 or 503) with a configurable maximum duration to ensure request resilience.
 5. Manages streaming responses, reporting text deltas and tool call progress to VS Code after parsing partial JSON tool inputs.
 6. Captures and returns detailed usage statistics, including `input`, `output`, `cache_read`, and `cache_create` token metrics. It also reports these statistics back to VS Code via a `LanguageModelDataPart` (MIME type `usage`) containing `prompt_tokens`, `completion_tokens`, `total_tokens`, and `cached_tokens` to update the native Copilot Chat usage indicator.
-7. Integrates metadata labels (provided via the `labels` parameter or the provider's internal state) into the API request context for downstream cost tracking and telemetry.
+7. Attaches metadata labels (provided via the `labels` parameter or the provider's internal state) through `X-Vertex-AI-Labels`, enabling Google Cloud Billing attribution for Anthropic PayGo requests. The SDK request options preserve this custom header.
 
 ### VertexGoogleProvider
 [source](../src/providers/VertexGoogleProvider.ts)
@@ -101,7 +102,7 @@ Sets the GCP Project ID and regional endpoint (e.g., `us-central1`) for the prov
 [source](../src/providers/VertexGoogleProvider.ts)
 `setLabels(labels: Record<string, string>): void`
 
-Configures the provider with a set of labels to be attached to Vertex AI requests. These are typically used for billing attribution and usage monitoring.
+Configures the provider with a set of labels to be attached to Gemini generation requests. Google Cloud can forward these labels to Billing for PayGo cost attribution.
 
 #### pingModel
 [source](../src/providers/VertexGoogleProvider.ts)
@@ -141,7 +142,7 @@ Main entry point for chat inference. This method:
 7. Buffers parallel tool calls across the stream to ensure they are emitted to VS Code as a single atomic step, preventing turn-mismatch errors.
 8. Updates internal signature caches for both text reasoning (using a text-prefix key based on the first 120 characters) and tool calls (using unique call IDs).
 9. Tracks and returns detailed usage statistics including character counts and token usage metadata (input, output, and cache metrics). For Gemini, it correctly adjusts input tokens by subtracting cached content tokens to ensure accurate usage tracking, and reports the resulting payload to VS Code via `LanguageModelDataPart` (MIME `usage`).
-10. Attaches metadata labels (preferring the `labels` argument over instance-level labels) to the generation request, enabling granular cost attribution and usage monitoring in the Google Cloud Console.
+10. Attaches metadata labels (preferring the `labels` argument over instance-level labels) as `config.labels` on the generation request, enabling granular PayGo cost attribution in Google Cloud Billing.
 
 ### VertexMaaSProvider
 [source](../src/providers/VertexMaaSProvider.ts)
@@ -157,7 +158,7 @@ Sets the GCP Project ID and regional endpoint. It configures the provider to use
 [source](../src/providers/VertexMaaSProvider.ts)
 `setLabels(labels: Record<string, string>): void`
 
-Updates internal labels for request tracking.
+Updates internal labels for request logging only. The MaaS OpenAI-compatible request path does not currently attach these labels to Google Cloud Billing metadata.
 
 #### pingModel
 [source](../src/providers/VertexMaaSProvider.ts)

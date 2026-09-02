@@ -6,6 +6,7 @@
 ## Table of Contents
 - [Table of Contents](#table-of-contents)
 - [Core Concepts](#core-concepts)
+- [Request labels and Cloud Billing](#request-labels-and-cloud-billing)
 - [API Reference](#api-reference)
   - [DashboardWebview](#dashboardwebview)
   - [CostStatusBar](#coststatusbar)
@@ -24,6 +25,14 @@ The usage and billing module is centered around the `DashboardWebview`, which pr
 - **Real-time Status**: A status bar item provides immediate feedback on today's accumulated costs and the active authentication identity, updating automatically as interactions occur.
 - **Filtering**: Supports date range selection, model-specific filtering via a dedicated dropdown, and quick presets (Today, Last 7 Days, This Month, All Time).
 - **Persistence**: Usage logs are tracked by the `UsageTrackerService`, which stores daily logs in `.jsonl` format within a `usage_logs` subdirectory of the extension's global storage. The dashboard can permanently dismiss cost warnings by updating the `vertexAiChat.hideBillingWarning` global configuration.
+
+## Request labels and Cloud Billing
+
+The local dashboard is a per-machine estimate. For centralized, invoice-oriented reporting, enable Google Cloud Billing export to BigQuery and use request labels. The extension can attach `vscode-vertex-ai-user` and `vscode-vertex-ai-project` to Gemini and Anthropic Claude requests; MaaS does not currently send billing labels.
+
+Set either a custom `userLabelValue` or `projectLabelValue` when you need stable report dimensions. If an enabled label cannot resolve to either a custom value or its automatic fallback, the request proceeds without that one label and the extension emits a single VS Code warning plus an output-channel warning. This prevents silent loss of an opted-in attribution dimension.
+
+Google only forwards request labels to Cloud Billing for PayGo usage; Provisioned Throughput does not receive them. Use low-cardinality, non-sensitive values: label values surface in billing exports, and Google can omit a label key after too many distinct values. See [Google's request-label documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/capabilities/add-labels-to-api-calls), [billing export setup](https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery), and the [standard usage export schema](https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery-tables/standard-usage).
 
 ## API Reference
 

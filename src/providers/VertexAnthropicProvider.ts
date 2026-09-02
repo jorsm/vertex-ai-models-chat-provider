@@ -77,8 +77,11 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     this.logger.log(`▶ Anthropic Plugin provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, messages: ${messages.length}`);
 
     const requestLabels = labels || this.labels;
+    const requestOptions =
+      Object.keys(requestLabels).length > 0
+        ? { headers: { "X-Vertex-AI-Labels": Buffer.from(JSON.stringify(requestLabels), "utf8").toString("base64") } }
+        : undefined;
     if (Object.keys(requestLabels).length > 0) {
-      this.logger.log(`  ⚠️ Labels for Anthropic request are not supported by the Anthropic Vertex API.`);
       this.logger.log(`  🏷️  Labels: ${JSON.stringify(requestLabels)}`);
     }
 
@@ -104,7 +107,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
             stream: true,
             ...(systemBlocks ? { system: systemBlocks } : {}),
             ...(tools?.length ? { tools } : {}),
-          } as any),
+          } as any, requestOptions),
         {
           token: token,
         },
