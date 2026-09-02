@@ -105,7 +105,7 @@ Service Account imports copy a validated snapshot into `SecretStorage`. The exte
 
 \* [Claude Fable 5](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/fable-5) and [Claude Fable 5.1](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/fable-5-1) require Model Garden enablement and are subject to Google's Advanced AI Safety Addendum. Review the model documentation before use; prompts and responses can be retained for abuse monitoring for up to 30 days.
 
-> [Gemini 3.8 Flash](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-8-flash) is catalogued with its global introductory PayGo rates ($0.75 input / $3.75 output per 1M tokens) through December 31, 2026. The local dashboard is an estimate—see [Google's pricing page](https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing) for the current regional and future rates.
+> Gemini 3.8, 3.7, and 3.6 Flash are catalogued with their global introductory PayGo rates ($0.75 input / $3.75 output per 1M tokens) through December 31, 2026. See [Gemini 3.8 Flash](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-8-flash) and [Google's pricing page](https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing) for the current regional and future rates; the local dashboard is an estimate.
 
 > MaaS (Model-as-a-Service) brings open-weight third-party models via an OpenAI-compatible API on Google Agent Platform. See the [MaaS wiki page](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-as-a-Service-(MaaS)) for details.
 

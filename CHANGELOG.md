@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Claude Billing Labels** — Anthropic Vertex requests now send the documented `X-Vertex-AI-Labels` header so opted-in labels are visible in Google Cloud Billing and BigQuery exports for PayGo usage.
 - **Missing Label Detection** — When an enabled user or project label has no valid custom or automatic value, the extension now shows a one-time VS Code warning and writes a warning to the output channel instead of silently omitting it.
 - **gcloud Identity Parsing** — The identity fallback now accepts only the first `gcloud config get-value account` output line when it is an email address, preventing component-update messages from corrupting labels.
+- **Gemini 3.7 and 3.6 Flash Pricing** — Corrected the bundled dashboard estimates to the current global introductory PayGo rates: $0.75 input, $3.75 output, and $0.075 cached input per 1M tokens through December 31, 2026.
 
 ## [0.5.10] — 2026-08-25
 
