@@ -4,6 +4,19 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.11] — 2026-09-02
+
+### Added
+
+- **Claude Fable 5.1** — Added the `claude-fable-5-1` model, including its 1M-token context window, 128K-token output limit, image and tool support, and current global PayGo pricing.
+- **Gemini 3.8 Flash** — Added the `gemini-3.8-flash` model, including its 1M-token context window, 64K-token output limit, image and tool support, and introductory global PayGo pricing through December 31, 2026.
+
+### Fixed
+
+- **Claude Billing Labels** — Anthropic Vertex requests now send the documented `X-Vertex-AI-Labels` header so opted-in labels are visible in Google Cloud Billing and BigQuery exports for PayGo usage.
+- **Missing Label Detection** — When an enabled user or project label has no valid custom or automatic value, the extension now shows a one-time VS Code warning and writes a warning to the output channel instead of silently omitting it.
+- **gcloud Identity Parsing** — The identity fallback now accepts only the first `gcloud config get-value account` output line when it is an email address, preventing component-update messages from corrupting labels.
+
 ## [0.5.10] — 2026-08-25
 
 ### Added
