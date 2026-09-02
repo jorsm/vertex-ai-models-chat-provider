@@ -3,29 +3,36 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.110.0%2B-blue)](https://code.visualstudio.com/)
 
-Use Google Gemini, Anthropic Claude, and selected MaaS models directly in VS Code Copilot Chat. The extension authenticates with Google Cloud, sends requests through Google Agent Platform (Vertex AI), and bills the Google Cloud project you select.
+## Native Gemini, Claude, and open-weight models in VS Code Copilot Chat
 
-## What you get
+Use Google Gemini, Anthropic Claude, and selected MaaS models directly in the standard VS Code Chat panel. The extension authenticates with Google Cloud, sends requests through Google Agent Platform (Vertex AI), and bills the project you select.
 
-- Native VS Code Chat models—no API keys or separate chat UI.
-- Application Default Credentials (ADC) or Service Account credentials stored in VS Code `SecretStorage`.
-- Project-aware model discovery, local usage estimates, and an optional cost dashboard.
-- Vision, tool calling, Claude prompt caching, and Gemini thinking support where the model supports them.
-- Optional request labels for Gemini and Claude PayGo billing attribution.
+<p align="center">
+  <img src="images/demo.gif" alt="Google Agent Platform for Copilot Chat demo" width="800">
+</p>
 
-## Before you start
+- **🔒 No API keys** — Authenticate with Google Application Default Credentials or a Service Account stored in VS Code `SecretStorage`.
+- **🏢 Project-aware billing** — Use workspace settings to bill the right Google Cloud project as you switch contexts.
+- **⚡ Native integration** — Select models and use them alongside other providers in Copilot Chat.
+- **📊 Cost visibility** — See local usage estimates and optionally attribute Gemini and Claude PayGo spend with request labels.
 
-You need a billable Google Cloud project with the Agent Platform API enabled and an identity with the [Agent Platform User role](https://docs.cloud.google.com/iam/docs/roles-permissions/aiplatform#aiplatform.user). Enable Claude models you plan to use in [Model Garden](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude).
+## ☁️ Google Cloud prerequisites
 
-## Quick start
+Before you start, make sure the target Google Cloud project is ready:
 
-1. Install **Google Agent Platform for Copilot Chat** from the VS Code Marketplace.
-2. Authenticate with one of these options:
+1. **Enable the API:** Enable the Agent Platform API (`aiplatform.googleapis.com`). See the [Google Agent Platform documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform).
+2. **Grant access:** Your identity needs the [Agent Platform User role (`roles/aiplatform.user`)](https://docs.cloud.google.com/iam/docs/roles-permissions/aiplatform#aiplatform.user).
+3. **Enable partner models:** Enable any Claude models you plan to use in [Model Garden](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude).
 
-   - **ADC:** run `gcloud auth application-default login` in the same environment where the extension runs.
-   - **Service Account:** run **Google Agent Platform: Paste Service Account JSON Key** or **Import Service Account JSON File**.
+## 🚀 Quick start
 
-3. Set the project that owns discovery and billing in VS Code settings:
+1. **Install** **Google Agent Platform for Copilot Chat** from the VS Code Marketplace.
+2. **Authenticate** in the environment where the extension runs:
+
+   - **Standard ADC:** run `gcloud auth application-default login` in a terminal.
+   - **Service Account:** run **Google Agent Platform: Paste Service Account JSON Key** or **Google Agent Platform: Import Service Account JSON File** from the Command Palette.
+
+3. **Set the billing and discovery project** in VS Code Settings (`Ctrl+,`):
 
    ```json
    {
@@ -33,13 +40,24 @@ You need a billable Google Cloud project with the Agent Platform API enabled and
    }
    ```
 
-4. Open VS Code Chat and select a **Google Agent Platform** model. If no model appears, run **Google Agent Platform: Refresh Models**.
+   Set this in workspace settings when different repositories should use different Google Cloud projects.
 
-For Remote SSH, Dev Containers, and Codespaces, install the extension and configure authentication in the remote workspace environment. See the [setup guide](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Setup-&-Configuration).
+4. **Start chatting:** Open VS Code Chat, select a **Google Agent Platform** model, and send a prompt. If the picker is empty, run **Google Agent Platform: Refresh Models**.
 
-## Supported models
+For Remote SSH, Dev Containers, and Codespaces, install the extension and configure credentials in the remote workspace environment. See [Setup & Configuration](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Setup-&-Configuration).
 
-Models are discovered against your selected project and available region; the picker shows only models your project can access.
+## ✨ Key features
+
+- **🧠 Gemini thinking and tools:** Supports Gemini thinking modes, thought-signature continuity, vision, and parallel tool calling where available.
+- **⚡ Claude performance:** Supports Claude vision, tools, up to 128K output tokens, and ephemeral prompt caching for long conversations.
+- **🔍 Smart discovery:** Probes the available Google Cloud regions and registers only the models that your selected project can access.
+- **🛡️ Safe credential handling:** Stored Service Accounts are encrypted in VS Code; an explicitly selected but invalid credential fails closed instead of falling back silently.
+- **🏷️ Cost attribution labels:** Gemini and Claude PayGo calls can carry user and workspace labels. An enabled label that cannot be resolved produces a clear VS Code and output-channel warning.
+- **🪄 AI commit messages:** Generate a Conventional Commit-style message from staged Git changes in the Source Control view.
+
+## 🤖 Supported models
+
+Models are discovered for your project and region, so only models your project can access appear in the picker.
 
 | Provider | Current catalog | Details |
 | :-- | :-- | :-- |
@@ -47,20 +65,20 @@ Models are discovered against your selected project and available region; the pi
 | Anthropic | Claude Fable 5.1 and 5; Opus 5 and 4.8; Sonnet 5 and 4.6; Haiku 4.5 | [Claude on Google Cloud](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude) |
 | MaaS | Grok 4.2 Reasoning, DeepSeek V3.2, Qwen3 Coder 480B, Kimi K2 Thinking | [MaaS guide](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-as-a-Service-(MaaS)) |
 
-Claude Fable 5 and 5.1 require Model Garden access and are subject to Google's [Advanced AI Safety Addendum](https://cloud.google.com/terms/advanced-ai-safety-addendum). Review the [Fable 5.1 model documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/fable-5-1) before enabling it.
+Claude Fable 5 and 5.1 require Model Garden access and are subject to Google's [Advanced AI Safety Addendum](https://cloud.google.com/terms/advanced-ai-safety-addendum). Review the [Fable 5.1 documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/fable-5-1) before enabling it.
 
-## Billing and labels
+## 💳 Billing and labels
 
-The local dashboard estimates spend; the Google Cloud Billing account remains the source of truth. Optional `vertexAiChat.enableUserLabel` and `vertexAiChat.enableProjectLabel` settings attach `vscode-vertex-ai-user` and `vscode-vertex-ai-project` labels to Gemini and Claude requests.
+The local dashboard estimates spend; your Google Cloud Billing account remains the source of truth. Enable `vertexAiChat.enableUserLabel` and `vertexAiChat.enableProjectLabel` when you need cost attribution for Gemini and Claude PayGo requests.
 
-Labels are forwarded to Billing only for PayGo usage, not Provisioned Throughput. Use explicit, stable, non-sensitive values for `userLabelValue` and `projectLabelValue`; labels appear in billing exports and high-cardinality keys can be dropped. Full setup, fallback behavior, and troubleshooting are in the [Cost Attribution Labels guide](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Cost-Attribution-Labels), along with Google's [request-label documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/capabilities/add-labels-to-api-calls) and [BigQuery billing-export documentation](https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery).
+Labels are not forwarded to Billing for Provisioned Throughput. Prefer explicit, stable, non-sensitive `userLabelValue` and `projectLabelValue` values: labels appear in billing exports and overly high-cardinality keys can be dropped. See the [Cost Attribution Labels guide](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Cost-Attribution-Labels), Google's [request-label documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/capabilities/add-labels-to-api-calls), and the [BigQuery billing-export guide](https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery).
 
-## More documentation
+## 📖 Guides and reference
 
 | Topic | Where to go |
 | :-- | :-- |
 | Authentication and workspace settings | [Setup & Configuration](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Setup-&-Configuration) · [Service Account Authentication](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Service-Account-Authentication) |
-| Usage, dashboard, and BigQuery reporting | [Usage & Billing](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Usage-&-Billing) · [Advanced Billing Reports](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Advanced-Billing-Reports) |
+| Usage dashboard and BigQuery reporting | [Usage & Billing](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Usage-&-Billing) · [Advanced Billing Reports](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Advanced-Billing-Reports) |
 | Custom model catalogs and discovery | [Model Discovery & Project Switching](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-Discovery-&-Project-Switching) |
 | Diagnostics | [Diagnostics & Troubleshooting](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Diagnostics-&-Troubleshooting) |
 | Architecture and provider behavior | [Architecture](docs/architecture.md) · [Providers](docs/providers.md) · [Usage & Billing internals](docs/usage-and-billing.md) |
