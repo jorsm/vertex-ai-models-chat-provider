@@ -4,6 +4,12 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.1] — 2026-09-03
+
+### Fixed
+
+- **Windows User Labels** — The automatic user-label fallback now launches the Windows `gcloud.cmd` wrapper through `cmd.exe`, allowing the active gcloud account to be resolved on Windows.
+
 ## [0.6.0] — 2026-09-03
 
 ### Added
@@ -13,7 +19,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 
 - **Claude Thinking Continuity** — Signed thinking and redacted-thinking blocks are now retained privately and restored unchanged across tool-use continuations instead of being dropped from message history.
-- **Windows User Labels** — The automatic user-label fallback now launches the Windows `gcloud.cmd` wrapper through `cmd.exe`, allowing the active gcloud account to be resolved on Windows.
 
 ## [0.5.12] — 2026-09-03
 
