@@ -4,6 +4,12 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.12] — 2026-09-03
+
+### Added
+
+- **Gemini 3.8 and 3.7 Flash High Reasoning** — Added support for the high-reasoning variants `gemini-3.8-flash-high` and `gemini-3.7-flash-high`.
+
 ## [0.5.11] — 2026-09-02
 
 ### Added

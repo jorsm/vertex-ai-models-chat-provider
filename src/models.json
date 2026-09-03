@@ -153,11 +153,49 @@
       }
     },
     {
+      "id": "gemini-3.8-flash-high",
+      "vendor": "google",
+      "displayName": "Gemini 3.8 Flash (High)",
+      "family": "gemini",
+      "version": "gemini-3.8-flash-high",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 0.75,
+        "output": 3.75,
+        "cache_read": 0.075,
+        "cache_create": 0.0
+      }
+    },
+    {
       "id": "gemini-3.7-flash",
       "vendor": "google",
       "displayName": "Gemini 3.7 Flash",
       "family": "gemini",
       "version": "gemini-3.7-flash",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 0.75,
+        "output": 3.75,
+        "cache_read": 0.075,
+        "cache_create": 0.0
+      }
+    },
+    {
+      "id": "gemini-3.7-flash-high",
+      "vendor": "google",
+      "displayName": "Gemini 3.7 Flash (High)",
+      "family": "gemini",
+      "version": "gemini-3.7-flash-high",
       "maxInputTokens": 1048576,
       "maxOutputTokens": 65536,
       "capabilities": {
