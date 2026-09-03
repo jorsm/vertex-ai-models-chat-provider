@@ -4,6 +4,16 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.0] — 2026-09-03
+
+### Added
+
+- **Claude Generation 5 Max Effort** — Added `-max` variants for Claude Opus 5, Sonnet 5, Fable 5, and Fable 5.1. Custom Claude catalogs can use any supported `-low`, `-medium`, `-high`, `-xhigh`, or `-max` effort suffix.
+
+### Fixed
+
+- **Claude Thinking Continuity** — Signed thinking and redacted-thinking blocks are now retained privately and restored unchanged across tool-use continuations instead of being dropped from message history.
+
 ## [0.5.12] — 2026-09-03
 
 ### Added

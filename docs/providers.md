@@ -37,8 +37,8 @@ The provider architecture uses a unified `VertexModelProvider` interface to supp
 - **Google Gemini Integration**: Managed by `VertexGoogleProvider`, supporting Gemini 3 Flash and 3.1 Pro models.
 - **Anthropic Claude Integration**: Managed by `VertexAnthropicProvider`, supporting Claude Opus, Sonnet, and Haiku models (including versions 3, 3.5, and 4.x).
 - **Models-as-a-Service (MaaS)**: Managed by `VertexMaaSProvider`, providing access to third-party models like DeepSeek-V3.2, Qwen 3 Coder, Grok 4.2, and Kimi K2 through an OpenAI-compatible Vertex AI endpoint.
-- **Thinking Models**: Specialized support for "High Thinking" models via model ID suffixes (e.g., `-high`), which triggers specific `thinkingConfig` parameters.
-- **Thought Signatures**: A mechanism to maintain reasoning continuity across conversational turns by caching and re-injecting signatures into the message history.
+- **Thinking Models**: Gemini `-high` aliases select high thinking. Claude effort aliases (`-low`, `-medium`, `-high`, `-xhigh`, and `-max`) enable adaptive thinking and set `output_config.effort`; the bundled catalog includes only generation-5 `-max` aliases.
+- **Thought Signatures**: Provider-specific mechanisms maintain reasoning continuity across tool calls by caching and re-injecting Gemini signatures or Claude signed thinking/redacted-thinking blocks.
 - **Parallel Tool Execution**: Implementation of tool call buffering and message merging to satisfy Gemini's requirements for grouped function responses.
 - **Prompt Caching (Ephemeral)**: Automated caching strategy for Anthropic models to reduce latency and costs for long conversations by marking system prompts, tools, and long conversation histories for ephemeral caching.
 - **Billing labels**: Gemini requests use the `labels` generation configuration and Anthropic requests use the documented base64 JSON `X-Vertex-AI-Labels` header. These labels are forwarded to Cloud Billing only for PayGo usage. MaaS currently logs resolved labels but does not attach them to its OpenAI-compatible request.
@@ -84,9 +84,10 @@ Handles chat inference for Anthropic models. This method:
     - **Static Prefix Caching**: Applies `ephemeral` caching to the system blocks or tool definitions.
     - **Chat History Caching**: Applies `ephemeral` caching to the second-to-last message in the history if the estimated total history exceeds 1024 tokens.
 4. Executes the request using a robust retry mechanism for transient API failures (such as 429 or 503) with a configurable maximum duration to ensure request resilience.
-5. Manages streaming responses, reporting text deltas and tool call progress to VS Code after parsing partial JSON tool inputs.
+5. Manages streaming responses, reporting text deltas and tool call progress to VS Code after parsing partial JSON tool inputs. Signed `thinking`, `signature_delta`, and `redacted_thinking` data remains hidden, but complete content-block sequences are retained in a bounded in-memory cache and restored unchanged when VS Code returns tool results. Models that emit no thinking blocks use the same stream path without creating replay state.
 6. Captures and returns detailed usage statistics, including `input`, `output`, `cache_read`, and `cache_create` token metrics. It also reports these statistics back to VS Code via a `LanguageModelDataPart` (MIME type `usage`) containing `prompt_tokens`, `completion_tokens`, `total_tokens`, and `cached_tokens` to update the native Copilot Chat usage indicator.
 7. Attaches metadata labels (provided via the `labels` parameter or the provider's internal state) through `X-Vertex-AI-Labels`, enabling Google Cloud Billing attribution for Anthropic PayGo requests. The SDK request options preserve this custom header.
+8. Resolves recognized effort suffixes to the underlying Vertex model ID and sends adaptive thinking with `display: "omitted"`. Availability probes include the same configuration so unsupported custom model/effort combinations are filtered out.
 
 ### VertexGoogleProvider
 [source](../src/providers/VertexGoogleProvider.ts)

@@ -2,6 +2,7 @@
 .vscode-test/**
 src/**
 playground/**
+test/**
 .gitignore
 .yarnrc
 vsc-extension-quickstart.md
