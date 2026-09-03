@@ -31,7 +31,9 @@ jobs:
         run: npx @vscode/vsce package --pre-release --no-dependencies
 
       - name: Resolve Package Path
-        run: echo "VSIX_PATH=vertex-ai-models-chat-provider-$(node -p \"require('./package.json').version\").vsix" >> "$GITHUB_ENV"
+        run: |
+          package_version=$(node -p "require('./package.json').version")
+          echo "VSIX_PATH=vertex-ai-models-chat-provider-${package_version}.vsix" >> "$GITHUB_ENV"
 
       - name: Verify Pre-Release Manifest
         run: unzip -p "$VSIX_PATH" extension.vsixmanifest | grep -q 'Microsoft.VisualStudio.Code.PreRelease" Value="true'
