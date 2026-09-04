@@ -36,7 +36,7 @@ This function acts as the command handler for `vertexAiChat.generateCommitMessag
 
 **Workflow:**
 1. **Repository Resolution**: Detects the relevant Git repository based on the provided `resourceUri` or active workspace.
-2. **Diff Extraction**: Collects and joins all non-empty staged diffs, logging relative file paths to the **Vertex AI Models: Commit Message** output channel.
+2. **Diff Extraction**: Collects and joins all non-empty staged diffs, logging relative file paths to the **Google Agent Platform for Copilot Chat** output channel.
 3. **Prompt Engineering**: Wraps the diff in a system prompt that enforces strict rules: imperative present tense, 72-character limits for subjects, and specific commit types (`feat`, `fix`, `refactor`, `perf`, `style`, `test`, `docs`, `chore`, `build`, `ci`).
 4. **LLM Invocation**: Calls the `VertexGoogleProvider` using a `gemini-3-flash-preview` model. It utilizes a custom system message role (role 0) to pass instructions to the provider.
 5. **SCM Update**: Initially sets the Git input box to "⏳ Generating commit message…" and then populates it with the streamed result, trimmed of whitespace.

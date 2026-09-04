@@ -52,7 +52,7 @@ For Remote SSH, Dev Containers, and Codespaces, install the extension and config
 - **📈 Usage dashboard and status bar:** Track local daily token usage and estimated cost in real time, then open the dashboard from the status bar for trends and detailed breakdowns.
 - **🪄 AI commit messages:** Generate a Conventional Commit-style message from staged Git changes in the Source Control view.
 - **🧠 Gemini thinking and tools:** Supports Gemini thinking modes, thought-signature continuity, vision, and parallel tool calling where available.
-- **⚡ Claude performance:** Supports Claude vision, tools, up to 128K output tokens, and ephemeral prompt caching for long conversations.
+- **⚡ Claude thinking and tools:** Supports signed thinking-trace continuity across tool calls, effort aliases, vision, up to 128K output tokens, and ephemeral prompt caching.
 - **🔍 Smart discovery:** Probes the available Google Cloud regions and registers only the models that your selected project can access.
 - **🛡️ Safe credential handling:** Stored Service Accounts are encrypted in VS Code; an explicitly selected but invalid credential fails closed instead of falling back silently.
 
@@ -71,6 +71,8 @@ Claude Fable 5 and 5.1 require Model Garden access and are subject to Google's [
 ### Use your own model catalog
 
 Need a different model set or region order? Create a workspace `.vscode/models.json` with **Google Agent Platform: Open Workspace models.json**, or a private user catalog with **Open User Models Catalog File**. Both are seeded from the bundled catalog and receive JSON schema validation. A custom catalog fully replaces the bundled catalog, so include every model you want available. See [Model Discovery & Project Switching](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-Discovery-&-Project-Switching) for precedence, multi-root behavior, and examples.
+
+For Claude 5 models that support adaptive thinking and the selected [effort](https://platform.claude.com/docs/en/build-with-claude/effort), append `-low`, `-medium`, `-high`, `-xhigh`, or `-max` to both the custom entry's `id` and `version`. The extension removes the suffix before calling Vertex AI, enables adaptive thinking with hidden traces, and sends the selected effort. Unsuffixed generation-5 models use Claude's default high effort.
 
 ## 💳 Billing and labels
 

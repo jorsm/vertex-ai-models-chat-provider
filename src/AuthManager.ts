@@ -306,7 +306,8 @@ export class AuthManager {
 
     // Fallback to gcloud if using ADC
     try {
-      const { stdout } = await execFileAsync("gcloud", ["config", "get-value", "account"]);
+      const command = AuthManager.getGcloudAccountCommand();
+      const { stdout } = await execFileAsync(command.executable, command.args, { encoding: "utf8", windowsHide: true });
       const email = stdout.split(/\r?\n/, 1)[0]?.trim();
       if (email && email !== "(unset)" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return email;
@@ -316,6 +317,20 @@ export class AuthManager {
       this.logger.log(`Failed to get gcloud account email: ${e}`);
     }
     return undefined;
+  }
+
+  private static getGcloudAccountCommand(platform: NodeJS.Platform = process.platform, comSpec: string | undefined = process.env.ComSpec): { executable: string; args: string[] } {
+    if (platform === "win32") {
+      return {
+        executable: comSpec || "cmd.exe",
+        args: ["/d", "/s", "/c", "gcloud.cmd config get-value account"],
+      };
+    }
+
+    return {
+      executable: "gcloud",
+      args: ["config", "get-value", "account"],
+    };
   }
 
   /** Runs gcloud authentication in the workspace extension host's terminal. */

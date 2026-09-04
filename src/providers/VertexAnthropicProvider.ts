@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { Logger } from "../utils/Logger";
 import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
+import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, resolveClaudeModelId } from "./ClaudeThinking";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 
 // ─── Provider Plugin ───────────────────────────────────────────────────────
@@ -15,6 +16,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
   private region!: string;
   private labels: Record<string, string> = {};
   private readonly logger = new Logger("VertexAnthropicProvider");
+  private readonly thinkingReplayCache = new ClaudeThinkingReplayCache();
 
   initialize(projectId: string, region: string, authOptions?: any): void {
     this.projectId = projectId;
@@ -38,21 +40,23 @@ export class VertexAnthropicProvider implements VertexModelProvider {
   }
 
   async pingModel(modelId: string): Promise<boolean> {
+    const { actualId, effort, requestConfig } = resolveClaudeModelId(modelId);
     try {
       await this.client.messages.create({
-        model: modelId,
+        model: actualId,
         messages: [{ role: "user", content: "ping" }],
         max_tokens: 1,
+        ...requestConfig,
       } as any);
-      this.logger.log(`    🏓 Anthropic ${modelId} → ✅`);
+      this.logger.log(`    🏓 Anthropic ${modelId} -> ${actualId}${effort ? ` (${effort} effort)` : ""} → ✅`);
       return true;
     } catch (e: any) {
       if (isRetryableError(e)) {
-        this.logger.log(`    🏓 Anthropic ${modelId} → ✅ (rate limited, but available)`);
+        this.logger.log(`    🏓 Anthropic ${modelId} -> ${actualId} → ✅ (rate limited, but available)`);
         return true;
       }
       checkAuthError(e);
-      this.logger.log(`    🏓 Anthropic ${modelId} → ❌`);
+      this.logger.log(`    🏓 Anthropic ${modelId} -> ${actualId} → ❌`);
       return false;
     }
   }
@@ -74,7 +78,8 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     labels?: Record<string, string>,
     spec?: ModelSpec,
   ): Promise<ChatInferenceResult> {
-    this.logger.log(`▶ Anthropic Plugin provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, messages: ${messages.length}`);
+    const { actualId, effort, requestConfig } = resolveClaudeModelId(spec?.version ?? modelId);
+    this.logger.log(`▶ Anthropic Plugin provideLanguageModelChatResponse called — requested: ${modelId} -> executed: ${actualId}${effort ? ` (${effort} effort)` : ""}, region: ${this.region}, messages: ${messages.length}`);
 
     const requestLabels = labels || this.labels;
     const requestOptions =
@@ -96,15 +101,16 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
       this.applyCacheControl(tools, systemBlocks, mappedMessages);
 
-      this.logMappedMessages(modelId, mappedMessages, systemBlocks, tools, maxTokens);
+      this.logMappedMessages(actualId, mappedMessages, systemBlocks, tools, maxTokens);
 
       const stream = await withRetry<any>(
         () =>
           this.client.messages.create({
-            model: modelId,
+            model: actualId,
             messages: mappedMessages,
             max_tokens: maxTokens,
             stream: true,
+            ...requestConfig,
             ...(systemBlocks ? { system: systemBlocks } : {}),
             ...(tools?.length ? { tools } : {}),
           } as any, requestOptions),
@@ -164,7 +170,16 @@ export class VertexAnthropicProvider implements VertexModelProvider {
       }
 
       const role = roleNum === vscode.LanguageModelChatMessageRole.User ? "user" : "assistant";
-      const contentParts = this.mapContentParts(msg.content, role, charCount);
+      let contentParts = this.mapContentParts(msg.content, role, charCount);
+      if (role === "assistant") {
+        const toolCallIds = msg.content.flatMap((part) => (part instanceof vscode.LanguageModelToolCallPart ? [part.callId] : []));
+        const replayedBlocks = this.thinkingReplayCache.find(toolCallIds);
+        if (replayedBlocks) {
+          contentParts = replayedBlocks;
+          const hiddenBlockCount = replayedBlocks.filter((block) => block.type === "thinking" || block.type === "redacted_thinking").length;
+          this.logger.log(`     ↪ Restored ${hiddenBlockCount} signed thinking block(s) for ${toolCallIds.length} tool call(s)`);
+        }
+      }
       mappedMessages.push({ role, content: contentParts });
     }
 
@@ -382,17 +397,28 @@ export class VertexAnthropicProvider implements VertexModelProvider {
   // ── Stream processing ─────────────────────────────────────────────────
 
   private async processStream(stream: AsyncIterable<any>, charCount: { assistant_text: number; tool_use: number }, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken): Promise<{ input: number; output: number; cache_read: number; cache_create: number }> {
-    const toolState = { callId: "", name: "", json: "" };
+    const contentAccumulator = new ClaudeStreamContentAccumulator();
     const tokenUsage = { input: 0, output: 0, cache_read: 0, cache_create: 0 };
     let chunkCount = 0;
+    let cancelled = false;
 
     for await (const chunk of stream) {
       chunkCount++;
       if (token.isCancellationRequested) {
         this.logger.log(`  Cancelled after ${chunkCount} chunks`);
+        cancelled = true;
         break;
       }
-      this.handleStreamChunk(chunk, charCount, progress, toolState, tokenUsage);
+      this.handleStreamChunk(chunk, charCount, progress, contentAccumulator, tokenUsage);
+    }
+
+    if (!cancelled) {
+      const replay = contentAccumulator.createThinkingReplay();
+      if (replay) {
+        this.thinkingReplayCache.store(replay);
+        const hiddenBlockCount = replay.blocks.filter((block) => block.type === "thinking" || block.type === "redacted_thinking").length;
+        this.logger.log(`  🔒 Retained ${hiddenBlockCount} signed thinking block(s) for ${replay.toolCallIds.length} tool continuation(s)`);
+      }
     }
 
     this.logger.log(`  ✅ Stream finished — ${chunkCount} chunks total`);
@@ -403,7 +429,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     chunk: any,
     charCount: { assistant_text: number; tool_use: number },
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
-    toolState: { callId: string; name: string; json: string },
+    contentAccumulator: ClaudeStreamContentAccumulator,
     tokenUsage: { input: number; output: number; cache_read: number; cache_create: number },
   ): void {
     if (chunk.type === "message_start") {
@@ -420,33 +446,21 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         tokenUsage.output = usage.output_tokens ?? 0;
         this.logger.log(`  📊 Output tokens: ${tokenUsage.output}`);
       }
-    } else if (chunk.type === "content_block_delta" && chunk.delta.type === "text_delta") {
-      charCount.assistant_text += chunk.delta.text.length;
-      progress.report(new vscode.LanguageModelTextPart(chunk.delta.text));
-    } else {
-      this.handleToolStreamChunk(chunk, charCount, progress, toolState);
-    }
-  }
-
-  private handleToolStreamChunk(chunk: any, charCount: { tool_use: number }, progress: vscode.Progress<vscode.LanguageModelResponsePart>, toolState: { callId: string; name: string; json: string }): void {
-    if (chunk.type === "content_block_start" && chunk.content_block.type === "tool_use") {
-      toolState.callId = chunk.content_block.id;
-      toolState.name = chunk.content_block.name;
-      toolState.json = "";
-    } else if (chunk.type === "content_block_delta" && chunk.delta.type === "input_json_delta") {
-      charCount.tool_use += chunk.delta.partial_json.length;
-      toolState.json += chunk.delta.partial_json;
-    } else if (chunk.type === "content_block_stop" && toolState.callId) {
-      let parsedInput = {};
-      try {
-        parsedInput = JSON.parse(toolState.json);
-      } catch {
-        // Ignore JSON parse errors
+    } else if (chunk.type === "content_block_start") {
+      contentAccumulator.start(chunk.index, chunk.content_block);
+    } else if (chunk.type === "content_block_delta") {
+      contentAccumulator.delta(chunk.index, chunk.delta);
+      if (chunk.delta.type === "text_delta") {
+        charCount.assistant_text += chunk.delta.text.length;
+        progress.report(new vscode.LanguageModelTextPart(chunk.delta.text));
+      } else if (chunk.delta.type === "input_json_delta") {
+        charCount.tool_use += chunk.delta.partial_json.length;
       }
-      progress.report(new vscode.LanguageModelToolCallPart(toolState.callId, toolState.name, parsedInput));
-      toolState.callId = "";
-      toolState.name = "";
-      toolState.json = "";
+    } else if (chunk.type === "content_block_stop") {
+      const completedBlock = contentAccumulator.stop(chunk.index);
+      if (completedBlock?.type === "tool_use") {
+        progress.report(new vscode.LanguageModelToolCallPart(completedBlock.id, completedBlock.name, completedBlock.input));
+      }
     }
   }
 }
