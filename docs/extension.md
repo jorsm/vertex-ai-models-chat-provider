@@ -16,10 +16,10 @@
 ## Core Concepts
 The extension follows a standard VS Code extension architecture with several specialized components:
 
-*   **Extension Activation**: Triggered via `onStartupFinished`. It ensures the `projectId` is configured before proceeding with service initialization.
+*   **Extension Activation**: Uses VS Code's contribution-based activation. The extension initializes its services even when `projectId` is unset, then discovery reports the configuration issue if a project is required.
 *   **Settings Migration**: Automatically migrates `projectId` and `hideBillingWarning` settings from the legacy `vertexAnthropic` configuration namespace to the current `vertexAiChat` namespace.
-*   **Service Initialization**: Orchestrates the `UsageTrackerService`, `CostStatusBar`, and `VertexChatModelDispatcher`.
-*   **Provider Registration**: Registers a `LanguageModelChatProvider` under the name "Google Cloud Vertex AI", allowing the models to be used within the native VS Code Chat interface.
+*   **Service Initialization**: Orchestrates the `ModelCatalogResolver`, `UsageTrackerService`, `CostStatusBar`, and `VertexChatModelDispatcher`.
+*   **Provider Registration**: Registers a `LanguageModelChatProvider` for the `google-vertex` vendor, displayed as "Google Agent Platform (Vertex AI)", allowing the models to be used within the native VS Code Chat interface.
 *   **Model Discovery**: Implements a discovery mechanism that probes GCP regions to identify available models. This process is triggered on activation, configuration changes, or manually via command.
 *   **Remote Host Support**: Runs in the workspace extension host. In a remote window, the extension must be installed remotely and uses authentication available in that environment.
 *   **Command Registration**: Exposes commands for dashboard access, model refresh, tool debugging, Service Account lifecycle management, and optional AI-powered commit-message generation.
@@ -48,6 +48,8 @@ Initializes the extension's internal state and registers its contributions with 
     - `vertexAiChat.removeServiceAccount`: Removes only this extension's copy of a named credential; it does not change the Google Cloud key.
     - `vertexAiChat.selectAuthMethod`: Selects a stored Service Account, imports a new one, removes one, or switches to ADC.
     - `vertexAiChat.clearAuthMethod`: Resets the workspace authentication method to ADC.
+    - `vertexAiChat.openUserModelsFile`: Creates or opens the user-level `models.json` model catalog.
+    - `vertexAiChat.openWorkspaceModelsFile`: Creates or opens the workspace `.vscode/models.json` model catalog.
 6.  Registers the chat provider with the `vscode.lm` API.
 7.  Starts an initial background discovery of models.
 8.  Sets up a listener for `onDidChangeConfiguration` to update the project ID and re-run discovery if changed.
@@ -71,10 +73,10 @@ An internal helper function that coordinates with the `VertexChatModelDispatcher
 ### Manual Model Refresh
 Users can manually trigger the discovery process if they have recently updated their GCP Model Garden or changed project permissions.
 1. Open the Command Palette (`Ctrl+Shift+P`).
-2. Run `Vertex AI Models Chat Provider: Refresh Models`.
+2. Run `Google Agent Platform: Refresh Models`.
 
 ### Debugging LM Tools
 To see which tools are currently available to the language models:
 1. Open the Command Palette (`Ctrl+Shift+P`).
-2. Run `Vertex AI Models Chat Provider: Tools Dump`.
-3. An output channel will open showing the names, descriptions, and input schemas of all registered tools.
+2. Run `Google Agent Platform: Dump Installed Tools Schema`.
+3. The **Google Agent Platform: Tools Dump** output channel will show the names, descriptions, and input schemas of all registered tools.

@@ -1,7 +1,7 @@
 # docs/architecture.md
 
 > **Overview**
-> This document describes the architecture and API surface of the Vertex AI Models Chat Provider. The extension acts as a dispatcher between VS Code's Language Model API and various Google Cloud Vertex AI backends (Gemini, Anthropic Claude, and MaaS open-weight models).
+> This document describes the architecture and API surface of Google Agent Platform for Copilot Chat. The extension acts as a dispatcher between VS Code's Language Model API and various Google Cloud Vertex AI backends (Gemini, Anthropic Claude, and MaaS open-weight models).
 
 ## Table of Contents
 - [docs/architecture.md](#docsarchitecturemd)
@@ -47,7 +47,7 @@ The central class that implements `vscode.LanguageModelChatProvider`. It manages
 - `getGoogleProvider()`: Returns the registered `VertexGoogleProvider` instance.
 
 ### ModelSpec
-[source](../src/VertexChatModelDispatcher.ts)
+[source](../src/providers/VertexModelProvider.ts)
 Interface defining the metadata and capabilities for a supported model.
 
 **Properties:**
@@ -58,8 +58,6 @@ Interface defining the metadata and capabilities for a supported model.
 - `version`: The specific API version/model name.
 - `maxInputTokens`: Maximum allowed input tokens.
 - `maxOutputTokens`: Maximum allowed output tokens.
-- `temperature` (optional): Sampling temperature to use for the model.
-- `top_p` (optional): Top-p (nucleus) sampling parameter.
 - `capabilities`: Object containing `imageInput` and `toolCalling` booleans.
 - `pricing`: Object defining token costs:
     - `input`: Cost per 1 million input tokens.
@@ -68,7 +66,7 @@ Interface defining the metadata and capabilities for a supported model.
     - `cache_create` (optional): Cost per 1 million cached tokens written.
 
 ### ModelCatalog
-[source](../src/VertexChatModelDispatcher.ts)
+[source](../src/providers/VertexModelProvider.ts)
 Interface for the `models.json` structure containing the list of potential models and region priorities.
 
 **Properties:**

@@ -1,7 +1,7 @@
 # docs/providers.md
 
 > **Overview**
-> This module contains the provider implementations that bridge VS Code's Language Model API with Vertex AI backend services. It handles authentication via Application Default Credentials, model discovery, and the transformation of VS Code's chat protocol into provider-specific payloads (Anthropic/Google).
+> This module contains the provider implementations that bridge VS Code's Language Model API with Vertex AI backend services. It handles authentication via Application Default Credentials or stored Service Account credentials, model discovery, and the transformation of VS Code's chat protocol into provider-specific payloads (Anthropic/Google).
 
 ## Table of Contents
 - [Table of Contents](#table-of-contents)
@@ -34,9 +34,9 @@
 ## Core Concepts
 The provider architecture uses a unified `VertexModelProvider` interface to support multiple model families. 
 
-- **Google Gemini Integration**: Managed by `VertexGoogleProvider`, supporting Gemini 3 Flash and 3.1 Pro models.
-- **Anthropic Claude Integration**: Managed by `VertexAnthropicProvider`, supporting Claude Opus, Sonnet, and Haiku models (including versions 3, 3.5, and 4.x).
-- **Models-as-a-Service (MaaS)**: Managed by `VertexMaaSProvider`, providing access to third-party models like DeepSeek-V3.2, Qwen 3 Coder, Grok 4.2, and Kimi K2 through an OpenAI-compatible Vertex AI endpoint.
+- **Google Gemini Integration**: Managed by `VertexGoogleProvider`, supporting Gemini 3 Flash variants through Gemini 3.8 Flash and Gemini 3.1 Pro Preview.
+- **Anthropic Claude Integration**: Managed by `VertexAnthropicProvider`, supporting Claude Opus, Fable, Sonnet, and Haiku variants from the active model catalog.
+- **Models-as-a-Service (MaaS)**: Managed by `VertexMaaSProvider`, providing access to third-party models like DeepSeek V3.2, Qwen3 Coder 480B, Grok 4.2 Reasoning, and Kimi K2 Thinking through an OpenAI-compatible Vertex AI endpoint.
 - **Thinking Models**: Gemini `-high` aliases select high thinking. Claude effort aliases (`-low`, `-medium`, `-high`, `-xhigh`, and `-max`) enable adaptive thinking and set `output_config.effort`; the bundled catalog includes only generation-5 `-max` aliases.
 - **Thought Signatures**: Provider-specific mechanisms maintain reasoning continuity across tool calls by caching and re-injecting Gemini signatures or Claude signed thinking/redacted-thinking blocks.
 - **Parallel Tool Execution**: Implementation of tool call buffering and message merging to satisfy Gemini's requirements for grouped function responses.
@@ -109,7 +109,7 @@ Configures the provider with a set of labels to be attached to Gemini generation
 [source](../src/providers/VertexGoogleProvider.ts)
 `pingModel(modelId: string): Promise<boolean>`
 
-Attempts a minimal request to the specified model ID to verify availability and permissions in the current GCP project. It automatically resolves high-thinking model IDs to their base counterparts and handles transient rate-limiting errors gracefully during discovery. Configured labels are included in the request payload.
+Attempts a minimal request to the specified model ID to verify availability and permissions in the current GCP project. It automatically resolves high-thinking model IDs to their base counterparts and handles transient rate-limiting errors gracefully during discovery.
 
 #### provideTokenCount
 [source](../src/providers/VertexGoogleProvider.ts)

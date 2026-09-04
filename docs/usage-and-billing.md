@@ -20,7 +20,7 @@
 The usage and billing module is centered around the `DashboardWebview`, which provides an interactive UI for developers to monitor their GCP Vertex AI consumption.
 
 - **Data Visualization**: Uses [ECharts](https://echarts.apache.org/en/index.html) to render time-series costs, token distribution, and payload footprints (input vs. output vs. cached tokens).
-- **Cost Estimation**: Calculates raw token estimates based on standard publicly documented pricing for Gemini and Claude models. Users are warned that the Google Cloud Billing Console remains the final source of truth.
+- **Cost Estimation**: Calculates estimates from pricing in the active model catalog. Users are warned that the Google Cloud Billing Console remains the final source of truth.
 - **Project Context**: Automatically generates deep links to the specific Google Cloud Billing page using the configured `vertexAiChat.projectId`.
 - **Real-time Status**: A status bar item provides immediate feedback on today's accumulated costs and the active authentication identity, updating automatically as interactions occur.
 - **Filtering**: Supports date range selection, model-specific filtering via a dedicated dropdown, and quick presets (Today, Last 7 Days, This Month, All Time).
@@ -67,10 +67,11 @@ Manages a persistent status bar item that displays today's total estimated cost 
 
 #### constructor
 [source](../src/CostStatusBar.ts)
-`constructor(usageTracker: UsageTrackerService, authManager: AuthManager)`
+`constructor(usageTracker: UsageTrackerService, authManager: AuthManager, catalogResolver: ModelCatalogResolver)`
 Initializes the status bar item at the right side of the status bar (priority 100) and binds it to the dashboard display command. It subscribes to usage and authentication updates to refresh the UI automatically, presenting a rich Markdown tooltip that includes the current GCP project ID, active authentication method, and account identity.
 - `usageTracker`: An instance of `UsageTrackerService` used to retrieve daily cost totals.
 - `authManager`: An instance of `AuthManager` used to identify the current user or service account.
+- `catalogResolver`: The resolver used to show the active model catalog source in the status-bar tooltip.
 
 #### dispose
 [source](../src/CostStatusBar.ts)
@@ -83,9 +84,10 @@ A backend service dedicated to persisting token usage and calculating costs for 
 
 #### constructor
 [source](../src/UsageTrackerService.ts)
-`constructor(context: vscode.ExtensionContext)`
+`constructor(context: vscode.ExtensionContext, catalogResolver: ModelCatalogResolver)`
 Initializes the service and determines the native file system path for usage logging.
 - `context`: The VS Code extension context, used to locate the `globalStorageUri` for log persistence.
+- `catalogResolver`: The resolver used to calculate costs from the active model catalog.
 
 #### onUsageUpdated
 [source](../src/UsageTrackerService.ts)
@@ -94,9 +96,9 @@ An event that fires whenever a new usage entry is successfully recorded, allowin
 
 #### calculateCost
 [source](../src/UsageTrackerService.ts)
-`public calculateCost(model: string, tokens: Required<TokenUsage>): number`
-Calculates the total cost for a specific request by mapping the model ID to its pricing definitions in `models.json`.
-- `model`: The model identifier (e.g., `claude-3-5-sonnet-v2`).
+`public async calculateCost(model: string, tokens: Required<TokenUsage>): Promise<number>`
+Calculates the total cost for a specific request by mapping the model ID to its pricing definitions in the active model catalog.
+- `model`: The model identifier (e.g., `claude-sonnet-5`).
 - `tokens`: A breakdown including input, output, cache_read, and cache_create counts.
 
 #### recordUsage
@@ -172,7 +174,7 @@ The status bar should be initialized during extension activation:
 import { CostStatusBar } from './CostStatusBar';
 
 // Inside activation
-const statusBar = new CostStatusBar(usageTracker, authManager);
+const statusBar = new CostStatusBar(usageTracker, authManager, catalogResolver);
 context.subscriptions.push(statusBar);
 ```
 

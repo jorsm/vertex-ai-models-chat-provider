@@ -4,6 +4,12 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.2] — 2026-09-04
+
+### Changed
+
+- **Maintenance Release** — Routine stable release maintenance.
+
 ## [0.6.1] — 2026-09-03
 
 ### Fixed
