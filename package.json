@@ -134,6 +134,12 @@
           "default": "",
           "scope": "resource",
           "description": "Custom value for the project label. If empty, the workspace name is derived automatically. Use a stable low-cardinality value. Values are automatically sanitized to meet GCP label requirements."
+        },
+        "vertexAiChat.commitMessagePrompt": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Custom system prompt used for AI commit message generation. If empty, the default Conventional Commits prompt is used."
         }
       }
     }

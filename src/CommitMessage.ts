@@ -5,7 +5,7 @@ import { Logger } from "./utils/Logger";
 
 const MODEL_ID = "gemini-3-flash-preview";
 
-const SYSTEM_PROMPT = `You are an expert Principal Software Engineer and a strict adherent to clean Git history. Your task is to analyze \`git diff\` outputs and generate professional, highly accurate commit messages following the Conventional Commits specification.
+export const DEFAULT_SYSTEM_PROMPT = `You are an expert Principal Software Engineer and a strict adherent to clean Git history. Your task is to analyze \`git diff\` outputs and generate professional, highly accurate commit messages following the Conventional Commits specification.
 
 ### OBJECTIVE
 Generate a single commit message based solely on the changes shown in the user's provided diff. The message must clearly communicate the *intent* of the change (the "why"), not just literal line changes.
@@ -154,9 +154,13 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
   const combinedDiff = diffParts.join("\n");
   logger.log(`── Sending ${combinedDiff.length} chars of diff to ${MODEL_ID}…`);
 
+  const config = vscode.workspace.getConfiguration("vertexAiChat", resourceUri);
+  const customPrompt = config.get<string>("commitMessagePrompt")?.trim();
+  const systemPrompt = customPrompt || DEFAULT_SYSTEM_PROMPT;
+
   // Build the VS Code LLM message objects.
   // Role 0 is neither User (1) nor Assistant (2), so VertexAnthropicProvider treats it as a system prompt.
-  const systemMessage = new vscode.LanguageModelChatMessage(0 as vscode.LanguageModelChatMessageRole, SYSTEM_PROMPT);
+  const systemMessage = new vscode.LanguageModelChatMessage(0 as vscode.LanguageModelChatMessageRole, systemPrompt);
 
   const userMessage = vscode.LanguageModelChatMessage.User(getUserPrompt(combinedDiff));
 
