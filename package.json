@@ -100,45 +100,53 @@
         "vertexAiChat.projectId": {
           "type": "string",
           "default": "",
+          "order": 10,
           "description": "GCP Project ID to use with Google Agent Platform. Models and regions are auto-discovered."
         },
         "vertexAiChat.retryMaxDurationMinutes": {
           "type": "integer",
           "default": 30,
           "minimum": 1,
+          "order": 20,
           "description": "Maximum retry duration in minutes for transient API failures such as 429 or 503."
-        },
-        "vertexAiChat.hideBillingWarning": {
-          "type": "boolean",
-          "default": false,
-          "description": "Hide the Estimated Costs warning banner on the Usage Dashboard."
         },
         "vertexAiChat.enableUserLabel": {
           "type": "boolean",
           "default": false,
+          "order": 30,
           "description": "Include a user identifier as a 'vscode-vertex-ai-user' label in Gemini and Claude calls. Values are sanitized to meet GCP label requirements. A warning is shown if no valid custom or automatic value can be resolved."
         },
         "vertexAiChat.userLabelValue": {
           "type": "string",
           "default": "",
           "scope": "resource",
+          "order": 40,
           "description": "Custom value for the user label. If empty, the value is derived from the active identity. Use a stable non-sensitive identifier where possible. Values are automatically sanitized to meet GCP label requirements."
         },
         "vertexAiChat.enableProjectLabel": {
           "type": "boolean",
           "default": false,
+          "order": 50,
           "description": "Include the current VS Code project name as a 'vscode-vertex-ai-project' label in Gemini and Claude calls. Values are sanitized to meet GCP label requirements. A warning is shown if no valid custom or automatic value can be resolved."
         },
         "vertexAiChat.projectLabelValue": {
           "type": "string",
           "default": "",
           "scope": "resource",
+          "order": 60,
           "description": "Custom value for the project label. If empty, the workspace name is derived automatically. Use a stable low-cardinality value. Values are automatically sanitized to meet GCP label requirements."
+        },
+        "vertexAiChat.hideBillingWarning": {
+          "type": "boolean",
+          "default": false,
+          "order": 70,
+          "description": "Hide the Estimated Costs warning banner on the Usage Dashboard."
         },
         "vertexAiChat.commitMessagePrompt": {
           "type": "string",
           "default": "",
           "scope": "resource",
+          "order": 80,
           "description": "Custom system prompt used for AI commit message generation. If empty, the default Conventional Commits prompt is used."
         }
       }
