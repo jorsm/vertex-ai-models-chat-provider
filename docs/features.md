@@ -36,7 +36,7 @@ Key aspects of the generation logic include:
 This function acts as the command handler for `vertexAiChat.generateCommitMessage`. It facilitates the end-to-end workflow of converting staged code changes into a structured commit message.
 
 **Workflow:**
-1. **Repository Resolution**: Detects the relevant Git repository based on the provided `resourceUri` or active workspace.
+1. **Repository Resolution**: Detects the relevant Git repository from the URI or Source Control context provided by VS Code, falling back to the active workspace.
 2. **Diff Extraction**: Collects and joins all non-empty staged diffs, logging relative file paths to the **Google Agent Platform for Copilot Chat** output channel.
 3. **Prompt Engineering**: Wraps the diff in either the configured `vertexAiChat.commitMessagePrompt` or the default system prompt that enforces strict rules: imperative present tense, 72-character limits for subjects, and specific commit types (`feat`, `fix`, `refactor`, `perf`, `style`, `test`, `docs`, `chore`, `build`, `ci`).
 4. **LLM Invocation**: Calls the `VertexGoogleProvider` using a `gemini-3-flash-preview` model. It utilizes a custom system message role (role 0) to pass instructions to the provider.
@@ -46,7 +46,7 @@ This function acts as the command handler for `vertexAiChat.generateCommitMessag
 **Parameters:**
 - `provider`: `VertexGoogleProvider` — The provider instance used to communicate with Vertex AI.
 - `usageTracker`: `UsageTrackerService` — Service used to record consumption metrics for the cost dashboard.
-- `resourceUri`: `vscode.Uri` (optional) — An optional URI identifying the repository context.
+- `context`: `vscode.Uri | vscode.SourceControl` (optional) — The repository context supplied by a programmatic invocation or the SCM title action.
 
 ## Examples
 

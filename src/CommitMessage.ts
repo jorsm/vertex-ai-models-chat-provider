@@ -96,13 +96,19 @@ function resolveRepository(git: any, resourceUri?: vscode.Uri): any {
   return git.repositories?.[0] ?? null;
 }
 
+export type CommitMessageCommandContext = vscode.Uri | vscode.SourceControl;
+
+export function resolveCommitMessageResourceUri(context?: CommitMessageCommandContext): vscode.Uri | undefined {
+  return context && "rootUri" in context ? context.rootUri : context;
+}
+
 /**
  * Command handler for "vertexAiChat.generateCommitMessage".
  *
  * Collects staged diffs, sends them to the LLM, and writes the generated
  * commit message into the SCM input box.
  */
-export async function generateCommitMessage(provider: VertexGoogleProvider, usageTracker: UsageTrackerService, resourceUri?: vscode.Uri): Promise<void> {
+export async function generateCommitMessage(provider: VertexGoogleProvider, usageTracker: UsageTrackerService, context?: CommitMessageCommandContext): Promise<void> {
   const git = await getGitAPI();
   if (!git) {
     const remoteContext = vscode.env.remoteName ? ` in this ${vscode.env.remoteName} remote window` : " in this extension host";
@@ -110,6 +116,7 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
     return;
   }
 
+  const resourceUri = resolveCommitMessageResourceUri(context);
   const repo = resolveRepository(git, resourceUri);
   if (!repo) {
     vscode.window.showWarningMessage("Vertex AI Models Chat Provider: No Git repository found.");
@@ -154,7 +161,7 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
   const combinedDiff = diffParts.join("\n");
   logger.log(`── Sending ${combinedDiff.length} chars of diff to ${MODEL_ID}…`);
 
-  const config = vscode.workspace.getConfiguration("vertexAiChat", resourceUri);
+  const config = vscode.workspace.getConfiguration("vertexAiChat", repo.rootUri ?? resourceUri);
   const customPrompt = config.get<string>("commitMessagePrompt")?.trim();
   const systemPrompt = customPrompt || DEFAULT_SYSTEM_PROMPT;
 
