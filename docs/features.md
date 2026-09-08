@@ -25,7 +25,7 @@ Key aspects of the generation logic include:
 - **Optional Git Integration**: Activates and uses the `vscode.git` extension, when its API is available in the same extension host, to identify staged changes and retrieve diff data using `diffIndexWithHEAD`.
 - **Contextual Analysis**: Sends the diff to the `gemini-3-flash-preview` model, emphasizing the "why" and "what" of the changes rather than just listing line modifications.
 - **Strict Formatting**: The default system prompt enforces specific constraints: imperative present tense, no trailing periods, and a 72-character limit for subject lines.
-- **Customizable Prompt**: Users can override the system prompt via the `vertexAiChat.commitMessagePrompt` configuration setting (e.g. to enforce single-line titles or custom team formatting standards).
+- **Customizable Prompt**: Users can override the system prompt via the resource-scoped `vertexAiChat.commitMessagePrompt` setting (e.g. to enforce single-line titles or custom team formatting standards). In a multi-root workspace, the Source Control action uses the setting for the selected repository.
 - **Streaming UI**: The generated message is streamed directly into the SCM input box, providing immediate feedback to the developer.
 - **Token Efficiency**: Aggregates all staged diffs into a single request to minimize model overhead and provides detailed logging of processed file paths.
 
