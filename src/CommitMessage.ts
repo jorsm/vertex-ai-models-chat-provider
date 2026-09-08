@@ -5,7 +5,7 @@ import { Logger } from "./utils/Logger";
 
 const MODEL_ID = "gemini-3-flash-preview";
 
-const SYSTEM_PROMPT = `You are an expert Principal Software Engineer and a strict adherent to clean Git history. Your task is to analyze \`git diff\` outputs and generate professional, highly accurate commit messages following the Conventional Commits specification.
+export const DEFAULT_SYSTEM_PROMPT = `You are an expert Principal Software Engineer and a strict adherent to clean Git history. Your task is to analyze \`git diff\` outputs and generate professional, highly accurate commit messages following the Conventional Commits specification.
 
 ### OBJECTIVE
 Generate a single commit message based solely on the changes shown in the user's provided diff. The message must clearly communicate the *intent* of the change (the "why"), not just literal line changes.
@@ -96,13 +96,19 @@ function resolveRepository(git: any, resourceUri?: vscode.Uri): any {
   return git.repositories?.[0] ?? null;
 }
 
+export type CommitMessageCommandContext = vscode.Uri | vscode.SourceControl;
+
+export function resolveCommitMessageResourceUri(context?: CommitMessageCommandContext): vscode.Uri | undefined {
+  return context && "rootUri" in context ? context.rootUri : context;
+}
+
 /**
  * Command handler for "vertexAiChat.generateCommitMessage".
  *
  * Collects staged diffs, sends them to the LLM, and writes the generated
  * commit message into the SCM input box.
  */
-export async function generateCommitMessage(provider: VertexGoogleProvider, usageTracker: UsageTrackerService, resourceUri?: vscode.Uri): Promise<void> {
+export async function generateCommitMessage(provider: VertexGoogleProvider, usageTracker: UsageTrackerService, context?: CommitMessageCommandContext): Promise<void> {
   const git = await getGitAPI();
   if (!git) {
     const remoteContext = vscode.env.remoteName ? ` in this ${vscode.env.remoteName} remote window` : " in this extension host";
@@ -110,6 +116,7 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
     return;
   }
 
+  const resourceUri = resolveCommitMessageResourceUri(context);
   const repo = resolveRepository(git, resourceUri);
   if (!repo) {
     vscode.window.showWarningMessage("Vertex AI Models Chat Provider: No Git repository found.");
@@ -154,9 +161,13 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
   const combinedDiff = diffParts.join("\n");
   logger.log(`── Sending ${combinedDiff.length} chars of diff to ${MODEL_ID}…`);
 
+  const config = vscode.workspace.getConfiguration("vertexAiChat", repo.rootUri ?? resourceUri);
+  const customPrompt = config.get<string>("commitMessagePrompt")?.trim();
+  const systemPrompt = customPrompt || DEFAULT_SYSTEM_PROMPT;
+
   // Build the VS Code LLM message objects.
   // Role 0 is neither User (1) nor Assistant (2), so VertexAnthropicProvider treats it as a system prompt.
-  const systemMessage = new vscode.LanguageModelChatMessage(0 as vscode.LanguageModelChatMessageRole, SYSTEM_PROMPT);
+  const systemMessage = new vscode.LanguageModelChatMessage(0 as vscode.LanguageModelChatMessageRole, systemPrompt);
 
   const userMessage = vscode.LanguageModelChatMessage.User(getUserPrompt(combinedDiff));
 
