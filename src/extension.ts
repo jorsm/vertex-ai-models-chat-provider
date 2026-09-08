@@ -100,7 +100,11 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   // Register command for SCM "Generate Commit Message" button in the CHANGES toolbar
-  context.subscriptions.push(vscode.commands.registerCommand("vertexAiChat.generateCommitMessage", (resourceUri?: vscode.Uri) => generateCommitMessage(provider.getGoogleProvider(), usageTracker, resourceUri)));
+  context.subscriptions.push(
+    vscode.commands.registerCommand("vertexAiChat.generateCommitMessage", (commandContext?: vscode.Uri | vscode.SourceControl) =>
+      generateCommitMessage(provider.getGoogleProvider(), usageTracker, commandContext),
+    ),
+  );
 
   // ── Custom model catalog commands ────────────────────────────────────
   // Each command seeds the file from the bundled catalog on first run, then opens it

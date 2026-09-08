@@ -319,10 +319,11 @@ export class AuthManager {
     return undefined;
   }
 
-  private static getGcloudAccountCommand(platform: NodeJS.Platform = process.platform, comSpec: string | undefined = process.env.ComSpec): { executable: string; args: string[] } {
+  private static getGcloudAccountCommand(platform: NodeJS.Platform = process.platform, comSpec?: string): { executable: string; args: string[] } {
+    const effectiveComSpec = arguments.length > 1 ? comSpec : process.env.ComSpec;
     if (platform === "win32") {
       return {
-        executable: comSpec || "cmd.exe",
+        executable: effectiveComSpec || "cmd.exe",
         args: ["/d", "/s", "/c", "gcloud.cmd config get-value account"],
       };
     }

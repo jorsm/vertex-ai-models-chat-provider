@@ -4,6 +4,16 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.3] — 2026-09-08
+
+### Added
+
+- **Custom Commit Message Prompts** — Added the resource-scoped `vertexAiChat.commitMessagePrompt` setting for teams and individuals that want commit-message conventions beyond the built-in Conventional Commits prompt.
+
+### Changed
+
+- **Settings Organization** — Extension settings now appear in a deliberate order, with related cost-attribution controls grouped together and the commit-message prompt placed last.
+
 ## [0.6.2] — 2026-09-04
 
 ### Changed
