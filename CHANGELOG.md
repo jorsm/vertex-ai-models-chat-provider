@@ -14,10 +14,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - **Settings Organization** — Extension settings now appear in a deliberate order, with related cost-attribution controls grouped together and the commit-message prompt placed last.
 
-### Fixed
-
-- **Multi-Root Commit Prompt Scoping** — Commit-message generation now resolves the selected Source Control repository before reading resource-scoped settings, so workspace-folder prompt overrides apply to the correct repository.
-
 ## [0.6.2] — 2026-09-04
 
 ### Changed

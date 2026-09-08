@@ -50,7 +50,7 @@ For Remote SSH, Dev Containers, and Codespaces, install the extension and config
 
 - **🏷️ Cost attribution labels:** Gemini and Claude PayGo calls can carry user and workspace labels. An enabled label that cannot be resolved produces a clear VS Code and output-channel warning.
 - **📈 Usage dashboard and status bar:** Track local daily token usage and estimated cost in real time, then open the dashboard from the status bar for trends and detailed breakdowns.
-- **🪄 AI commit messages:** Generate a Conventional Commit-style message from staged Git changes, or supply a resource-scoped prompt for your team's format.
+- **🪄 AI commit messages:** Generate a Conventional Commit-style message from staged Git changes (supports custom prompt for workspace or user).
 - **🧠 Gemini thinking and tools:** Supports Gemini thinking modes, thought-signature continuity, vision, and parallel tool calling where available.
 - **⚡ Claude thinking and tools:** Supports signed thinking-trace continuity across tool calls, effort aliases, vision, up to 128K output tokens, and ephemeral prompt caching.
 - **🔍 Smart discovery:** Probes the available Google Cloud regions and registers only the models that your selected project can access.
