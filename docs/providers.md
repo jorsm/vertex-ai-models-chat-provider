@@ -21,7 +21,7 @@
         - [isLeakedReasoningHeader](#isleakedreasoningheader)
         - [stripLeakedReasoningHeader](#stripleakedreasoningheader)
         - [provideLanguageModelChatResponse](#providelanguagemodelchatresponse-1)
-    - [VertexMaaSProvider](#vertexmaasprovider)
+    - [VertexGrokProvider](#vertexgrokprovider)
         - [initialize](#initialize-2)
         - [setLabels](#setlabels-2)
         - [pingModel](#pingmodel-2)
@@ -34,14 +34,14 @@
 ## Core Concepts
 The provider architecture uses a unified `VertexModelProvider` interface to support multiple model families. 
 
-- **Google Gemini Integration**: Managed by `VertexGoogleProvider`, supporting Gemini 3 Flash variants through Gemini 3.8 Flash and Gemini 3.1 Pro Preview.
+- **Google Gemini Integration**: Managed by `VertexGoogleProvider`, supporting Gemini 3 Flash Preview, Gemini 3.7 and 3.8 Flash, and Gemini 3.1 Pro Preview.
 - **Anthropic Claude Integration**: Managed by `VertexAnthropicProvider`, supporting Claude Opus, Fable, Sonnet, and Haiku variants from the active model catalog.
-- **Models-as-a-Service (MaaS)**: Managed by `VertexMaaSProvider`, providing access to third-party models like DeepSeek V3.2, Qwen3 Coder 480B, Grok 4.2 Reasoning, and Kimi K2 Thinking through an OpenAI-compatible Vertex AI endpoint.
+- **xAI Grok Integration**: Managed by `VertexGrokProvider`, providing access to Grok 4.6 at High (Default), Low, and Medium effort through Vertex AI's OpenAI-compatible endpoint.
 - **Thinking Models**: Gemini `-high` aliases select high thinking. Claude effort aliases (`-low`, `-medium`, `-high`, `-xhigh`, and `-max`) enable adaptive thinking and set `output_config.effort`; the bundled catalog includes only generation-5 `-max` aliases.
 - **Thought Signatures**: Provider-specific mechanisms maintain reasoning continuity across tool calls by caching and re-injecting Gemini signatures or Claude signed thinking/redacted-thinking blocks.
 - **Parallel Tool Execution**: Implementation of tool call buffering and message merging to satisfy Gemini's requirements for grouped function responses.
 - **Prompt Caching (Ephemeral)**: Automated caching strategy for Anthropic models to reduce latency and costs for long conversations by marking system prompts, tools, and long conversation histories for ephemeral caching.
-- **Billing labels**: Gemini requests use the `labels` generation configuration and Anthropic requests use the documented base64 JSON `X-Vertex-AI-Labels` header. These labels are forwarded to Cloud Billing only for PayGo usage. MaaS currently logs resolved labels but does not attach them to its OpenAI-compatible request.
+- **Billing labels**: Gemini requests use the `labels` generation configuration and Anthropic requests use the documented base64 JSON `X-Vertex-AI-Labels` header. These labels are forwarded to Cloud Billing only for PayGo usage. Grok currently logs resolved labels but does not attach them to its OpenAI-compatible request.
 
 ## API Reference
 
@@ -145,45 +145,45 @@ Main entry point for chat inference. This method:
 9. Tracks and returns detailed usage statistics including character counts and token usage metadata (input, output, and cache metrics). For Gemini, it correctly adjusts input tokens by subtracting cached content tokens to ensure accurate usage tracking, and reports the resulting payload to VS Code via `LanguageModelDataPart` (MIME `usage`).
 10. Attaches metadata labels (preferring the `labels` argument over instance-level labels) as `config.labels` on the generation request, enabling granular PayGo cost attribution in Google Cloud Billing.
 
-### VertexMaaSProvider
-[source](../src/providers/VertexMaaSProvider.ts)
-The `VertexMaaSProvider` class implements the `VertexModelProvider` interface for third-party models available on Vertex AI via the Models-as-a-Service (MaaS) endpoint. It utilizes an OpenAI-compatible interface to communicate with Vertex AI endpoints for models such as DeepSeek, Qwen, Grok, and Kimi.
+### VertexGrokProvider
+[source](../src/providers/VertexGrokProvider.ts)
+The `VertexGrokProvider` class implements the `VertexModelProvider` interface specifically for xAI Grok 4.6 on Vertex AI. It uses Vertex AI's OpenAI-compatible endpoint and does not provide generic routing for other partner models.
 
 #### initialize
-[source](../src/providers/VertexMaaSProvider.ts)
+[source](../src/providers/VertexGrokProvider.ts)
 `initialize(projectId: string, region: string, authOptions?: any): void`
 
-Sets the GCP Project ID and regional endpoint. It configures the provider to use the OpenAI SDK pointing to the Google Cloud Vertex MaaS `baseURL`. It supports standard Application Default Credentials and Service Account credentials imported into VS Code `SecretStorage`; legacy workspace configurations that link a key file remain readable. The provider dynamically respects the project ID from active VS Code settings to support workspace-specific billing.
+Sets the GCP Project ID and regional endpoint. It configures the OpenAI SDK to use the Vertex AI OpenAI-compatible `baseURL`. It supports standard Application Default Credentials and Service Account credentials imported into VS Code `SecretStorage`; legacy workspace configurations that link a key file remain readable. The provider dynamically respects the project ID from active VS Code settings to support workspace-specific billing.
 
 #### setLabels
-[source](../src/providers/VertexMaaSProvider.ts)
+[source](../src/providers/VertexGrokProvider.ts)
 `setLabels(labels: Record<string, string>): void`
 
-Updates internal labels for request logging only. The MaaS OpenAI-compatible request path does not currently attach these labels to Google Cloud Billing metadata.
+Updates internal labels for request logging only. The Grok OpenAI-compatible request path does not currently attach these labels to Google Cloud Billing metadata.
 
 #### pingModel
-[source](../src/providers/VertexMaaSProvider.ts)
+[source](../src/providers/VertexGrokProvider.ts)
 `pingModel(modelVersion: string): Promise<boolean>`
 
-Verifies the availability of the model path (e.g., `deepseek-ai/deepseek-v3.2-maas`) by sending a minimal OpenAI-format chat completion request. It handles 429 rate-limiting responses as confirmation of availability.
+Verifies the availability of the model path (e.g., `xai/grok-4.6`) by sending a minimal OpenAI-format chat completion request. It rejects unsupported model paths and non-global regions before making requests. It handles 429 rate-limiting responses as confirmation of availability.
 
 #### provideTokenCount
-[source](../src/providers/VertexMaaSProvider.ts)
+[source](../src/providers/VertexGrokProvider.ts)
 `provideTokenCount(text: string | vscode.LanguageModelChatRequestMessage, _token: vscode.CancellationToken): Promise<number>`
 
 Estimates token usage using a 4-characters-per-token heuristic.
 
 #### provideLanguageModelChatResponse
-[source](../src/providers/VertexMaaSProvider.ts)
+[source](../src/providers/VertexGrokProvider.ts)
 `provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>): Promise<ChatInferenceResult>`
 
-Handles chat inference for MaaS models using an OpenAI client. This method:
+Handles Grok 4.6 chat inference using an OpenAI client. This method:
 1. Maps VS Code messages to OpenAI chat completion parameters. It supports `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart` (transformed into discrete `tool` role messages), and `LanguageModelDataPart` (including base64 image conversion or UTF-8 decoding for other data types).
-2. Looks up model-specific execution parameters (such as `maxOutputTokens`) from the local model catalog and applies `extraBody` configurations, such as `chat_template_kwargs: { thinking: true }` to enable `reasoning_content` for thinking models like DeepSeek.
-3. Implements specialized logic for DeepSeek models: the system prompt is omitted when tools are enabled to prevent API validation errors, per GCP MaaS guidance.
-4. Ensures conversation history integrity by prepending a placeholder user message if the history starts with a system or assistant turn.
+2. Looks up the output budget from the effective model catalog and requests streaming usage.
+3. Resolves Low, Medium, and High aliases to the base Grok 4.6 path and sends `reasoning_effort`; other model families are rejected.
+4. Preserves a leading system prompt and inserts a placeholder user turn only if the first conversation turn is missing or is not a user turn.
 5. Executes requests using a retry mechanism to handle transient failures.
-6. Manages streaming via `openai/streaming`, extracting thinking tokens from `reasoning_content` (silently consumed to satisfy the thinking process while providing answer content) and accumulating incremental tool call deltas until the `finish_reason` is received.
-7. Reports token usage back to VS Code via `LanguageModelDataPart` (MIME type `usage`), capturing prompt, completion, and cached token counts from the OpenAI usage payload to update the Copilot Chat indicator. It also attempts to retrieve final usage metrics from the stream even if interrupted.
+6. Streams final text and accumulates incremental tool call deltas until `finish_reason` is received.
+7. Reports token usage back to VS Code, including separately reported reasoning tokens, and separates cache hits from uncached input for cost estimates.
 
 ## Examples

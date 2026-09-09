@@ -28,7 +28,7 @@ The usage and billing module is centered around the `DashboardWebview`, which pr
 
 ## Request labels and Cloud Billing
 
-The local dashboard is a per-machine estimate. For centralized, invoice-oriented reporting, enable Google Cloud Billing export to BigQuery and use request labels. The extension can attach `vscode-vertex-ai-user` and `vscode-vertex-ai-project` to Gemini and Anthropic Claude requests; MaaS does not currently send billing labels.
+The local dashboard is a per-machine estimate. For centralized, invoice-oriented reporting, enable Google Cloud Billing export to BigQuery and use request labels. The extension can attach `vscode-vertex-ai-user` and `vscode-vertex-ai-project` to Gemini and Anthropic Claude requests; Grok does not currently send billing labels.
 
 Set either a custom `userLabelValue` or `projectLabelValue` when you need stable report dimensions. If an enabled label cannot resolve to either a custom value or its automatic fallback, the request proceeds without that one label and the extension emits a single VS Code warning plus an output-channel warning. This prevents silent loss of an opted-in attribution dimension.
 
