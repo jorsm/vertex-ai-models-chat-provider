@@ -40,25 +40,20 @@ jobs:
       - name: Install Marketplace Publisher
         run: npm install --no-save --package-lock=false @vscode/vsce@4.0.0
 
-      # The Marketplace client defaults uploads to three minutes and has no CLI timeout option.
-      - name: Extend Marketplace Upload Timeout
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          const path = require('node:path');
-
-          const packagePath = require.resolve('@vscode/vsce/package.json');
-          const utilPath = path.join(path.dirname(packagePath), 'out', 'util.js');
-          const source = fs.readFileSync(utilPath, 'utf8');
-          const original = 'new GalleryApi_1.GalleryApi(marketplaceUrl, [authHandler]);';
-          const replacement = 'new GalleryApi_1.GalleryApi(marketplaceUrl, [authHandler], { socketTimeout: 15 * 60 * 1000 });';
-
-          if (source.split(original).length !== 2) {
-            throw new Error('Could not locate the Marketplace GalleryApi constructor');
-          }
-
-          fs.writeFileSync(utilPath, source.replace(original, replacement));
-          NODE
-
       - name: Publish to Marketplace
-        run: npx --no-install vsce publish -p ${{ secrets.VSCE_PAT }}
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          for attempt in 1 2 3; do
+            if npx --no-install vsce publish --skip-duplicate; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+
+            delay=$((attempt * 15))
+            echo "Marketplace publish failed on attempt $attempt; retrying in ${delay}s."
+            sleep "$delay"
+          done
