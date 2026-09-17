@@ -12,7 +12,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
-- Label default Grok and supported Claude entries as High, Default while retaining distinct Claude Max variants.
 - Focus the Gemini catalog on Gemini 3 Flash Preview, Gemini 3.7 and 3.8 Flash, and Gemini 3.1 Pro.
 - Correct Gemini 3.1 Pro and Grok 4.6 cost estimates above 200K input-context tokens.
 - Show compact short-context pricing in the model picker and full pricing details on hover.

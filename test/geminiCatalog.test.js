@@ -30,5 +30,5 @@ test("bundles the focused Gemini coding catalog", () => {
       cache_create: 0.0,
     },
   });
-  assert.equal(pro.displayName, "Gemini 3.1 Pro (High, Default)");
+  assert.equal(pro.displayName, "Gemini 3.1 Pro");
 });
