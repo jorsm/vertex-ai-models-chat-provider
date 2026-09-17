@@ -3,7 +3,7 @@
     {
       "id": "claude-opus-5",
       "vendor": "anthropic",
-      "displayName": "Claude Opus 5 (High, Default)",
+      "displayName": "Claude Opus 5",
       "family": "claude",
       "version": "claude-opus-5",
       "maxInputTokens": 1000000,
@@ -41,7 +41,7 @@
     {
       "id": "claude-opus-4-8",
       "vendor": "anthropic",
-      "displayName": "Claude Opus 4.8 (High, Default)",
+      "displayName": "Claude Opus 4.8",
       "family": "claude",
       "version": "claude-opus-4-8",
       "maxInputTokens": 1000000,
@@ -60,7 +60,7 @@
     {
       "id": "claude-fable-5-1",
       "vendor": "anthropic",
-      "displayName": "Claude Fable 5.1 (High, Default)",
+      "displayName": "Claude Fable 5.1",
       "family": "claude",
       "version": "claude-fable-5-1",
       "maxInputTokens": 1000000,
@@ -98,7 +98,7 @@
     {
       "id": "claude-fable-5",
       "vendor": "anthropic",
-      "displayName": "Claude Fable 5 (High, Default)",
+      "displayName": "Claude Fable 5",
       "family": "claude",
       "version": "claude-fable-5",
       "maxInputTokens": 1000000,
@@ -136,7 +136,7 @@
     {
       "id": "claude-sonnet-5",
       "vendor": "anthropic",
-      "displayName": "Claude Sonnet 5 (High, Default)",
+      "displayName": "Claude Sonnet 5",
       "family": "claude",
       "version": "claude-sonnet-5",
       "maxInputTokens": 1000000,
@@ -174,7 +174,7 @@
     {
       "id": "claude-sonnet-4-6",
       "vendor": "anthropic",
-      "displayName": "Claude Sonnet 4.6 (High, Default)",
+      "displayName": "Claude Sonnet 4.6",
       "family": "claude",
       "version": "claude-sonnet-4-6",
       "maxInputTokens": 1000000,
@@ -326,7 +326,7 @@
     {
       "id": "gemini-3.1-pro-preview",
       "vendor": "google",
-      "displayName": "Gemini 3.1 Pro (High, Default)",
+      "displayName": "Gemini 3.1 Pro",
       "family": "gemini",
       "version": "gemini-3.1-pro-preview",
       "maxInputTokens": 1048576,
@@ -352,7 +352,7 @@
     {
       "id": "grok-4.6",
       "vendor": "grok",
-      "displayName": "Grok 4.6 (High, Default)",
+      "displayName": "Grok 4.6",
       "family": "grok",
       "version": "xai/grok-4.6",
       "maxInputTokens": 524288,
