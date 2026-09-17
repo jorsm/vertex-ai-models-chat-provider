@@ -4,6 +4,31 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+
+- Grok 4.6 preview with vision, tool calling, and Low, Medium, and High reasoning effort.
+
+### Changed
+
+- Focus the Gemini catalog on Gemini 3 Flash Preview, Gemini 3.7 and 3.8 Flash, and Gemini 3.1 Pro.
+- Correct Gemini 3.1 Pro and Grok 4.6 cost estimates above 200K input-context tokens.
+- Show compact short-context pricing in the model picker and full pricing details on hover.
+- Allow Grok 4.6 to use its full 524,288-token context capacity.
+- Rename the Grok-specific provider and custom-catalog vendor from MaaS to Grok.
+
+### Removed
+
+- Qwen3 Coder, DeepSeek V3.2, Kimi K2 Thinking, and Grok 4.2 Reasoning.
+- Duplicate explicit High entries for Grok 4.6 and Gemini 3.1 Pro, whose default entries already use High effort.
+
+### Fixed
+
+- Grok image understanding and leading system-prompt handling.
+- Grok reasoning-token and cached-input cost estimates.
+- Reliability of slower Grok vision and reasoning responses.
+
 ## [0.6.3] — 2026-09-08
 
 ### Added

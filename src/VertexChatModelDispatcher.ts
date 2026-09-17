@@ -5,7 +5,7 @@ import { AuthManager } from "./AuthManager";
 import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { VertexAnthropicProvider } from "./providers/VertexAnthropicProvider";
 import { VertexGoogleProvider } from "./providers/VertexGoogleProvider";
-import { VertexMaaSProvider } from "./providers/VertexMaaSProvider";
+import { VertexGrokProvider } from "./providers/VertexGrokProvider";
 import { ModelSpec, VertexModelProvider } from "./providers/VertexModelProvider";
 import { UsageTrackerService } from "./UsageTrackerService";
 import { Logger } from "./utils/Logger";
@@ -65,10 +65,10 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     this.logger.log(`Registered plugin for vendor: ${googleProvider.vendor}`);
     this.activeProviders.set(googleProvider.vendor, googleProvider);
 
-    const maasProvider = new VertexMaaSProvider();
-    maasProvider.setCatalogResolver(this.catalogResolver);
-    this.logger.log(`Registered plugin for vendor: ${maasProvider.vendor}`);
-    this.activeProviders.set(maasProvider.vendor, maasProvider);
+    const grokProvider = new VertexGrokProvider();
+    grokProvider.setCatalogResolver(this.catalogResolver);
+    this.logger.log(`Registered plugin for vendor: ${grokProvider.vendor}`);
+    this.activeProviders.set(grokProvider.vendor, grokProvider);
   }
 
   public updateLabels(): Promise<void> {
@@ -293,12 +293,12 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const isV120OrHigher = Number.parseInt(versionParts[0]) > 1 || (Number.parseInt(versionParts[0]) === 1 && Number.parseInt(versionParts[1]) >= 120);
 
     return models.map((m: ModelSpec) => {
-      const pricingInfo = `$${m.pricing.input}/1M in, $${m.pricing.output}/1M out`;
+      const pricing = this.formatPricingDisplay(m.pricing);
       const info: any = {
         id: m.id,
         name: m.displayName,
-        detail: `Vertex AI (${this.region}) • ${pricingInfo}`,
-        tooltip: `${m.displayName} via Google Cloud Vertex AI (${this.region})\n${pricingInfo}`,
+        detail: `Vertex AI (${this.region}) • ${pricing.detail}`,
+        tooltip: `Google Cloud Vertex AI · ${this.region}\n\n${pricing.tooltip}`,
         family: m.family,
         version: m.version,
         maxInputTokens: m.maxInputTokens,
@@ -317,6 +317,43 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
       return info as vscode.LanguageModelChatInformation;
     });
+  }
+
+  private formatPricingDisplay(pricing: ModelSpec["pricing"]): { detail: string; tooltip: string } {
+    const basic = `$${pricing.input} in · $${pricing.output} out /1M`;
+    if (!pricing.longContext) {
+      return {
+        detail: basic,
+        tooltip: `**Pricing per 1M tokens**\n\n${this.formatRateCard(pricing)}`,
+      };
+    }
+
+    const threshold = `${pricing.longContext.inputThresholdTokens / 1_000}K`;
+    return {
+      detail: `≤${threshold}: ${basic}*`,
+      tooltip: [
+        "**Pricing per 1M tokens**",
+        "",
+        `**Up to ${threshold} input context**  `,
+        this.formatRateCard(pricing),
+        "",
+        `**Over ${threshold} input context**  `,
+        this.formatRateCard(pricing.longContext),
+        "",
+        `Above ${threshold}, long-context rates apply to every token in the request.`,
+      ].join("\n"),
+    };
+  }
+
+  private formatRateCard(rates: Pick<ModelSpec["pricing"], "input" | "output" | "cache_read" | "cache_create">): string {
+    const parts = [`Input: **$${rates.input}**`, `Output: **$${rates.output}**`];
+    if (rates.cache_read !== undefined) {
+      parts.push(`Cache hit: **$${rates.cache_read}**`);
+    }
+    if (rates.cache_create !== undefined && rates.cache_create > 0) {
+      parts.push(`Cache write: **$${rates.cache_create}**`);
+    }
+    return parts.join(" · ");
   }
 
   async provideTokenCount(modelChatInfo: vscode.LanguageModelChatInformation, text: string | vscode.LanguageModelChatRequestMessage, token: vscode.CancellationToken): Promise<number> {

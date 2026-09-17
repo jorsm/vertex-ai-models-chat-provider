@@ -59,13 +59,20 @@ export class UsageTrackerService {
       return 0;
     }
 
-    const inputCost = (tokens.input / 1_000_000) * pricing.input;
-    const outputCost = (tokens.output / 1_000_000) * pricing.output;
-    const cacheReadCost = pricing.cache_read !== undefined 
-      ? (tokens.cache_read / 1_000_000) * pricing.cache_read 
+    // Providers report cached input separately from uncached input. Both are
+    // part of the request context that determines long-context billing.
+    const contextTokens = tokens.input + tokens.cache_read + tokens.cache_create;
+    const rates = pricing.longContext && contextTokens > pricing.longContext.inputThresholdTokens
+      ? pricing.longContext
+      : pricing;
+
+    const inputCost = (tokens.input / 1_000_000) * rates.input;
+    const outputCost = (tokens.output / 1_000_000) * rates.output;
+    const cacheReadCost = rates.cache_read !== undefined
+      ? (tokens.cache_read / 1_000_000) * rates.cache_read
       : 0;
-    const cacheCreateCost = pricing.cache_create !== undefined 
-      ? (tokens.cache_create / 1_000_000) * pricing.cache_create 
+    const cacheCreateCost = rates.cache_create !== undefined
+      ? (tokens.cache_create / 1_000_000) * rates.cache_create
       : 0;
 
     return inputCost + outputCost + cacheReadCost + cacheCreateCost;
