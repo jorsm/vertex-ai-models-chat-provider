@@ -35,6 +35,18 @@ export interface ModelSpec {
     output: number;
     cache_read?: number;
     cache_create?: number;
+    /**
+     * Optional rate card selected when a request's complete input context is
+     * larger than inputThresholdTokens. Google bills every token in such a
+     * request at these rates, rather than only the tokens above the threshold.
+     */
+    longContext?: {
+      inputThresholdTokens: number;
+      input: number;
+      output: number;
+      cache_read?: number;
+      cache_create?: number;
+    };
   };
 }
 

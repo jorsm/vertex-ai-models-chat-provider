@@ -286,63 +286,6 @@
       }
     },
     {
-      "id": "gemini-3.6-flash",
-      "vendor": "google",
-      "displayName": "Gemini 3.6 Flash",
-      "family": "gemini",
-      "version": "gemini-3.6-flash",
-      "maxInputTokens": 1048576,
-      "maxOutputTokens": 65536,
-      "capabilities": {
-        "imageInput": true,
-        "toolCalling": true
-      },
-      "pricing": {
-        "input": 0.75,
-        "output": 3.75,
-        "cache_read": 0.075,
-        "cache_create": 0.0
-      }
-    },
-    {
-      "id": "gemini-3.5-flash",
-      "vendor": "google",
-      "displayName": "Gemini 3.5 Flash",
-      "family": "gemini",
-      "version": "gemini-3.5-flash",
-      "maxInputTokens": 1048576,
-      "maxOutputTokens": 65536,
-      "capabilities": {
-        "imageInput": true,
-        "toolCalling": true
-      },
-      "pricing": {
-        "input": 1.5,
-        "output": 9.0,
-        "cache_read": 0.15,
-        "cache_create": 0.0
-      }
-    },
-    {
-      "id": "gemini-3.5-flash-high",
-      "vendor": "google",
-      "displayName": "Gemini 3.5 Flash (High)",
-      "family": "gemini",
-      "version": "gemini-3.5-flash-high",
-      "maxInputTokens": 1048576,
-      "maxOutputTokens": 65536,
-      "capabilities": {
-        "imageInput": true,
-        "toolCalling": true
-      },
-      "pricing": {
-        "input": 1.5,
-        "output": 9.0,
-        "cache_read": 0.15,
-        "cache_create": 0.0
-      }
-    },
-    {
       "id": "gemini-3-flash-preview",
       "vendor": "google",
       "displayName": "Gemini 3 Flash",
@@ -381,25 +324,6 @@
       }
     },
     {
-      "id": "gemini-3.1-pro-preview-high",
-      "vendor": "google",
-      "displayName": "Gemini 3.1 Pro (High)",
-      "family": "gemini",
-      "version": "gemini-3.1-pro-preview-high",
-      "maxInputTokens": 1048576,
-      "maxOutputTokens": 65536,
-      "capabilities": {
-        "imageInput": true,
-        "toolCalling": true
-      },
-      "pricing": {
-        "input": 3.0,
-        "output": 15.0,
-        "cache_read": 0.3,
-        "cache_create": 0.0
-      }
-    },
-    {
       "id": "gemini-3.1-pro-preview",
       "vendor": "google",
       "displayName": "Gemini 3.1 Pro",
@@ -412,86 +336,95 @@
         "toolCalling": true
       },
       "pricing": {
-        "input": 3.0,
-        "output": 15.0,
-        "cache_read": 0.3,
-        "cache_create": 0.0
+        "input": 2.0,
+        "output": 12.0,
+        "cache_read": 0.2,
+        "cache_create": 0.0,
+        "longContext": {
+          "inputThresholdTokens": 200000,
+          "input": 4.0,
+          "output": 18.0,
+          "cache_read": 0.4,
+          "cache_create": 0.0
+        }
       }
     },
     {
-      "id": "qwen3-coder-480b",
-      "vendor": "maas",
-      "displayName": "Qwen3 Coder 480B",
-      "family": "qwen",
-      "version": "qwen/qwen3-coder-480b-a35b-instruct-maas",
-      "maxInputTokens": 262144,
-      "maxOutputTokens": 65536,
-      "capabilities": {
-        "imageInput": false,
-        "toolCalling": true
-      },
-      "pricing": {
-        "input": 0.22,
-        "output": 1.80,
-        "cache_read": 0.022,
-        "cache_create": 0.0
-      }
-    },
-    {
-      "id": "deepseek-v3.2",
-      "vendor": "maas",
-      "displayName": "DeepSeek V3.2",
-      "family": "deepseek",
-      "version": "deepseek-ai/deepseek-v3.2-maas",
-      "maxInputTokens": 131072,
-      "maxOutputTokens": 65536,
-      "capabilities": {
-        "imageInput": false,
-        "toolCalling": true
-      },
-      "pricing": {
-        "input": 0.56,
-        "output": 1.68,
-        "cache_read": 0.056,
-        "cache_create": 0.0
-      }
-    },
-    {
-      "id": "kimi-k2-thinking",
-      "vendor": "maas",
-      "displayName": "Kimi K2 Thinking",
-      "family": "kimi",
-      "version": "moonshotai/kimi-k2-thinking-maas",
-      "maxInputTokens": 262144,
-      "maxOutputTokens": 262144,
-      "capabilities": {
-        "imageInput": false,
-        "toolCalling": true
-      },
-      "pricing": {
-        "input": 0.6,
-        "output": 2.50,
-        "cache_read": 0.06,
-        "cache_create": 0.0
-      }
-    },
-    {
-      "id": "grok-4.2-reasoning",
-      "vendor": "maas",
-      "displayName": "Grok 4.2 Reasoning",
+      "id": "grok-4.6",
+      "vendor": "grok",
+      "displayName": "Grok 4.6",
       "family": "grok",
-      "version": "xai/grok-4.20-reasoning",
-      "maxInputTokens": 131072,
-      "maxOutputTokens": 65536,
+      "version": "xai/grok-4.6",
+      "maxInputTokens": 524288,
+      "maxOutputTokens": 524288,
       "capabilities": {
-        "imageInput": false,
+        "imageInput": true,
         "toolCalling": true
       },
       "pricing": {
-        "input": 1.25,
-        "output": 2.50,
-        "cache_read": 0.20,
-        "cache_create": 0.0
+        "input": 2.0,
+        "output": 6.0,
+        "cache_read": 0.5,
+        "cache_create": 0.0,
+        "longContext": {
+          "inputThresholdTokens": 200000,
+          "input": 4.0,
+          "output": 12.0,
+          "cache_read": 1.0,
+          "cache_create": 0.0
+        }
+      }
+    },
+    {
+      "id": "grok-4.6-low",
+      "vendor": "grok",
+      "displayName": "Grok 4.6 (Low)",
+      "family": "grok",
+      "version": "xai/grok-4.6-low",
+      "maxInputTokens": 524288,
+      "maxOutputTokens": 524288,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 2.0,
+        "output": 6.0,
+        "cache_read": 0.5,
+        "cache_create": 0.0,
+        "longContext": {
+          "inputThresholdTokens": 200000,
+          "input": 4.0,
+          "output": 12.0,
+          "cache_read": 1.0,
+          "cache_create": 0.0
+        }
+      }
+    },
+    {
+      "id": "grok-4.6-medium",
+      "vendor": "grok",
+      "displayName": "Grok 4.6 (Medium)",
+      "family": "grok",
+      "version": "xai/grok-4.6-medium",
+      "maxInputTokens": 524288,
+      "maxOutputTokens": 524288,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 2.0,
+        "output": 6.0,
+        "cache_read": 0.5,
+        "cache_create": 0.0,
+        "longContext": {
+          "inputThresholdTokens": 200000,
+          "input": 4.0,
+          "output": 12.0,
+          "cache_read": 1.0,
+          "cache_create": 0.0
+        }
       }
     }
   ],

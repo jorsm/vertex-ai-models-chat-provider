@@ -57,9 +57,9 @@
                     "enum": [
                         "google",
                         "anthropic",
-                        "maas"
+                        "grok"
                     ],
-                    "description": "The vendor name. Determines which internal provider handles the model: \"google\" (Gemini), \"anthropic\" (Claude), or \"maas\" (open-weight models via Model-as-a-Service)."
+                    "description": "The vendor name. Determines which internal provider handles the model: \"google\" (Gemini), \"anthropic\" (Claude), or \"grok\" (xAI Grok through Vertex AI's OpenAI-compatible endpoint)."
                 },
                 "displayName": {
                     "type": "string",
@@ -67,11 +67,11 @@
                 },
                 "family": {
                     "type": "string",
-                    "description": "Model family (e.g. \"gemini\", \"claude\", \"qwen\")."
+                    "description": "Model family (e.g. \"gemini\", \"claude\", \"grok\")."
                 },
                 "version": {
                     "type": "string",
-                    "description": "The specific API version/model name sent to Vertex AI. For MaaS models this is the MaaS path (e.g. \"deepseek-ai/deepseek-v3.2-maas\")."
+                    "description": "The specific API version/model name sent to Vertex AI. For Grok this is the xAI model path (for example, \"xai/grok-4.6\")."
                 },
                 "maxInputTokens": {
                     "type": "integer",
@@ -128,6 +128,43 @@
                             "type": "number",
                             "minimum": 0,
                             "description": "Optional cost per 1 million cached tokens written."
+                        },
+                        "longContext": {
+                            "type": "object",
+                            "description": "Optional rate card used when the complete input context is larger than inputThresholdTokens. Every token in that request uses these rates.",
+                            "additionalProperties": false,
+                            "required": [
+                                "inputThresholdTokens",
+                                "input",
+                                "output"
+                            ],
+                            "properties": {
+                                "inputThresholdTokens": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "description": "Use this rate card only when total input, cached input, and cache writes exceed this many tokens."
+                                },
+                                "input": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "description": "Long-context cost per 1 million input tokens (USD)."
+                                },
+                                "output": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "description": "Long-context cost per 1 million output tokens (USD)."
+                                },
+                                "cache_read": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "description": "Optional long-context cost per 1 million cached tokens read."
+                                },
+                                "cache_create": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "description": "Optional long-context cost per 1 million cached tokens written."
+                                }
+                            }
                         }
                     }
                 }

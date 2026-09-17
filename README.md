@@ -3,9 +3,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.110.0%2B-blue)](https://code.visualstudio.com/)
 
-## Native Gemini, Claude, and open-weight models in VS Code Copilot Chat
+## Native Gemini, Claude, and Grok models in VS Code Copilot Chat
 
-Use Google Gemini, Anthropic Claude, and selected MaaS models directly in the standard VS Code Chat panel. The extension authenticates with Google Cloud, sends requests through Google Agent Platform (Vertex AI), and bills the project you select.
+Use Google Gemini, Anthropic Claude, and xAI Grok directly in the standard VS Code Chat panel. The extension authenticates with Google Cloud, sends requests through Google Agent Platform (Vertex AI), and bills the project you select.
 
 <p align="center">
   <img src="images/demo.gif" alt="Google Agent Platform for Copilot Chat demo" width="800">
@@ -60,11 +60,11 @@ For Remote SSH, Dev Containers, and Codespaces, install the extension and config
 
 Models are discovered for your project and region, so only models your project can access appear in the picker.
 
-| Provider  | Current catalog                                                       | Details                                                                                                               |
-| :-------- | :-------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
-| Google    | Gemini 3.8, 3.7, 3.6, 3.5, and 3 Flash; Gemini 3.1 Pro                | [Gemini model documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini)            |
-| Anthropic | Claude Fable 5.1 and 5; Opus 5 and 4.8; Sonnet 5 and 4.6; Haiku 4.5   | [Claude on Google Cloud](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude) |
-| MaaS      | Grok 4.2 Reasoning, DeepSeek V3.2, Qwen3 Coder 480B, Kimi K2 Thinking | [MaaS guide](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-as-a-Service-(MaaS))                  |
+| Provider  | Current catalog                                                     | Details                                                                                                               |
+| :-------- | :------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------- |
+| Google    | Gemini 3 Flash Preview; Gemini 3.7 and 3.8 Flash; Gemini 3.1 Pro    | [Gemini model documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini)            |
+| Anthropic | Claude Fable 5.1 and 5; Opus 5 and 4.8; Sonnet 5 and 4.6; Haiku 4.5 | [Claude on Google Cloud](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude) |
+| Grok      | Grok 4.6                                                            | [Grok 4.6 documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/grok/grok-4-6) |
 
 Claude Fable 5 and 5.1 require Model Garden access and are subject to Google's [Advanced AI Safety Addendum](https://cloud.google.com/terms/advanced-ai-safety-addendum). Review the [Fable 5.1 documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/fable-5-1) before enabling it.
 

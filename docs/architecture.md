@@ -1,7 +1,7 @@
 # docs/architecture.md
 
 > **Overview**
-> This document describes the architecture and API surface of Google Agent Platform for Copilot Chat. The extension acts as a dispatcher between VS Code's Language Model API and various Google Cloud Vertex AI backends (Gemini, Anthropic Claude, and MaaS open-weight models).
+> This document describes the architecture and API surface of Google Agent Platform for Copilot Chat. The extension acts as a dispatcher between VS Code's Language Model API and the Google Gemini, Anthropic Claude, and xAI Grok backends on Vertex AI.
 
 ## Table of Contents
 - [docs/architecture.md](#docsarchitecturemd)
@@ -22,7 +22,7 @@
 ## Core Concepts
 The extension follows a provider-based architecture centered around the `VertexChatModelDispatcher`. 
 
-- **Multi-Vendor Support**: It manages a registry of specific vendor providers (e.g., `VertexAnthropicProvider`, `VertexGoogleProvider`, `VertexMaaSProvider`) that handle the nuances of different LLM protocols while exposing a unified interface to VS Code.
+- **Multi-Vendor Support**: It manages a registry of specific vendor providers (`VertexAnthropicProvider`, `VertexGoogleProvider`, and `VertexGrokProvider`) that handle the nuances of different LLM protocols while exposing a unified interface to VS Code.
 - **Dynamic Discovery**: Instead of hardcoding endpoints, the extension performs region probing. It iterates through prioritized GCP regions (global, us-east5, etc.) to identify where specific models are enabled for the user's project.
 - **Unified Usage Tracking**: All interactions are intercepted to record token consumption (including Gemini high-thinking blocks and Anthropic prompt caching) into a local `UsageTrackerService`.
 - **VS Code Integration**: It implements the `vscode.LanguageModelChatProvider` interface, making Vertex AI models appear as native options in the Copilot Chat model picker.
@@ -42,7 +42,7 @@ The central class that implements `vscode.LanguageModelChatProvider`. It manages
 - `clearModels()`: Clears all available models and notifies VS Code of the change. Useful when authentication fails to prevent stale models from being used.
 - `provideLanguageModelChatInformation(...)`: Returns the list of discovered models to VS Code. It returns the set of models found during the discovery process, falling back to the full set of candidate models from the local catalog if discovery is not yet complete. It enriches model metadata with regional details and pricing summaries (input/output per 1M tokens) in the `detail` and `tooltip` fields. For VS Code 1.120 and higher, it explicitly sets the `vendor` to `google-vertex` and `isUserSelectable` to `true` to ensure models are correctly categorized and visible in the Copilot Chat picker.
 - `provideTokenCount(...)`: Calculates or estimates token counts for messages. It delegates to provider-specific counting logic if available (e.g., for Gemini or Claude specific counting), falling back to a heuristic of ~4 characters per token if no provider logic is found (supporting both raw strings and `LanguageModelChatRequestMessage` with `LanguageModelTextPart` content).
-- `provideLanguageModelChatResponse(...)`: Streams the chat response from the appropriate vendor provider. It automatically waits for any in-progress model discovery or label resolution to complete (synchronizing on internal promises) before starting inference. It resolves and injects request-level labels for cost attribution if enabled in settings. For the `vscode-vertex-ai-user` label, it prioritizes the `userLabelValue` setting, falling back to the cached identity resolved by `AuthManager`. For the `vscode-vertex-ai-project` label, it uses the `projectLabelValue` setting (specifically inspecting workspace or workspace folder level values) or falls back to a resolution chain: the workspace name, the active editor's workspace folder name, or the first workspace folder name. If an enabled label has no valid custom or fallback value, it emits a de-duplicated VS Code and output-channel warning and omits that label from the request. Gemini and Anthropic providers attach resolved labels; MaaS currently only logs them. It records detailed usage (input, output, cache_read, cache_create, and total character counts) via the `UsageTrackerService`.
+- `provideLanguageModelChatResponse(...)`: Streams the chat response from the appropriate vendor provider. It automatically waits for any in-progress model discovery or label resolution to complete (synchronizing on internal promises) before starting inference. It resolves and injects request-level labels for cost attribution if enabled in settings. For the `vscode-vertex-ai-user` label, it prioritizes the `userLabelValue` setting, falling back to the cached identity resolved by `AuthManager`. For the `vscode-vertex-ai-project` label, it uses the `projectLabelValue` setting (specifically inspecting workspace or workspace folder level values) or falls back to a resolution chain: the workspace name, the active editor's workspace folder name, or the first workspace folder name. If an enabled label has no valid custom or fallback value, it emits a de-duplicated VS Code and output-channel warning and omits that label from the request. Gemini and Anthropic providers attach resolved labels; the Grok provider currently only logs them. It records detailed usage (input, output, cache_read, cache_create, and total character counts) via the `UsageTrackerService`.
 - `getAnthropicProvider()`: Returns the registered `VertexAnthropicProvider` instance.
 - `getGoogleProvider()`: Returns the registered `VertexGoogleProvider` instance.
 
@@ -52,7 +52,7 @@ Interface defining the metadata and capabilities for a supported model.
 
 **Properties:**
 - `id`: Unique identifier for the model.
-- `vendor`: The vendor name (e.g., "google", "anthropic", "maas").
+- `vendor`: The provider route: `"google"`, `"anthropic"`, or `"grok"`.
 - `displayName`: Human-readable name shown in the UI.
 - `family`: Model family (e.g., "gemini", "claude").
 - `version`: The specific API version/model name.
@@ -64,6 +64,7 @@ Interface defining the metadata and capabilities for a supported model.
     - `output`: Cost per 1 million output tokens.
     - `cache_read` (optional): Cost per 1 million cached tokens read.
     - `cache_create` (optional): Cost per 1 million cached tokens written.
+    - `longContext` (optional): Replacement rate card for requests whose total uncached and cached input exceeds `inputThresholdTokens`. The whole request is costed with these rates.
 
 ### ModelCatalog
 [source](../src/providers/VertexModelProvider.ts)

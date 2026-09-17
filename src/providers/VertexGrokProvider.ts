@@ -12,41 +12,34 @@ import { ModelSpec } from "./VertexModelProvider";
 // ─── Model configuration types ──────────────────────────────────────────────
 
 interface ModelConfig {
-  maasPath: string;
-  thinking: "none" | "reasoning_content";
+  modelPath: string;
   extraBody?: Record<string, unknown>;
 }
 
 // ─── Provider Plugin ────────────────────────────────────────────────────────
 
-export class VertexMaaSProvider implements VertexModelProvider {
-  vendor = "maas";
+export class VertexGrokProvider implements VertexModelProvider {
+  vendor = "grok";
   private projectId!: string;
   private region!: string;
   private authOptions?: any;
   private labels: Record<string, string> = {};
   private catalogResolver?: ModelCatalogResolver;
-  private readonly logger = new Logger("VertexMaaSProvider");
+  private readonly logger = new Logger("VertexGrokProvider");
 
   private static readonly MODEL_CONFIG: Record<string, ModelConfig> = {
-    "qwen3-coder-480b": {
-      maasPath: "qwen/qwen3-coder-480b-a35b-instruct-maas",
-      thinking: "none",
-    },
-    "deepseek-v3.2": {
-      maasPath: "deepseek-ai/deepseek-v3.2-maas",
-      thinking: "reasoning_content",
-      extraBody: { chat_template_kwargs: { thinking: true } },
-    },
-    "kimi-k2-thinking": {
-      maasPath: "moonshotai/kimi-k2-thinking-maas",
-      thinking: "reasoning_content",
-    },
-    "grok-4.2-reasoning": {
-      maasPath: "xai/grok-4.20-reasoning",
-      thinking: "reasoning_content",
+    "grok-4.6": {
+      modelPath: "xai/grok-4.6",
+      extraBody: { stream_options: { include_usage: true } },
     },
   };
+
+  // Live Vertex checks accept low/medium/high but reject xAI's xhigh.
+  // Keep suffix resolution limited to supported Grok 4.6 variants.
+  private static resolveGrok46(modelId: string): { actualId: string; effort?: "low" | "medium" | "high" } {
+    const match = modelId.match(/^(?:xai\/)?grok-4\.6-(low|medium|high)$/);
+    return match ? { actualId: modelId.replace(/-(low|medium|high)$/, ""), effort: match[1] as "low" | "medium" | "high" } : { actualId: modelId };
+  }
 
   // ── Initialization ────────────────────────────────────────────────────
 
@@ -95,31 +88,89 @@ export class VertexMaaSProvider implements VertexModelProvider {
     }
 
     this.logger.log(`  🔑 Fresh token obtained, baseURL=${baseURL}`);
-    return new OpenAI({ baseURL, apiKey: accessToken });
+    return new OpenAI({
+      baseURL,
+      apiKey: accessToken,
+      fetch: async (url, init) => this.fetchVertexStream(
+        url as unknown as RequestInfo,
+        init as unknown as RequestInit,
+      ) as any,
+    });
+  }
+
+  private async fetchVertexStream(url: RequestInfo, init?: RequestInit): Promise<Response> {
+    const response = await fetch(url, init);
+    return this.filterMalformedKeepaliveEvents(response);
+  }
+
+  /**
+   * Vertex occasionally sends Grok stream heartbeats as `data: : keepalive`.
+   * That is not valid JSON for an SSE data event, so the OpenAI SDK throws
+   * before the next model chunk arrives. Remove only those heartbeat lines,
+   * including when they are split across network chunks, and preserve the
+   * rest of the response byte-for-byte for the SDK parser.
+   */
+  private filterMalformedKeepaliveEvents(response: Response): Response {
+    if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream")) {
+      return response;
+    }
+
+    const decoder = new TextDecoder();
+    const encoder = new TextEncoder();
+    let buffered = "";
+    const body = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        buffered += decoder.decode(chunk, { stream: true });
+        const lines = buffered.split("\n");
+        buffered = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!/^data:\s*:\s*keepalive\s*$/i.test(line)) {
+            controller.enqueue(encoder.encode(`${line}\n`));
+          }
+        }
+      },
+      flush(controller) {
+        buffered += decoder.decode();
+        if (buffered.length > 0 && !/^data:\s*:\s*keepalive\s*$/i.test(buffered)) {
+          controller.enqueue(encoder.encode(buffered));
+        }
+      },
+    }));
+
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
   }
 
   // ── Discovery ping ────────────────────────────────────────────────────
 
   async pingModel(modelVersion: string): Promise<boolean> {
-    // modelVersion from models.json is the MaaS path (e.g. "deepseek-ai/deepseek-v3.2-maas")
-    const maasPath = modelVersion;
+    const resolved = VertexGrokProvider.resolveGrok46(modelVersion);
+    if (resolved.actualId !== "xai/grok-4.6" || this.region !== "global") {
+      return false;
+    }
+    // modelVersion from models.json is the Vertex Grok path, optionally with effort.
+    const modelPath = resolved.actualId;
     try {
       const client = await this.getClient();
       await client.chat.completions.create({
-        model: maasPath,
+        model: modelPath,
         messages: [{ role: "user", content: "ping" }],
         max_tokens: 1,
         stream: false,
+        ...(resolved.effort ? { reasoning_effort: resolved.effort } : {}),
       });
-      this.logger.log(`    🏓 MaaS ${maasPath} → ✅`);
+      this.logger.log(`    🏓 Grok ${modelPath} → ✅`);
       return true;
     } catch (e: any) {
       if (isRetryableError(e)) {
-        this.logger.log(`    🏓 MaaS ${maasPath} → ✅ (rate limited, but available)`);
+        this.logger.log(`    🏓 Grok ${modelPath} → ✅ (rate limited, but available)`);
         return true;
       }
       checkAuthError(e);
-      this.logger.log(`    🏓 MaaS ${maasPath} → ❌ ${e.message || e}`);
+      this.logger.log(`    🏓 Grok ${modelPath} → ❌ ${e.message || e}`);
       return false;
     }
   }
@@ -141,9 +192,13 @@ export class VertexMaaSProvider implements VertexModelProvider {
     labels?: Record<string, string>,
     spec?: ModelSpec,
   ): Promise<ChatInferenceResult> {
-    const config = VertexMaaSProvider.MODEL_CONFIG[modelId];
+    const resolved = VertexGrokProvider.resolveGrok46(modelId);
+    const config = VertexGrokProvider.MODEL_CONFIG[resolved.actualId];
     if (!config) {
-      throw new Error(`Unknown MaaS model: ${modelId}. Available: ${Object.keys(VertexMaaSProvider.MODEL_CONFIG).join(", ")}`);
+      throw new Error(`Unknown Grok model: ${modelId}. Available: ${Object.keys(VertexGrokProvider.MODEL_CONFIG).join(", ")}`);
+    }
+    if (config.modelPath === "xai/grok-4.6" && this.region !== "global") {
+      throw new Error("Grok 4.6 is available only at the global Vertex AI endpoint.");
     }
 
     // Use passed spec if available, otherwise resolve from catalog
@@ -157,7 +212,7 @@ export class VertexMaaSProvider implements VertexModelProvider {
       throw new Error(`Model spec not found in catalog for: ${modelId}`);
     }
 
-    this.logger.log(`▶ MaaS Plugin provideLanguageModelChatResponse — model: ${modelId} (${config.maasPath}), region: ${this.region}, messages: ${messages.length}, thinking: ${config.thinking}`);
+    this.logger.log(`▶ Grok provider response — model: ${modelId} (${config.modelPath}), region: ${this.region}, messages: ${messages.length}`);
 
     const requestLabels = labels || this.labels;
     if (Object.keys(requestLabels).length > 0) {
@@ -167,18 +222,19 @@ export class VertexMaaSProvider implements VertexModelProvider {
     try {
       const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
 
-      const mappedMessages = this.mapMessages(messages, modelId, options, charCount);
+      const mappedMessages = this.mapMessages(messages, charCount);
       const tools = this.mapTools(options);
 
       const client = await this.getClient();
 
       const requestParams = {
-        model: config.maasPath,
+        model: config.modelPath,
         messages: mappedMessages as any,
         max_tokens: modelSpec.maxOutputTokens,
         stream: true as const,
         ...(tools?.length ? { tools, tool_choice: "auto" as const } : {}),
         ...(config.extraBody ?? {}),
+        ...(resolved.effort ? { reasoning_effort: resolved.effort } : {}),
       };
       this.logger.log(`  📤 Request keys: ${Object.keys(requestParams).join(", ")}`);
 
@@ -190,10 +246,11 @@ export class VertexMaaSProvider implements VertexModelProvider {
 
       // Report token usage to VS Code (MIME type 'usage') for Copilot Chat indicator
       if (typeof vscode.LanguageModelDataPart !== "undefined") {
+        const promptTokens = usage.input + (config.modelPath === "xai/grok-4.6" ? usage.cache_read : 0);
         const usagePayload = {
-          prompt_tokens: usage.input,
+          prompt_tokens: promptTokens,
           completion_tokens: usage.output,
-          total_tokens: usage.input + usage.output,
+          total_tokens: promptTokens + usage.output,
           prompt_tokens_details: {
             cached_tokens: usage.cache_read,
           },
@@ -204,7 +261,7 @@ export class VertexMaaSProvider implements VertexModelProvider {
 
       return { usage, charCount };
     } catch (e: any) {
-      this.logger.log(`  ❌ MaaS provideLanguageModelChatResponse error: ${e}`);
+      this.logger.log(`  ❌ Grok provideLanguageModelChatResponse error: ${e}`);
       checkAuthError(e);
       throw e;
     }
@@ -212,10 +269,9 @@ export class VertexMaaSProvider implements VertexModelProvider {
 
   // ── Message mapping ───────────────────────────────────────────────────
 
-  private mapMessages(messages: readonly vscode.LanguageModelChatRequestMessage[], modelId: string, options: vscode.ProvideLanguageModelChatResponseOptions, charCount: { system: number; user_text: number; assistant_text: number; image: number; tool_use: number; tool_result: number }): any[] {
+  private mapMessages(messages: readonly vscode.LanguageModelChatRequestMessage[], charCount: { system: number; user_text: number; assistant_text: number; image: number; tool_use: number; tool_result: number }): any[] {
     const systemParts: string[] = [];
     const mappedMessages: any[] = [];
-    const hasTools = options.tools && options.tools.length > 0;
 
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
@@ -236,7 +292,7 @@ export class VertexMaaSProvider implements VertexModelProvider {
       const isAssistant = role === "assistant";
 
       // For assistant messages, we handle tool calls and tool results separately
-      const textParts: string[] = [];
+      const textParts: (string | OpenAI.Chat.Completions.ChatCompletionContentPartImage)[] = [];
       const toolCalls: any[] = [];
       const toolResultMessages: any[] = [];
 
@@ -281,7 +337,7 @@ export class VertexMaaSProvider implements VertexModelProvider {
           }
           if (part.mimeType?.startsWith("image/")) {
             const base64 = Buffer.from(part.data).toString("base64");
-            textParts.push(`data:${part.mimeType};base64,${base64}`);
+            textParts.push({ type: "image_url", image_url: { url: `data:${part.mimeType};base64,${base64}` } });
             charCount.image += base64.length;
           } else {
             try {
@@ -325,20 +381,15 @@ export class VertexMaaSProvider implements VertexModelProvider {
       }
     }
 
-    // Prepend system message (unless DeepSeek with tools — see rule below)
-    const config = VertexMaaSProvider.MODEL_CONFIG[modelId];
-    const isDeepseek = config?.maasPath?.startsWith("deepseek-ai/");
-    if (systemParts.length > 0 && !(isDeepseek && hasTools)) {
-      const systemText = systemParts.join("\n");
-      mappedMessages.unshift({ role: "system", content: systemText });
-    } else if (isDeepseek && hasTools && systemParts.length > 0) {
-      this.logger.log(`  ⚠️  Omitting system prompt for DeepSeek model with tools (per GCP MaaS guidance)`);
+    if (systemParts.length > 0) {
+      mappedMessages.unshift({ role: "system", content: systemParts.join("\n") });
     }
 
-    // Ensure first message is user
-    if (mappedMessages.length === 0 || mappedMessages[0].role !== "user") {
+    // A leading system prompt is valid; only insert a user turn if one is missing.
+    const firstConversationIndex = mappedMessages.findIndex((message) => message.role !== "system");
+    if (firstConversationIndex === -1 || mappedMessages[firstConversationIndex].role !== "user") {
       this.logger.log(`  ⚠️  No user messages — inserting placeholder`);
-      mappedMessages.unshift({ role: "user", content: [{ type: "text", text: " " }] });
+      mappedMessages.splice(firstConversationIndex === -1 ? mappedMessages.length : firstConversationIndex, 0, { role: "user", content: [{ type: "text", text: " " }] });
     }
 
     return mappedMessages;
@@ -374,6 +425,24 @@ export class VertexMaaSProvider implements VertexModelProvider {
 
   // ── Stream processing ─────────────────────────────────────────────────
 
+  private readUsage(usage: OpenAI.CompletionUsage, config: ModelConfig): { input: number; output: number; cache_read: number; cache_create: number } {
+    const input = usage.prompt_tokens ?? 0;
+    const output = usage.completion_tokens ?? 0;
+    const cached = usage.prompt_tokens_details?.cached_tokens ?? 0;
+    if (config.modelPath === "xai/grok-4.6") {
+      // Google's Grok API reports reasoning separately from completion_tokens.
+      // Prefer total - prompt to also handle servers that include it in completion.
+      const reasoning = usage.completion_tokens_details?.reasoning_tokens ?? 0;
+      return {
+        input: Math.max(0, input - cached),
+        output: Math.max(output, usage.total_tokens !== undefined ? usage.total_tokens - input : output + reasoning),
+        cache_read: cached,
+        cache_create: 0,
+      };
+    }
+    return { input, output, cache_read: cached, cache_create: 0 };
+  }
+
   private async processStream(
     stream: Stream<OpenAI.Chat.Completions.ChatCompletionChunk>,
     config: ModelConfig,
@@ -395,13 +464,7 @@ export class VertexMaaSProvider implements VertexModelProvider {
 
       // Extract usage if present
       if (chunk.usage) {
-        tokenUsage.input = chunk.usage.prompt_tokens ?? 0;
-        tokenUsage.output = chunk.usage.completion_tokens ?? 0;
-        // MaaS doesn't report cached tokens separately, but try anyway
-        const details = (chunk.usage as any).prompt_tokens_details;
-        if (details?.cached_tokens) {
-          tokenUsage.cache_read = details.cached_tokens;
-        }
+        Object.assign(tokenUsage, this.readUsage(chunk.usage, config));
       }
 
       const delta = chunk.choices?.[0]?.delta;
@@ -409,13 +472,8 @@ export class VertexMaaSProvider implements VertexModelProvider {
         continue;
       }
 
-      // Access reasoning_content — this is a MaaS-specific field not in the OpenAI SDK types
-      const reasoningContent = (delta as Record<string, unknown>)["reasoning_content"] as string | undefined;
+      // Grok returns final content; reasoning is accounted for in usage.
       const content = delta.content as string | undefined;
-
-      if (config.thinking === "reasoning_content" && reasoningContent) {
-        // Silently consume thinking tokens; counted in completion_tokens by MaaS
-      }
 
       if (content) {
         charCount.assistant_text += content.length;
@@ -472,8 +530,7 @@ export class VertexMaaSProvider implements VertexModelProvider {
         if (typeof s.finalChatCompletion === "function") {
           const completion = await s.finalChatCompletion();
           if (completion.usage) {
-            tokenUsage.input = completion.usage.prompt_tokens ?? 0;
-            tokenUsage.output = completion.usage.completion_tokens ?? 0;
+            Object.assign(tokenUsage, this.readUsage(completion.usage, config));
           }
         } else {
           this.logger.log(`  ⚠️  Stream type does not support finalChatCompletion — usage may be incomplete`);
