@@ -4,6 +4,15 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+## [0.6.5] — 2026-09-23
+
+### Added
+
+- Claude Opus 5.5 with its default Medium effort plus explicit High and Max reasoning-effort choices, a 1M-token input context, a 128K-token output limit, vision, tool calling, and current Google Cloud pricing.
+- A Max reasoning-effort choice for Claude Opus 4.8.
+
 ## [0.6.4] — 2026-09-17
 
 ### Added
