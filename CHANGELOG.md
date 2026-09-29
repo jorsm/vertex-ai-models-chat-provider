@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.7] — 2026-09-29
+
+### Fixed
+
+- Replaced Claude Sonnet 5.5's unsuffixed entry with explicit High effort and added a Max effort choice alongside Medium.
+
 ## [0.6.6] — 2026-09-29
 
 ### Added
