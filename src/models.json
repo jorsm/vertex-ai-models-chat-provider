@@ -210,11 +210,11 @@
       }
     },
     {
-      "id": "claude-sonnet-5-5",
+      "id": "claude-sonnet-5-5-high",
       "vendor": "anthropic",
       "displayName": "Claude Sonnet 5.5",
       "family": "claude",
-      "version": "claude-sonnet-5-5",
+      "version": "claude-sonnet-5-5-high",
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "capabilities": {
@@ -248,11 +248,11 @@
       }
     },
     {
-      "id": "claude-sonnet-5-5-high",
+      "id": "claude-sonnet-5-5-max",
       "vendor": "anthropic",
-      "displayName": "Claude Sonnet 5.5 (High)",
+      "displayName": "Claude Sonnet 5.5 (Max)",
       "family": "claude",
-      "version": "claude-sonnet-5-5-high",
+      "version": "claude-sonnet-5-5-max",
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "capabilities": {
