@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.6] — 2026-09-29
+
+### Added
+
+- Claude Sonnet 5.5 
+- A Google Cloud spend-cap recommendation that explains how to alert on rising Agent Platform costs and pause new usage at the configured monthly limit.
+
+
 ## [0.6.5] — 2026-09-23
 
 ### Added
