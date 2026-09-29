@@ -210,6 +210,63 @@
       }
     },
     {
+      "id": "claude-sonnet-5-5",
+      "vendor": "anthropic",
+      "displayName": "Claude Sonnet 5.5",
+      "family": "claude",
+      "version": "claude-sonnet-5-5",
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 2.0,
+        "output": 10.0,
+        "cache_read": 0.2,
+        "cache_create": 2.5
+      }
+    },
+    {
+      "id": "claude-sonnet-5-5-medium",
+      "vendor": "anthropic",
+      "displayName": "Claude Sonnet 5.5 (Medium)",
+      "family": "claude",
+      "version": "claude-sonnet-5-5-medium",
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 2.0,
+        "output": 10.0,
+        "cache_read": 0.2,
+        "cache_create": 2.5
+      }
+    },
+    {
+      "id": "claude-sonnet-5-5-high",
+      "vendor": "anthropic",
+      "displayName": "Claude Sonnet 5.5 (High)",
+      "family": "claude",
+      "version": "claude-sonnet-5-5-high",
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 2.0,
+        "output": 10.0,
+        "cache_read": 0.2,
+        "cache_create": 2.5
+      }
+    },
+    {
       "id": "claude-sonnet-5",
       "vendor": "anthropic",
       "displayName": "Claude Sonnet 5",
