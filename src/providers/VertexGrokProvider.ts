@@ -4,7 +4,8 @@ import { Stream } from "openai/streaming";
 import * as vscode from "vscode";
 import { ModelCatalogResolver } from "../ModelCatalogResolver";
 import { Logger } from "../utils/Logger";
-import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
+import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, isDiscoveryRateLimitError } from "../utils/discovery";
+import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
 import type { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
 import { ModelSpec } from "./VertexModelProvider";
@@ -146,7 +147,7 @@ export class VertexGrokProvider implements VertexModelProvider {
 
   // ── Discovery ping ────────────────────────────────────────────────────
 
-  async pingModel(modelVersion: string): Promise<boolean> {
+  async pingModel(modelVersion: string, options?: DiscoveryProbeOptions): Promise<boolean> {
     const resolved = VertexGrokProvider.resolveGrok46(modelVersion);
     if (resolved.actualId !== "xai/grok-4.6" || this.region !== "global") {
       return false;
@@ -154,23 +155,31 @@ export class VertexGrokProvider implements VertexModelProvider {
     // modelVersion from models.json is the Vertex Grok path, optionally with effort.
     const modelPath = resolved.actualId;
     try {
+      options?.signal.throwIfAborted();
       const client = await this.getClient();
+      options?.signal.throwIfAborted();
       await client.chat.completions.create({
         model: modelPath,
         messages: [{ role: "user", content: "ping" }],
         max_tokens: 1,
         stream: false,
         ...(resolved.effort ? { reasoning_effort: resolved.effort } : {}),
-      });
-      this.logger.log(`    🏓 Grok ${modelPath} → ✅`);
+      }, { signal: options?.signal, timeout: options?.timeoutMs ?? DISCOVERY_PROBE_TIMEOUT_MS, maxRetries: 0 });
+      if (options?.signal.aborted) {
+        return false;
+      }
+      this.logger.log(`    🏓 Grok ${modelVersion} → ✅`);
       return true;
     } catch (e: any) {
-      if (isRetryableError(e)) {
-        this.logger.log(`    🏓 Grok ${modelPath} → ✅ (rate limited, but available)`);
-        return true;
+      if (options?.signal.aborted) {
+        return false;
       }
       checkAuthError(e);
-      this.logger.log(`    🏓 Grok ${modelPath} → ❌ ${e.message || e}`);
+      if (isDiscoveryRateLimitError(e)) {
+        this.logger.log(`    🏓 Grok ${modelVersion} → ✅ (rate limited, but available)`);
+        return true;
+      }
+      this.logger.log(`    🏓 Grok ${modelVersion} → ❌ ${e.message || e}`);
       return false;
     }
   }

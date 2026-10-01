@@ -2,7 +2,8 @@ import { AnthropicVertex } from "@anthropic-ai/vertex-sdk";
 import { GoogleAuth } from "google-auth-library";
 import * as vscode from "vscode";
 import { Logger } from "../utils/Logger";
-import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
+import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, isDiscoveryRateLimitError } from "../utils/discovery";
+import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
 import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, resolveClaudeModelId } from "./ClaudeThinking";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
@@ -39,23 +40,30 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     this.labels = labels;
   }
 
-  async pingModel(modelId: string): Promise<boolean> {
+  async pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean> {
     const { actualId, effort, requestConfig } = resolveClaudeModelId(modelId);
     try {
+      options?.signal.throwIfAborted();
       await this.client.messages.create({
         model: actualId,
         messages: [{ role: "user", content: "ping" }],
         max_tokens: 1,
         ...requestConfig,
-      } as any);
+      } as any, { signal: options?.signal, timeout: options?.timeoutMs ?? DISCOVERY_PROBE_TIMEOUT_MS, maxRetries: 0 });
+      if (options?.signal.aborted) {
+        return false;
+      }
       this.logger.log(`    🏓 Anthropic ${modelId} -> ${actualId}${effort ? ` (${effort} effort)` : ""} → ✅`);
       return true;
     } catch (e: any) {
-      if (isRetryableError(e)) {
+      if (options?.signal.aborted) {
+        return false;
+      }
+      checkAuthError(e);
+      if (isDiscoveryRateLimitError(e)) {
         this.logger.log(`    🏓 Anthropic ${modelId} -> ${actualId} → ✅ (rate limited, but available)`);
         return true;
       }
-      checkAuthError(e);
       this.logger.log(`    🏓 Anthropic ${modelId} -> ${actualId} → ❌`);
       return false;
     }
