@@ -1,5 +1,6 @@
 import * as childProcess from "child_process";
 import * as util from "util";
+import { setMaxListeners } from "events";
 import * as vscode from "vscode";
 import { AuthManager } from "./AuthManager";
 import { ModelCatalogResolver } from "./ModelCatalogResolver";
@@ -9,6 +10,7 @@ import { VertexGrokProvider } from "./providers/VertexGrokProvider";
 import { ModelSpec, VertexModelProvider } from "./providers/VertexModelProvider";
 import { UsageTrackerService } from "./UsageTrackerService";
 import { Logger } from "./utils/Logger";
+import { DISCOVERY_PROBE_TIMEOUT_MS, probeWithDeadline } from "./utils/discovery";
 import { estimateTokens } from "./utils/tokens";
 
 const execAsync = util.promisify(childProcess.exec);
@@ -203,6 +205,8 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
       }
 
       // Probe all candidate models in parallel
+      const regionController = new AbortController();
+      setMaxListeners(candidates.length + 1, regionController.signal);
       const probePromises = candidates.map(async (model) => {
         const provider = this.activeProviders.get(model.vendor);
         if (!provider) {
@@ -211,7 +215,11 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         }
 
         try {
-          const ok = await provider.pingModel(model.version);
+          const ok = await probeWithDeadline(
+            (options) => provider.pingModel(model.version, options),
+            regionController.signal,
+            () => this.logger.log(`  ⏱️ Ping timed out for ${model.id} in ${region} after ${DISCOVERY_PROBE_TIMEOUT_MS}ms; skipping.`),
+          );
           if (ok) {
             return model;
           }
@@ -234,6 +242,9 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
           throw e;
         }
         throw e;
+      } finally {
+        // Also stop sibling probes when an authentication failure aborts discovery.
+        regionController.abort();
       }
 
       const available = results.filter((m): m is ModelSpec => m !== null);
@@ -273,7 +284,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
    */
   public clearModels(): void {
     this.availableModels = [];
-    this.discoveryDone = false;
+    this.discoveryDone = true;
     this._onDidChange.fire();
     this.logger.log("🚫 Available models cleared due to error.");
   }
@@ -286,7 +297,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
   private async mapModels(): Promise<vscode.LanguageModelChatInformation[]> {
     const catalog = await this.catalogResolver.getEffectiveCatalog();
-    const models = this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels;
+    const models = this.discoveryDone || this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels;
 
     // Check if we are running in VS Code 1.120 or higher
     const versionParts = vscode.version.split(".");
@@ -369,6 +380,30 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
   // ── Chat response (inference) ─────────────────────────────────────────
 
+  private async waitForDiscovery(token: vscode.CancellationToken): Promise<void> {
+    if (token.isCancellationRequested) {
+      throw new vscode.CancellationError();
+    }
+    const discovery = this._discoveryPromise;
+    if (!discovery) {
+      return;
+    }
+    this.logger.log(`  ⏳ Waiting for model discovery to complete before inference...`);
+    let subscription: vscode.Disposable | undefined;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const cancel = () => reject(new vscode.CancellationError());
+        subscription = token.onCancellationRequested(cancel);
+        if (token.isCancellationRequested) {
+          cancel();
+        }
+        discovery.then(() => resolve(), reject);
+      });
+    } finally {
+      subscription?.dispose();
+    }
+  }
+
   async provideLanguageModelChatResponse(
     model: vscode.LanguageModelChatInformation,
     messages: readonly vscode.LanguageModelChatRequestMessage[],
@@ -376,17 +411,14 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
     token: vscode.CancellationToken,
   ): Promise<void> {
-    if (this._discoveryPromise) {
-      this.logger.log(`  ⏳ Waiting for model discovery to complete before inference...`);
-      await this._discoveryPromise;
-    }
+    await this.waitForDiscovery(token);
     if (this._labelsPromise) {
       await this._labelsPromise;
     }
 
     const modelId = model.id;
     const catalog = await this.catalogResolver.getEffectiveCatalog();
-    const spec = (this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels).find((m: ModelSpec) => m.id === modelId);
+    const spec = (this.discoveryDone || this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels).find((m: ModelSpec) => m.id === modelId);
 
     this.logger.log(`▶ provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, vendor: ${spec?.vendor}, messages: ${messages.length}`);
 

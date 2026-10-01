@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { DiscoveryProbeOptions } from "../utils/discovery";
 
 export interface ModelUsageTokens {
   input: number;
@@ -66,7 +67,7 @@ export interface VertexModelProvider {
   setLabels(labels: Record<string, string>): void;
 
   /** Send a minimal ping to verify model availability */
-  pingModel(modelId: string): Promise<boolean>;
+  pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean>;
 
   /**
    * Execute a chat request, map inputs/outputs, and report parts to VS Code.

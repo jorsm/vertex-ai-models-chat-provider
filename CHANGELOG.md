@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.8] — 2026-10-01
+
+### Fixed
+
+- Limit model discovery probes to 15 seconds and cancel unanswered requests so an unresponsive model cannot block usable models.
+- Treat discovery timeouts and network failures as unavailable, disable discovery retries, and allow chat cancellation while waiting for discovery.
+- Keep unavailable models out of the picker after discovery finishes without any usable models.
+
 ## [0.6.7] — 2026-09-29
 
 ### Fixed

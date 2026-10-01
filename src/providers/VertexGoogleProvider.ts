@@ -1,7 +1,8 @@
 import * as https from "https";
 import * as vscode from "vscode";
 import { Logger } from "../utils/Logger";
-import { checkAuthError, isRetryableError, withRetry } from "../utils/retry";
+import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, isDiscoveryRateLimitError } from "../utils/discovery";
+import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 
@@ -107,25 +108,35 @@ export class VertexGoogleProvider implements VertexModelProvider {
     return { actualId: modelId };
   }
 
-  async pingModel(modelId: string): Promise<boolean> {
+  async pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean> {
     const { actualId } = this.resolveModelId(modelId);
     try {
+      options?.signal.throwIfAborted();
       const client = await this.getClient();
+      options?.signal.throwIfAborted();
       await client.models.generateContent({
         model: actualId,
         contents: [{ role: "user", parts: [{ text: "ping" }] }],
         config: {
           maxOutputTokens: 1,
+          abortSignal: options?.signal,
+          httpOptions: { timeout: options?.timeoutMs ?? DISCOVERY_PROBE_TIMEOUT_MS, retryOptions: { attempts: 1 } },
         },
       });
+      if (options?.signal.aborted) {
+        return false;
+      }
       this.logger.log(`    🏓 Google ${modelId} -> ${actualId} → ✅`);
       return true;
     } catch (e: any) {
-      if (isRetryableError(e)) {
+      if (options?.signal.aborted) {
+        return false;
+      }
+      checkAuthError(e);
+      if (isDiscoveryRateLimitError(e)) {
         this.logger.log(`    🏓 Google ${modelId} -> ${actualId} → ✅ (rate limited, but available)`);
         return true;
       }
-      checkAuthError(e);
       this.logger.log(`    🏓 Google ${modelId} -> ${actualId} → ❌ ${e}`);
       return false;
     }
