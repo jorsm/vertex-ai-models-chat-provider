@@ -94,7 +94,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const enableUser = config.get<boolean>("enableUserLabel");
 
     this.cachedUserEmail = undefined;
-    if (enableUser && !this.getProxyUrl()) {
+    if (enableUser) {
       const identity = await this.authManager.getIdentity();
       if (revision !== this.connectionRevision) { return; }
       this.cachedUserEmail = identity;
@@ -135,9 +135,10 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
   private warnMissingLabelValue(label: "user" | "project"): void {
     const setting = label === "user" ? "vertexAiChat.userLabelValue" : "vertexAiChat.projectLabelValue";
-    const fallback = label === "user" ? "an active account identity" : "a workspace name";
     const labelKey = `vscode-vertex-ai-${label}`;
-    const message = `${label[0].toUpperCase()}${label.slice(1)} label is enabled, but no valid custom value or ${fallback} is available. Requests will be sent without '${labelKey}'. Set '${setting}' or disable the label.`;
+    const fallback = label === "user" ? "a valid custom value or active account identity"
+      : "a valid custom value or workspace name";
+    const message = `${label[0].toUpperCase()}${label.slice(1)} label is enabled, but ${fallback} is not available. Requests will be sent without '${labelKey}'. Set '${setting}' or disable the label.`;
 
     if (!this.missingLabelWarnings.has(label)) {
       this.missingLabelWarnings.add(label);
@@ -540,7 +541,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const config = vscode.workspace.getConfiguration("vertexAiChat", resource);
     const requestLabels: Record<string, string> = {};
 
-    if (config.get<boolean>("enableUserLabel") && !this.getProxyUrl()) {
+    if (config.get<boolean>("enableUserLabel")) {
       // 0. Check for a custom user label value in settings
       let userLabelValue = this.getValidLabelValue(config.get<string>("userLabelValue"));
 

@@ -189,7 +189,7 @@ test("policy and caller/upstream authentication errors never retry even with quo
 function harness(models) {
   class Dispatcher extends VertexChatModelDispatcher { registerProviders() {} }
   const records = [], calls = [];
-  const auth = { onAuthUpdated() {}, getProxyIdToken: async () => "personal-token", getResolvedAuthOptions: async () => { throw Error("must not resolve Vertex credentials"); }, getIdentity: async () => { throw Error("must not resolve client user label"); } };
+  const auth = { onAuthUpdated() {}, getProxyIdToken: async () => "personal-token", getResolvedAuthOptions: async () => { throw Error("must not resolve Vertex credentials"); }, getIdentity: async () => "developer@example.com" };
   let proxyCatalog;
   const resolver = {
     setProxyCatalog(value) { proxyCatalog = value === undefined ? undefined : { candidateModels: value, regionPriority: [] }; },
@@ -212,9 +212,10 @@ function fakeDiscovery(t, allowed, status = 200) {
   t.after(() => { global.fetch = originalFetch; });
   return calls;
 }
-test("proxy dispatcher uses complete server catalog even when local catalog differs; no project, credentials or pings", async (t) => {
+test("proxy dispatcher uses the server catalog and sends only an explicit custom user label", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
   settings.enableUserLabel = true;
+  settings.userLabelValue = "Custom.User@example.com";
   const remote = [model("gemini-test"), { ...model("remote-high", "google", "backend-high"), displayName: "Remote effort", pricing: { input: 10, output: 20 } }];
   const requests = fakeDiscovery(t, remote);
   const h = harness([model("denied"), model("grok", "grok")]);
@@ -226,12 +227,24 @@ test("proxy dispatcher uses complete server catalog even when local catalog diff
   assert.equal(h.calls.filter((c) => c[0] === "initialize").length, 2);
   assert.ok(h.calls.every((c) => c[2] === "gateway" && c[3] === "global"));
   await h.dispatcher.infer("gemini-test", userMessage(), { tools: [] }, { report() {} }, cancellation().token);
-  assert.deepEqual(h.calls.at(-1)[7], {});
+  assert.deepEqual(h.calls.at(-1)[7], { "vscode-vertex-ai-user": "custom_user_example_com" });
   assert.equal(h.records.length, 1);
   assert.deepEqual(h.records[0][2], remote[0].pricing);
   const info = await h.dispatcher.provideLanguageModelChatInformation();
   assert.equal(info[1].name, "Remote effort");
   assert.match(info[1].detail, /\$10 in/);
+});
+test("proxy user label falls back to the client Google identity when no custom value is set", async (t) => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  settings.enableUserLabel = true;
+  const remote = [model("gemini-test")];
+  fakeDiscovery(t, remote);
+  const h = harness(remote);
+  await h.dispatcher.discoverModelsAndRegion();
+  await h.dispatcher.infer("gemini-test", userMessage(), { tools: [] }, { report() {} }, cancellation().token);
+  assert.deepEqual(h.calls.at(-1)[7], {
+    "vscode-vertex-ai-user": "developer_example_com",
+  });
 });
 test("failed or empty server discovery never exposes the unfiltered local catalog", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
