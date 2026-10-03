@@ -10,7 +10,7 @@ import { VertexGrokProvider } from "./providers/VertexGrokProvider";
 import { ModelSpec, VertexModelProvider } from "./providers/VertexModelProvider";
 import { UsageTrackerService } from "./UsageTrackerService";
 import { Logger } from "./utils/Logger";
-import { DISCOVERY_PROBE_TIMEOUT_MS, probeWithDeadline } from "./utils/discovery";
+import { DISCOVERY_PROBE_TIMEOUT_MS, getDiscoveryStartDelayMs, probeWithRetries, resolveDiscoveryTimeoutMs, runDiscoveryQueue } from "./utils/discovery";
 import { estimateTokens } from "./utils/tokens";
 
 const execAsync = util.promisify(childProcess.exec);
@@ -34,6 +34,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   private readonly authManager: AuthManager;
   private readonly catalogResolver: ModelCatalogResolver;
   private _discoveryPromise: Promise<DiscoveryResult> | null = null;
+  private readonly discoveryStartDelayMs = getDiscoveryStartDelayMs;
   private _labelsPromise: Promise<void> | null = null;
   private cachedUserEmail: string | undefined;
   private readonly missingLabelWarnings = new Set<"user" | "project">();
@@ -160,6 +161,9 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const catalog = await this.catalogResolver.getEffectiveCatalog();
     const candidates = catalog.candidateModels;
     const regions = catalog.regionPriority;
+    const probeTimeoutMs = resolveDiscoveryTimeoutMs(
+      vscode.workspace.getConfiguration("vertexAiChat").get<number>("modelDiscoveryTimeoutSeconds", DISCOVERY_PROBE_TIMEOUT_MS / 1000),
+    );
 
     const authOptions = await this.authManager.getResolvedAuthOptions();
     /*
@@ -196,58 +200,69 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     this.logger.log(`Starting model discovery for project "${effectiveProjectId}"…`);
 
+    // Providers own alias resolution; group by vendor and backend model, not UI ID.
+    const targets = new Map<string, { provider: VertexModelProvider; modelId: string; models: ModelSpec[] }>();
+    for (const model of candidates) {
+      const provider = this.activeProviders.get(model.vendor);
+      if (!provider) {
+        this.logger.log(`  ⚠️  No provider registered for vendor "${model.vendor}", skipping ${model.id}`);
+        continue;
+      }
+      const modelId = provider.getDiscoveryModelId(model.version);
+      const key = JSON.stringify([model.vendor, modelId]);
+      const target = targets.get(key);
+      if (target) {
+        target.models.push(model);
+      } else {
+        targets.set(key, { provider, modelId, models: [model] });
+      }
+    }
+    const probeTargets = [...targets.values()];
+
     for (const region of regions) {
-      this.logger.log(`  Probing region "${region}"…`);
+      this.logger.log(`  Probing region "${region}" (${probeTargets.length} unique model endpoints for ${candidates.length} catalog entries)…`);
 
       // Initialize each active provider once for this region
       for (const provider of this.activeProviders.values()) {
         provider.initialize(effectiveProjectId, region, authOptions);
       }
 
-      // Probe all candidate models in parallel
+      // Probe each endpoint once and share its result with all catalog variants.
       const regionController = new AbortController();
-      setMaxListeners(candidates.length + 1, regionController.signal);
-      const probePromises = candidates.map(async (model) => {
-        const provider = this.activeProviders.get(model.vendor);
-        if (!provider) {
-          this.logger.log(`  ⚠️  No provider registered for vendor "${model.vendor}", skipping ${model.id}`);
-          return null;
-        }
-
+      setMaxListeners(probeTargets.length + 1, regionController.signal);
+      const probeTarget = async ({ provider, modelId, models }: typeof probeTargets[number]) => {
         try {
-          const ok = await probeWithDeadline(
-            (options) => provider.pingModel(model.version, options),
+          const ok = await probeWithRetries(
+            (options) => provider.pingModel(modelId, options),
             regionController.signal,
-            () => this.logger.log(`  ⏱️ Ping timed out for ${model.id} in ${region} after ${DISCOVERY_PROBE_TIMEOUT_MS}ms; skipping.`),
+            (reachable) => this.logger.log(`  ⏱️ Ping timed out for ${modelId} in ${region} after ${probeTimeoutMs}ms; ${reachable ? "keeping" : "skipping"} ${models.length} catalog entries.`),
+            probeTimeoutMs,
+            (message) => this.logger.log(`  ${modelId} in ${region}: ${message}`),
           );
           if (ok) {
-            return model;
+            return models;
           }
         } catch (e: any) {
           // If we hit an authentication error, we should bubble it up immediately
           if (e.name === "VertexAuthenticationError") {
-            this.logger.log(`❌ Authentication error during discovery for ${model.id}: ${e.message}`);
+            this.logger.log(`❌ Authentication error during discovery for ${modelId}: ${e.message}`);
             throw e;
           }
-          this.logger.log(`  ⚠️ Ping failed for ${model.id} in ${region}: ${e.message || e}`);
+          this.logger.log(`  ⚠️ Ping failed for ${modelId} in ${region}: ${e.message || e}`);
         }
-        return null;
-      });
+        return [];
+      };
 
-      let results: (ModelSpec | null)[];
+      let results: ModelSpec[][];
       try {
-        results = await Promise.all(probePromises);
-      } catch (e: any) {
-        if (e.name === "VertexAuthenticationError") {
-          throw e;
-        }
-        throw e;
+        results = await runDiscoveryQueue(probeTargets, probeTarget, regionController.signal, this.discoveryStartDelayMs);
       } finally {
         // Also stop sibling probes when an authentication failure aborts discovery.
         regionController.abort();
       }
 
-      const available = results.filter((m): m is ModelSpec => m !== null);
+      const reachableModels = new Set(results.flat());
+      const available = candidates.filter((model) => reachableModels.has(model));
 
       if (available.length > 0) {
         this.logger.log(`✅ Region "${region}" — ${available.length} model(s) available: ${available.map((m: ModelSpec) => m.id).join(", ")}`);

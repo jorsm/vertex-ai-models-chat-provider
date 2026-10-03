@@ -4,7 +4,7 @@ import { Stream } from "openai/streaming";
 import * as vscode from "vscode";
 import { ModelCatalogResolver } from "../ModelCatalogResolver";
 import { Logger } from "../utils/Logger";
-import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, isDiscoveryRateLimitError } from "../utils/discovery";
+import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryableError } from "../utils/discovery";
 import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
 import type { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
@@ -147,13 +147,16 @@ export class VertexGrokProvider implements VertexModelProvider {
 
   // ── Discovery ping ────────────────────────────────────────────────────
 
+  getDiscoveryModelId(modelVersion: string): string {
+    return VertexGrokProvider.resolveGrok46(modelVersion).actualId;
+  }
+
   async pingModel(modelVersion: string, options?: DiscoveryProbeOptions): Promise<boolean> {
-    const resolved = VertexGrokProvider.resolveGrok46(modelVersion);
-    if (resolved.actualId !== "xai/grok-4.6" || this.region !== "global") {
+    const modelPath = modelVersion;
+    if (modelPath !== "xai/grok-4.6" || this.region !== "global") {
       return false;
     }
-    // modelVersion from models.json is the Vertex Grok path, optionally with effort.
-    const modelPath = resolved.actualId;
+    // Discovery receives the backend path, already resolved from catalog aliases.
     try {
       options?.signal.throwIfAborted();
       const client = await this.getClient();
@@ -163,7 +166,6 @@ export class VertexGrokProvider implements VertexModelProvider {
         messages: [{ role: "user", content: "ping" }],
         max_tokens: 1,
         stream: false,
-        ...(resolved.effort ? { reasoning_effort: resolved.effort } : {}),
       }, { signal: options?.signal, timeout: options?.timeoutMs ?? DISCOVERY_PROBE_TIMEOUT_MS, maxRetries: 0 });
       if (options?.signal.aborted) {
         return false;
@@ -175,9 +177,9 @@ export class VertexGrokProvider implements VertexModelProvider {
         return false;
       }
       checkAuthError(e);
-      if (isDiscoveryRateLimitError(e)) {
-        this.logger.log(`    🏓 Grok ${modelVersion} → ✅ (rate limited, but available)`);
-        return true;
+      const retryError = getDiscoveryRetryableError(e);
+      if (retryError) {
+        throw retryError;
       }
       this.logger.log(`    🏓 Grok ${modelVersion} → ❌ ${e.message || e}`);
       return false;

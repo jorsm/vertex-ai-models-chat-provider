@@ -138,18 +138,18 @@ test("removed non-Grok models are absent and cannot be discovered or invoked", a
   assert.equal(h.requests.length, 0);
 });
 
-test("Grok 4.6 efforts reach both inference and discovery without leaking suffixes", async () => {
+test("Grok 4.6 inference uses effort while discovery probes only the endpoint", async () => {
   for (const effort of ["low", "medium", "high"]) {
     const h = harness();
     const alias = { ...spec, id: `${spec.id}-${effort}`, version: `${spec.version}-${effort}` };
     await h.provider.provideLanguageModelChatResponse(alias.id, [user([new TextPart("hi")])], {}, h.progress, token, undefined, alias);
     assert.equal(h.requests[0].model, "xai/grok-4.6");
     assert.equal(h.requests[0].reasoning_effort, effort);
-    assert.equal(await h.provider.pingModel(alias.version), true);
+    assert.equal(await h.provider.pingModel(h.provider.getDiscoveryModelId(alias.version)), true);
     assert.equal(h.requests[1].model, "xai/grok-4.6");
-    assert.equal(h.requests[1].reasoning_effort, effort);
+    assert.equal(Object.hasOwn(h.requests[1], "reasoning_effort"), false);
     h.provider.initialize("test-project", "europe-west1");
-    assert.equal(await h.provider.pingModel(alias.version), false);
+    assert.equal(await h.provider.pingModel(h.provider.getDiscoveryModelId(alias.version)), false);
     assert.equal(h.requests.length, 2);
   }
 });
@@ -242,12 +242,15 @@ test("live Grok 4.6 vision, streamed tool call and continuation", {
   }
 });
 
-test("live Grok 4.6 effort discovery", { skip: !process.env.GROK46_LIVE_PROJECT, timeout: 90000 }, async () => {
+test("live Grok 4.6 endpoint discovery", { skip: !process.env.GROK46_LIVE_PROJECT, timeout: 90000 }, async () => {
   const h = harness();
   delete h.provider.getClient;
   h.provider.initialize(process.env.GROK46_LIVE_PROJECT, "global");
   for (const effort of ["low", "medium", "high"]) {
     const alias = { ...spec, version: `${spec.version}-${effort}` };
-    assert.equal(await h.provider.pingModel(alias.version), true, `${effort} discovery failed`);
+    assert.equal(h.provider.getDiscoveryModelId(alias.version), spec.version);
   }
+  const { probeWithRetries } = require("../out/utils/discovery.js");
+  assert.equal(await probeWithRetries((options) => h.provider.pingModel(spec.version, options),
+    new AbortController().signal, () => {}, 45_000, () => {}), true, "endpoint discovery failed");
 });

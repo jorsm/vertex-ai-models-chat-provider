@@ -1,7 +1,7 @@
 import * as https from "https";
 import * as vscode from "vscode";
 import { Logger } from "../utils/Logger";
-import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, isDiscoveryRateLimitError } from "../utils/discovery";
+import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryableError } from "../utils/discovery";
 import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
@@ -103,19 +103,22 @@ export class VertexGoogleProvider implements VertexModelProvider {
    */
   private resolveModelId(modelId: string): { actualId: string; config?: any } {
     if (modelId.endsWith("-high")) {
-      return { actualId: modelId.replace("-high", ""), config: { thinkingConfig: { thinkingLevel: "HIGH" } } };
+      return { actualId: modelId.slice(0, -5), config: { thinkingConfig: { thinkingLevel: "HIGH" } } };
     }
     return { actualId: modelId };
   }
 
+  getDiscoveryModelId(modelVersion: string): string {
+    return this.resolveModelId(modelVersion).actualId;
+  }
+
   async pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean> {
-    const { actualId } = this.resolveModelId(modelId);
     try {
       options?.signal.throwIfAborted();
       const client = await this.getClient();
       options?.signal.throwIfAborted();
       await client.models.generateContent({
-        model: actualId,
+        model: modelId,
         contents: [{ role: "user", parts: [{ text: "ping" }] }],
         config: {
           maxOutputTokens: 1,
@@ -126,18 +129,18 @@ export class VertexGoogleProvider implements VertexModelProvider {
       if (options?.signal.aborted) {
         return false;
       }
-      this.logger.log(`    🏓 Google ${modelId} -> ${actualId} → ✅`);
+      this.logger.log(`    🏓 Google ${modelId} → ✅`);
       return true;
     } catch (e: any) {
       if (options?.signal.aborted) {
         return false;
       }
       checkAuthError(e);
-      if (isDiscoveryRateLimitError(e)) {
-        this.logger.log(`    🏓 Google ${modelId} -> ${actualId} → ✅ (rate limited, but available)`);
-        return true;
+      const retryError = getDiscoveryRetryableError(e);
+      if (retryError) {
+        throw retryError;
       }
-      this.logger.log(`    🏓 Google ${modelId} -> ${actualId} → ❌ ${e}`);
+      this.logger.log(`    🏓 Google ${modelId} → ❌ ${e}`);
       return false;
     }
   }

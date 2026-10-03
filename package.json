@@ -3,7 +3,7 @@
   "displayName": "Google Agent Platform for Copilot Chat (Vertex AI Models Chat Provider)",
   "description": "Native Gemini, Claude, and Grok models, powered by Google Agent Platform (Vertex AI) for Copilot Chat",
   "publisher": "jorsm",
-  "version": "0.6.8",
+  "version": "0.6.9",
   "icon": "images/logo.png",
   "repository": {
     "type": "git",
@@ -102,6 +102,14 @@
           "default": "",
           "order": 10,
           "description": "GCP Project ID to use with Google Agent Platform. Models and regions are auto-discovered."
+        },
+        "vertexAiChat.modelDiscoveryTimeoutSeconds": {
+          "type": "integer",
+          "default": 45,
+          "minimum": 1,
+          "maximum": 2147483,
+          "order": 15,
+          "description": "Maximum time in seconds for each model endpoint's discovery attempts and retry delays, after it leaves the queue. Unresponsive endpoints are skipped; rate-limited endpoints remain available. Applies to the next discovery; run Refresh Models after changing this setting."
         },
         "vertexAiChat.retryMaxDurationMinutes": {
           "type": "integer",

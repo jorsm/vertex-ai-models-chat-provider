@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- Probe each distinct model endpoint once per region during discovery, sharing availability across its effort variants and omitting effort parameters from discovery requests.
+- Stagger endpoint discovery starts, limit concurrency to three, and retry transient failures up to three times with randomized backoff within the configured timeout. Keep all catalog effort variants available after a 429 response even when retries are exhausted.
+
+### Added
+
+- Configurable model discovery timeout via `vertexAiChat.modelDiscoveryTimeoutSeconds`, with a default of 45 seconds per endpoint probe in each region.
+
 ## [0.6.8] — 2026-10-01
 
 ### Fixed

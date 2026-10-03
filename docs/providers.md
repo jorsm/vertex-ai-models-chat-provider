@@ -23,6 +23,7 @@
         - [provideLanguageModelChatResponse](#providelanguagemodelchatresponse-1)
     - [VertexGrokProvider](#vertexgrokprovider)
         - [initialize](#initialize-2)
+        - [setCatalogResolver](#setcatalogresolver)
         - [setLabels](#setlabels-2)
         - [pingModel](#pingmodel-2)
         - [provideTokenCount](#providetokencount-2)
@@ -33,6 +34,8 @@
 
 ## Core Concepts
 The provider architecture uses a unified `VertexModelProvider` interface to support multiple model families. 
+
+Each provider implements `getDiscoveryModelId(modelVersion)` using its inference alias resolver. The dispatcher groups catalog entries by vendor and resolved backend model, then schedules one discovery operation per group in each region, with at most three concurrent endpoints and staggered starts. Each operation calls `pingModel()` and retries transient failures up to three times with jitter within the configured endpoint deadline. A 429 response preserves reachability even if the retry budget or deadline is exhausted. Pings receive the resolved model ID and omit effort parameters. All entries in a group share availability, while actual chat requests still use the selected entry's effort. This also supports custom catalogs containing only effort variants.
 
 - **Google Gemini Integration**: Managed by `VertexGoogleProvider`, supporting Gemini 3 Flash Preview, Gemini 3.7 and 3.8 Flash, and Gemini 3.1 Pro Preview.
 - **Anthropic Claude Integration**: Managed by `VertexAnthropicProvider`, supporting Claude Opus, Fable, Sonnet, and Haiku variants from the active model catalog.
@@ -63,9 +66,9 @@ Updates the internal labels mapping. For non-empty request labels, the provider 
 
 #### pingModel
 [source](../src/providers/VertexAnthropicProvider.ts)
-`pingModel(modelId: string): Promise<boolean>`
+`pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean>`
 
-Sends a minimal "ping" message with `max_tokens: 1` to verify the availability of the specified Claude model in the configured project and region. It handles transient rate-limiting errors (429) gracefully, treating them as confirmation that the model is reachable and available.
+Sends a minimal "ping" message with `max_tokens: 1` to verify the availability of the specified Claude model in the configured project and region. It uses the provided `DiscoveryProbeOptions` for timeout and cancellation. Transient errors are surfaced as `DiscoveryRetryableError` for the shared discovery retry policy; a 429 carries evidence that the endpoint is reachable.
 
 #### provideTokenCount
 [source](../src/providers/VertexAnthropicProvider.ts)
@@ -75,7 +78,7 @@ Estimates token usage using a 4-characters-per-token heuristic for text strings 
 
 #### provideLanguageModelChatResponse
 [source](../src/providers/VertexAnthropicProvider.ts)
-`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>): Promise<ChatInferenceResult>`
+`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>, spec?: ModelSpec): Promise<ChatInferenceResult>`
 
 Handles chat inference for Anthropic models. This method:
 1. Maps VS Code messages to the Anthropic `messages` format, supporting `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart` (normalizing array-based content into a single newline-delimited string), and `LanguageModelDataPart`. For `LanguageModelDataPart`, it automatically encodes `image/*` mimetypes as base64 and attempts to decode other data types as UTF-8 text. It ensures the conversation history starts with a user message by inserting a placeholder if necessary.
@@ -83,7 +86,7 @@ Handles chat inference for Anthropic models. This method:
 3. Automatically applies cache control strategies:
     - **Static Prefix Caching**: Applies `ephemeral` caching to the system blocks or tool definitions.
     - **Chat History Caching**: Applies `ephemeral` caching to the second-to-last message in the history if the estimated total history exceeds 1024 tokens.
-4. Executes the request using a robust retry mechanism for transient API failures (such as 429 or 503) with a configurable maximum duration to ensure request resilience.
+4. Executes the request using a robust retry mechanism for transient API failures (such as 429 or 503) with a configurable maximum duration to ensure request resilience. The `maxOutputTokens` is derived from the optional `spec`.
 5. Manages streaming responses, reporting text deltas and tool call progress to VS Code after parsing partial JSON tool inputs. Signed `thinking`, `signature_delta`, and `redacted_thinking` data remains hidden, but complete content-block sequences are retained in a bounded in-memory cache and restored unchanged when VS Code returns tool results. Models that emit no thinking blocks use the same stream path without creating replay state.
 6. Captures and returns detailed usage statistics, including `input`, `output`, `cache_read`, and `cache_create` token metrics. It also reports these statistics back to VS Code via a `LanguageModelDataPart` (MIME type `usage`) containing `prompt_tokens`, `completion_tokens`, `total_tokens`, and `cached_tokens` to update the native Copilot Chat usage indicator.
 7. Attaches metadata labels (provided via the `labels` parameter or the provider's internal state) through `X-Vertex-AI-Labels`, enabling Google Cloud Billing attribution for Anthropic PayGo requests. The SDK request options preserve this custom header.
@@ -107,9 +110,9 @@ Configures the provider with a set of labels to be attached to Gemini generation
 
 #### pingModel
 [source](../src/providers/VertexGoogleProvider.ts)
-`pingModel(modelId: string): Promise<boolean>`
+`pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean>`
 
-Attempts a minimal request to the specified model ID to verify availability and permissions in the current GCP project. It automatically resolves high-thinking model IDs to their base counterparts and handles transient rate-limiting errors gracefully during discovery.
+Attempts a minimal request to the specified model ID to verify availability and permissions in the current GCP project using the provided `DiscoveryProbeOptions`. The dispatcher supplies the backend model ID resolved by `getDiscoveryModelId()`. The ping omits thinking settings and surfaces transient failures as `DiscoveryRetryableError` for the shared retry policy.
 
 #### provideTokenCount
 [source](../src/providers/VertexGoogleProvider.ts)
@@ -131,7 +134,7 @@ Strips the leaked signature prefix from a reasoning header text block, returning
 
 #### provideLanguageModelChatResponse
 [source](../src/providers/VertexGoogleProvider.ts)
-`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>): Promise<ChatInferenceResult>`
+`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>, spec?: ModelSpec): Promise<ChatInferenceResult>`
 
 Main entry point for chat inference. This method:
 1. Maps VS Code messages to the Gemini `contents` format, including support for multimodal `LanguageModelDataPart` (images and non-image data decoding), and ensures the conversation starts with a user message as required by the Gemini API.
@@ -139,7 +142,7 @@ Main entry point for chat inference. This method:
 3. Re-injects cached thought signatures into the conversation history for both **assistant text parts** and **tool call parts** to preserve reasoning quality. It also proactively sanitizes leaked reasoning headers from model turns in history.
 4. Merges consecutive tool result messages into a single user turn to satisfy Gemini API requirements for parallel tool calls.
 5. **Normalizes tool results** into JSON objects, wrapping primitive return values to comply with Gemini's `google.protobuf.Struct` requirement for function responses, and ensuring the function name is correctly associated with the response.
-6. Handles streaming responses with **automatic retries**, using a stateful `StreamPartProcessor` to isolate and strip multi-chunk leaked reasoning/thinking blocks while capturing text, tool calls, and `thoughtSignature` metadata.
+6. Handles streaming responses with **automatic retries**, using a stateful `StreamPartProcessor` to isolate and strip multi-chunk leaked reasoning/thinking blocks while capturing text, tool calls, and `thoughtSignature` metadata. `maxOutputTokens` is applied from the `spec` if available.
 7. Buffers parallel tool calls across the stream to ensure they are emitted to VS Code as a single atomic step, preventing turn-mismatch errors.
 8. Updates internal signature caches for both text reasoning (using a text-prefix key based on the first 120 characters) and tool calls (using unique call IDs).
 9. Tracks and returns detailed usage statistics including character counts and token usage metadata (input, output, and cache metrics). For Gemini, it correctly adjusts input tokens by subtracting cached content tokens to ensure accurate usage tracking, and reports the resulting payload to VS Code via `LanguageModelDataPart` (MIME `usage`).
@@ -155,6 +158,12 @@ The `VertexGrokProvider` class implements the `VertexModelProvider` interface sp
 
 Sets the GCP Project ID and regional endpoint. It configures the OpenAI SDK to use the Vertex AI OpenAI-compatible `baseURL`. It supports standard Application Default Credentials and Service Account credentials imported into VS Code `SecretStorage`; legacy workspace configurations that link a key file remain readable. The provider dynamically respects the project ID from active VS Code settings to support workspace-specific billing.
 
+#### setCatalogResolver
+[source](../src/providers/VertexGrokProvider.ts)
+`setCatalogResolver(resolver: ModelCatalogResolver): void`
+
+Injects the catalog resolver so model specifications (such as token limits) are read from the effective (custom or bundled) catalog when not provided directly in a request.
+
 #### setLabels
 [source](../src/providers/VertexGrokProvider.ts)
 `setLabels(labels: Record<string, string>): void`
@@ -163,9 +172,9 @@ Updates internal labels for request logging only. The Grok OpenAI-compatible req
 
 #### pingModel
 [source](../src/providers/VertexGrokProvider.ts)
-`pingModel(modelVersion: string): Promise<boolean>`
+`pingModel(modelVersion: string, options?: DiscoveryProbeOptions): Promise<boolean>`
 
-Verifies the availability of the model path (e.g., `xai/grok-4.6`) by sending a minimal OpenAI-format chat completion request. It rejects unsupported model paths and non-global regions before making requests. It handles 429 rate-limiting responses as confirmation of availability.
+Verifies the availability of the model path (e.g., `xai/grok-4.6`) by sending a minimal OpenAI-format chat completion request using the provided `DiscoveryProbeOptions`. It rejects unsupported model paths and non-global regions before making requests. It surfaces transient failures as `DiscoveryRetryableError`; 429 responses carry evidence of reachability for the shared retry policy.
 
 #### provideTokenCount
 [source](../src/providers/VertexGrokProvider.ts)
@@ -175,15 +184,15 @@ Estimates token usage using a 4-characters-per-token heuristic.
 
 #### provideLanguageModelChatResponse
 [source](../src/providers/VertexGrokProvider.ts)
-`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>): Promise<ChatInferenceResult>`
+`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>, spec?: ModelSpec): Promise<ChatInferenceResult>`
 
 Handles Grok 4.6 chat inference using an OpenAI client. This method:
 1. Maps VS Code messages to OpenAI chat completion parameters. It supports `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart` (transformed into discrete `tool` role messages), and `LanguageModelDataPart` (including base64 image conversion or UTF-8 decoding for other data types).
-2. Looks up the output budget from the effective model catalog and requests streaming usage.
+2. Looks up the output budget from the provided `spec` or the effective model catalog and requests streaming usage.
 3. Resolves Low, Medium, and High aliases to the base Grok 4.6 path and sends `reasoning_effort`; other model families are rejected.
 4. Preserves a leading system prompt and inserts a placeholder user turn only if the first conversation turn is missing or is not a user turn.
 5. Executes requests using a retry mechanism to handle transient failures.
 6. Streams final text and accumulates incremental tool call deltas until `finish_reason` is received.
-7. Reports token usage back to VS Code, including separately reported reasoning tokens, and separates cache hits from uncached input for cost estimates.
+7. Reports token usage back to VS Code via `LanguageModelDataPart` (MIME `usage`), including separately reported reasoning tokens, and separates cache hits from uncached input for cost estimates.
 
 ## Examples

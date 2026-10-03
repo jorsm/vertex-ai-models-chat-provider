@@ -66,7 +66,10 @@ export interface VertexModelProvider {
   /** Update labels to be sent with every request */
   setLabels(labels: Record<string, string>): void;
 
-  /** Send a minimal ping to verify model availability */
+  /** Resolve a catalog version to its backend model, excluding effort aliases. */
+  getDiscoveryModelId(modelVersion: string): string;
+
+  /** Ping without effort parameters; transient failures throw DiscoveryRetryableError. */
   pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean>;
 
   /**
