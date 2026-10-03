@@ -45,6 +45,7 @@ Each provider implements `getDiscoveryModelId(modelVersion)` using its inference
 - **Parallel Tool Execution**: Implementation of tool call buffering and message merging to satisfy Gemini's requirements for grouped function responses.
 - **Prompt Caching (Ephemeral)**: Automated caching strategy for Anthropic models to reduce latency and costs for long conversations by marking system prompts, tools, and long conversation histories for ephemeral caching.
 - **Billing labels**: Gemini requests use the `labels` generation configuration and Anthropic requests use the documented base64 JSON `X-Vertex-AI-Labels` header. These labels are forwarded to Cloud Billing only for PayGo usage. Grok currently logs resolved labels but does not attach them to its OpenAI-compatible request.
+- **Experimental Proxy Mode**: Providers (except Grok) support an enterprise proxy gateway that handles authentication via personal identity and server-controlled routing. When a `ProxyGateway` is provided during initialization, providers route inference through the proxy URL. The dispatcher fetches the complete catalog from the gateway without provider pings. Temporary pre-stream 429/503 failures receive at most two retries; partial streams are never restarted.
 
 ## API Reference
 
@@ -54,9 +55,9 @@ The `VertexAnthropicProvider` class implements the `VertexModelProvider` interfa
 
 #### initialize
 [source](../src/providers/VertexAnthropicProvider.ts)
-`initialize(projectId: string, region: string, authOptions?: any): void`
+`initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void`
 
-Sets the GCP Project ID and regional endpoint for the Anthropic Vertex client. If provided, `authOptions` are used to configure the underlying `GoogleAuth` instance with the necessary cloud-platform scopes.
+Sets the GCP Project ID and regional endpoint for the Anthropic Vertex client. If provided, `authOptions` are used to configure the underlying `GoogleAuth` instance with the necessary cloud-platform scopes. If a `gateway` is provided, the client is configured to route all requests through the proxy URL using the gateway's authentication client and fetch implementation, disabling SDK-level retries in favor of the shared provider retry logic.
 
 #### setLabels
 [source](../src/providers/VertexAnthropicProvider.ts)
@@ -86,7 +87,7 @@ Handles chat inference for Anthropic models. This method:
 3. Automatically applies cache control strategies:
     - **Static Prefix Caching**: Applies `ephemeral` caching to the system blocks or tool definitions.
     - **Chat History Caching**: Applies `ephemeral` caching to the second-to-last message in the history if the estimated total history exceeds 1024 tokens.
-4. Executes the request using a robust retry mechanism for transient API failures (such as 429 or 503) with a configurable maximum duration to ensure request resilience. The `maxOutputTokens` is derived from the optional `spec`.
+4. Executes the request using a robust retry mechanism for transient API failures (such as 429 or 503) with a configurable maximum duration to ensure request resilience. Requests are wrapped in a `cancellableRequest` that merges the VS Code cancellation token with the gateway's signal if available. The `maxOutputTokens` is derived from the optional `spec`.
 5. Manages streaming responses, reporting text deltas and tool call progress to VS Code after parsing partial JSON tool inputs. Signed `thinking`, `signature_delta`, and `redacted_thinking` data remains hidden, but complete content-block sequences are retained in a bounded in-memory cache and restored unchanged when VS Code returns tool results. Models that emit no thinking blocks use the same stream path without creating replay state.
 6. Captures and returns detailed usage statistics, including `input`, `output`, `cache_read`, and `cache_create` token metrics. It also reports these statistics back to VS Code via a `LanguageModelDataPart` (MIME type `usage`) containing `prompt_tokens`, `completion_tokens`, `total_tokens`, and `cached_tokens` to update the native Copilot Chat usage indicator.
 7. Attaches metadata labels (provided via the `labels` parameter or the provider's internal state) through `X-Vertex-AI-Labels`, enabling Google Cloud Billing attribution for Anthropic PayGo requests. The SDK request options preserve this custom header.
@@ -98,9 +99,9 @@ The `VertexGoogleProvider` class implements the `VertexModelProvider` interface 
 
 #### initialize
 [source](../src/providers/VertexGoogleProvider.ts)
-`initialize(projectId: string, region: string, authOptions?: any): void`
+`initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void`
 
-Sets the GCP Project ID and regional endpoint (e.g., `us-central1`) for the provider. It also initiates a dynamic schema discovery process to fetch the latest supported OpenAPI 3.0 schema keys from the Vertex AI Discovery API, ensuring tool definitions remain compatible with API updates. If provided, `authOptions` are stored and passed to the `GoogleGenAI` client during lazy initialization.
+Sets the GCP Project ID and regional endpoint (e.g., `us-central1`) for the provider. It also initiates a dynamic schema discovery process to fetch the latest supported OpenAPI 3.0 schema keys from the Vertex AI Discovery API, ensuring tool definitions remain compatible with API updates. If provided, `authOptions` are stored and passed to the `GoogleGenAI` client during lazy initialization. When initialized with a `gateway`, the provider configures the Gen AI client to route requests through the proxy gateway and skips direct schema discovery.
 
 #### setLabels
 [source](../src/providers/VertexGoogleProvider.ts)
@@ -142,7 +143,7 @@ Main entry point for chat inference. This method:
 3. Re-injects cached thought signatures into the conversation history for both **assistant text parts** and **tool call parts** to preserve reasoning quality. It also proactively sanitizes leaked reasoning headers from model turns in history.
 4. Merges consecutive tool result messages into a single user turn to satisfy Gemini API requirements for parallel tool calls.
 5. **Normalizes tool results** into JSON objects, wrapping primitive return values to comply with Gemini's `google.protobuf.Struct` requirement for function responses, and ensuring the function name is correctly associated with the response.
-6. Handles streaming responses with **automatic retries**, using a stateful `StreamPartProcessor` to isolate and strip multi-chunk leaked reasoning/thinking blocks while capturing text, tool calls, and `thoughtSignature` metadata. `maxOutputTokens` is applied from the `spec` if available.
+6. Handles streaming responses with **automatic retries**, incorporating proxy-specific retry and cancellation logic when available. It uses a stateful `StreamPartProcessor` to isolate and strip multi-chunk leaked reasoning/thinking blocks while capturing text, tool calls, and `thoughtSignature` metadata. `maxOutputTokens` is applied from the `spec` if available.
 7. Buffers parallel tool calls across the stream to ensure they are emitted to VS Code as a single atomic step, preventing turn-mismatch errors.
 8. Updates internal signature caches for both text reasoning (using a text-prefix key based on the first 120 characters) and tool calls (using unique call IDs).
 9. Tracks and returns detailed usage statistics including character counts and token usage metadata (input, output, and cache metrics). For Gemini, it correctly adjusts input tokens by subtracting cached content tokens to ensure accurate usage tracking, and reports the resulting payload to VS Code via `LanguageModelDataPart` (MIME `usage`).

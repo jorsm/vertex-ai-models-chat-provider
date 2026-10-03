@@ -97,6 +97,13 @@
     "configuration": {
       "title": "Google Agent Platform (Vertex AI)",
       "properties": {
+        "vertexAiChat.proxyUrl": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "order": 5,
+          "description": "Experimental enterprise Cloud Function proxy URL (HTTPS; loopback HTTP for tests). Uses your personal gcloud auth login identity and server-controlled model discovery. No client GCP project is needed. No direct fallback. Leave empty for direct Vertex. Configure in user settings, not workspace settings."
+        },
         "vertexAiChat.projectId": {
           "type": "string",
           "default": "",

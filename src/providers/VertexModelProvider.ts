@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { DiscoveryProbeOptions } from "../utils/discovery";
+import type { ProxyGateway } from "../ProxyGateway";
 
 export interface ModelUsageTokens {
   input: number;
@@ -61,7 +62,7 @@ export interface VertexModelProvider {
   vendor: string;
 
   /** Configure the provider with project and region */
-  initialize(projectId: string, region: string, authOptions?: any): void;
+  initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void;
 
   /** Update labels to be sent with every request */
   setLabels(labels: Record<string, string>): void;

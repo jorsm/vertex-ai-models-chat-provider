@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { Logger } from "./utils/Logger";
+import type { ModelSpec } from "./providers/VertexModelProvider";
 
 export interface PayloadCharacters {
   system: number;
@@ -48,11 +49,9 @@ export class UsageTrackerService {
    * @param tokens The fully populated token breakdown
    * @returns The total cost calculated based on the pricing map
    */
-  public async calculateCost(model: string, tokens: Required<TokenUsage>): Promise<number> {
-    // Retrieve the model from the effective catalog (workspace > user > bundled)
-    const catalog = await this.catalogResolver.getEffectiveCatalog();
-    const modelDef = catalog.candidateModels.find((m: any) => m.id === model);
-    const pricing = modelDef?.pricing;
+  public async calculateCost(model: string, tokens: Required<TokenUsage>, requestPricing?: ModelSpec["pricing"]): Promise<number> {
+    // Prefer prices captured for the request; otherwise use the active catalog.
+    const pricing = requestPricing ?? (await this.catalogResolver.getEffectiveCatalog()).candidateModels.find((m) => m.id === model)?.pricing;
 
     if (!pricing) {
       // Default to 0 or fallback pricing if the model is not found in the map
@@ -83,7 +82,7 @@ export class UsageTrackerService {
    * @param model The model ID used
    * @param usage The raw token usage object
    */
-  public async recordUsage(model: string, usage: TokenUsage): Promise<void> {
+  public async recordUsage(model: string, usage: TokenUsage, requestPricing?: ModelSpec["pricing"]): Promise<void> {
     const date = new Date();
 
     // Format YYYYMMDD using Local Time
@@ -103,7 +102,7 @@ export class UsageTrackerService {
       characters: usage.characters || { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 },
     };
 
-    const cost = await this.calculateCost(model, tokens);
+    const cost = await this.calculateCost(model, tokens, requestPricing);
 
     const logEntry: UsageLogEntry = {
       timestamp: date.toISOString(), // Standardizing on ISO-8601 UTC

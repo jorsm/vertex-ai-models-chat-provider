@@ -5,6 +5,8 @@ import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryabl
 import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
+import { ProxyGateway, isGatewayRetryable, normalizeGatewayError, gatewayRetryDelayMs } from "../ProxyGateway";
+import { requestCancellation, cancellableRequest } from "../utils/cancellation";
 
 export class VertexGoogleProvider implements VertexModelProvider {
   vendor = "google";
@@ -12,6 +14,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
   private projectId!: string;
   private region!: string;
   private authOptions?: any;
+  private gateway?: ProxyGateway;
   private labels: Record<string, string> = {};
   private readonly logger = new Logger("VertexGoogleProvider");
   /**
@@ -69,13 +72,16 @@ export class VertexGoogleProvider implements VertexModelProvider {
       });
   }
 
-  initialize(projectId: string, region: string, authOptions?: any): void {
+  initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void {
     this.projectId = projectId;
     this.region = region;
     this.authOptions = authOptions;
+    this.gateway = gateway;
+    this.thoughtSignatureCache.clear();
+    this.textSignatureCache.clear();
     // Clear the cached client so it gets re-created with new auth/project options on next use
     this.client = undefined;
-    this.discoverVertexSchemaKeys();
+    if (!gateway) { this.discoverVertexSchemaKeys(); }
   }
 
   setLabels(labels: Record<string, string>): void {
@@ -92,7 +98,9 @@ export class VertexGoogleProvider implements VertexModelProvider {
         vertexai: true,
         project: this.projectId,
         location: this.region,
-        googleAuthOptions: this.authOptions,
+        googleAuthOptions: this.gateway ? { authClient: this.gateway.authClient } : this.authOptions,
+        // In 2.6.0, omitting retryOptions disables SDK retries and preserves HTTP errors.
+        ...(this.gateway ? { httpOptions: { baseUrl: this.gateway.url, apiVersion: "v1" } } : {}),
       });
     }
     return this.client;
@@ -468,7 +476,9 @@ export class VertexGoogleProvider implements VertexModelProvider {
     labels?: Record<string, string>,
     spec?: ModelSpec,
   ): Promise<ChatInferenceResult> {
-    const { actualId, config } = this.resolveModelId(modelId);
+    const { actualId, config } = this.resolveModelId(spec?.version ?? modelId);
+    const gateway = this.gateway;
+    const cancellation = requestCancellation(token, gateway?.signal);
     this.logger.log(`▶ Google provideLanguageModelChatResponse called — requested: ${modelId} -> executed: ${actualId}, msgs: ${messages.length}`);
 
     const requestLabels = labels || this.labels;
@@ -485,6 +495,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
       const { mappedContents, systemInstruction } = this.extractMessages(messages, charCount, modelId, actualId);
 
       const generationConfig: any = { ...config };
+      generationConfig.abortSignal = cancellation.signal;
 
       if (spec?.maxOutputTokens) {
         generationConfig.maxOutputTokens = spec.maxOutputTokens;
@@ -509,14 +520,15 @@ export class VertexGoogleProvider implements VertexModelProvider {
 
       const client = await this.getClient();
       const stream = await withRetry<AsyncIterable<any>>(
-        () =>
+        () => cancellableRequest(() =>
           client.models.generateContentStream({
             model: actualId,
             contents: mappedContents,
             config: generationConfig,
-          }),
+          }), cancellation.signal),
         {
           token: token,
+          ...(gateway ? { maxRetries: 2, maxRetryDurationMs: 60_000, shouldRetry: isGatewayRetryable, retryDelayMs: gatewayRetryDelayMs } : {}),
         },
       );
 
@@ -524,8 +536,8 @@ export class VertexGoogleProvider implements VertexModelProvider {
       const bufferedCalls: Array<{ callId: string; callName: string; args: any; signature?: string }> = [];
 
       for await (const chunk of stream) {
-        if (token.isCancellationRequested) {
-          break;
+        if (cancellation.signal.aborted) {
+          throw new vscode.CancellationError();
         }
 
         const rawParts: any[] | undefined = chunk.candidates?.[0]?.content?.parts;
@@ -555,6 +567,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
         }
       }
 
+      if (cancellation.signal.aborted) { throw new vscode.CancellationError(); }
       // Emit all buffered function calls together so VS Code groups them into
       // a single model turn, matching the API's parallel-call expectations.
       if (bufferedCalls.length > 0) {
@@ -604,9 +617,13 @@ export class VertexGoogleProvider implements VertexModelProvider {
         charCount,
       };
     } catch (e: any) {
+      if (cancellation.signal.aborted) { throw new vscode.CancellationError(); }
+      if (gateway) { throw normalizeGatewayError(e); }
       this.logger.log(`  ❌ Google provideLanguageModelChatResponse error: ${e}`);
       checkAuthError(e);
       throw e;
+    } finally {
+      cancellation.dispose();
     }
   }
 }

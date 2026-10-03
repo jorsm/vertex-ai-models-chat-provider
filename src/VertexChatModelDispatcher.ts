@@ -3,6 +3,7 @@ import * as util from "util";
 import { setMaxListeners } from "events";
 import * as vscode from "vscode";
 import { AuthManager } from "./AuthManager";
+import { ProxyGateway, GatewayError } from "./ProxyGateway";
 import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { VertexAnthropicProvider } from "./providers/VertexAnthropicProvider";
 import { VertexGoogleProvider } from "./providers/VertexGoogleProvider";
@@ -26,6 +27,12 @@ export interface DiscoveryResult {
 
 export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvider {
   private projectId: string;
+  private gateway?: ProxyGateway;
+  private directDiscoveryController?: AbortController;
+  private authSubscription?: vscode.Disposable;
+  private connectionRevision = 0;
+  public getConnectionRevision(): number { return this.connectionRevision; }
+  public dispose(): void { this.resetConnection(); this.authSubscription?.dispose(); this._onDidChange.dispose(); }
   private region = "global";
   private availableModels: ModelSpec[] = [];
   private readonly activeProviders: Map<string, VertexModelProvider> = new Map();
@@ -49,11 +56,13 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     this.usageTracker = usageTracker;
     this.authManager = authManager;
     this.catalogResolver = catalogResolver;
+    this.catalogResolver.setProxyCatalog?.(this.getProxyUrl() ? [] : undefined);
     this.registerProviders();
     this._labelsPromise = this.updateLabels();
 
     // Re-resolve identity and update labels when authentication changes
-    this.authManager.onAuthUpdated(() => {
+    this.authSubscription = this.authManager.onAuthUpdated(() => {
+      this.resetConnection();
       this.updateLabels().catch((err) => this.logger.log(`⚠️ Failed to update labels on auth change: ${err}`));
     });
   }
@@ -80,12 +89,15 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   }
 
   private async _updateLabelsImpl(): Promise<void> {
+    const revision = this.connectionRevision;
     const config = vscode.workspace.getConfiguration("vertexAiChat");
     const enableUser = config.get<boolean>("enableUserLabel");
 
     this.cachedUserEmail = undefined;
-    if (enableUser) {
-      this.cachedUserEmail = await this.authManager.getIdentity();
+    if (enableUser && !this.getProxyUrl()) {
+      const identity = await this.authManager.getIdentity();
+      if (revision !== this.connectionRevision) { return; }
+      this.cachedUserEmail = identity;
     }
 
     // Still push the user label to providers as a baseline
@@ -148,24 +160,76 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
   // ── Discovery ───────────────────────────────────────────────────────────
 
+  /** Only user/machine configuration may select an authenticated destination. */
+  public getProxyUrl(): string {
+    const setting = vscode.workspace.getConfiguration("vertexAiChat").inspect<string>("proxyUrl");
+    return setting?.globalValue?.trim() || setting?.defaultValue?.trim() || "";
+  }
+
+  public resetConnection(): void {
+    this.connectionRevision++;
+    this.gateway?.dispose();
+    this.gateway = undefined;
+    this.directDiscoveryController?.abort();
+    this.directDiscoveryController = undefined;
+    this.authManager.clearProxyToken?.();
+    this._discoveryPromise = null;
+    this.catalogResolver.setProxyCatalog?.(this.getProxyUrl() ? [] : undefined);
+    this.clearModels();
+    this.discoveryDone = false;
+  }
+
   discoverModelsAndRegion(): Promise<DiscoveryResult> {
     if (!this._discoveryPromise) {
-      this._discoveryPromise = this._discoverModelsAndRegionImpl().finally(() => {
-        this._discoveryPromise = null;
-      });
+      const promise = this._discoverModelsAndRegionImpl(this.connectionRevision);
+      this._discoveryPromise = promise;
+      void promise.finally(() => {
+        if (this._discoveryPromise === promise) { this._discoveryPromise = null; }
+      }).catch(() => {});
     }
     return this._discoveryPromise;
   }
 
-  private async _discoverModelsAndRegionImpl(): Promise<DiscoveryResult> {
-    const catalog = await this.catalogResolver.getEffectiveCatalog();
-    const candidates = catalog.candidateModels;
-    const regions = catalog.regionPriority;
+  private async _discoverModelsAndRegionImpl(revision: number): Promise<DiscoveryResult> {
     const probeTimeoutMs = resolveDiscoveryTimeoutMs(
       vscode.workspace.getConfiguration("vertexAiChat").get<number>("modelDiscoveryTimeoutSeconds", DISCOVERY_PROBE_TIMEOUT_MS / 1000),
     );
 
+    const proxyUrl = this.getProxyUrl();
+    if (revision !== this.connectionRevision) { throw new Error("Configuration changed during discovery."); }
+    if (proxyUrl) {
+      this.gateway?.dispose();
+      const gateway = new ProxyGateway(proxyUrl, () => this.authManager.getProxyIdToken());
+      this.gateway = gateway;
+      this.availableModels = [];
+      this.discoveryDone = false;
+      this._onDidChange.fire();
+      try {
+        const available = await gateway.discover(probeTimeoutMs, gateway.signal);
+        if (revision !== this.connectionRevision || gateway.signal.aborted) {
+          throw new GatewayError("Proxy configuration changed. Refresh Models before continuing.");
+        }
+        for (const vendor of ["google", "anthropic"]) {
+          this.activeProviders.get(vendor)?.initialize("gateway", "global", undefined, gateway);
+        }
+        this.region = "proxy";
+        this.availableModels = available;
+        this.catalogResolver.setProxyCatalog?.(available);
+        this.discoveryDone = true;
+        this._onDidChange.fire();
+        return { region: "proxy", availableModels: available };
+      } catch (error) {
+        if (revision === this.connectionRevision) { this.clearModels(); }
+        throw error;
+      }
+    }
+
+    const catalog = await this.catalogResolver.getEffectiveCatalog();
+    if (revision !== this.connectionRevision) { throw new Error("Configuration changed during discovery."); }
+    const candidates = catalog.candidateModels;
+    const regions = catalog.regionPriority;
     const authOptions = await this.authManager.getResolvedAuthOptions();
+    if (revision !== this.connectionRevision) { throw new Error("Configuration changed during discovery."); }
     /*
      * Resolve project ID: Strictly use the workspace setting.
      *
@@ -220,6 +284,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const probeTargets = [...targets.values()];
 
     for (const region of regions) {
+      if (revision !== this.connectionRevision) { throw new Error("Configuration changed during discovery."); }
       this.logger.log(`  Probing region "${region}" (${probeTargets.length} unique model endpoints for ${candidates.length} catalog entries)…`);
 
       // Initialize each active provider once for this region
@@ -229,11 +294,15 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
       // Probe each endpoint once and share its result with all catalog variants.
       const regionController = new AbortController();
+      this.directDiscoveryController = regionController;
       setMaxListeners(probeTargets.length + 1, regionController.signal);
       const probeTarget = async ({ provider, modelId, models }: typeof probeTargets[number]) => {
         try {
           const ok = await probeWithRetries(
-            (options) => provider.pingModel(modelId, options),
+            (options) => {
+              regionController.signal.throwIfAborted();
+              return provider.pingModel(modelId, options);
+            },
             regionController.signal,
             (reachable) => this.logger.log(`  ⏱️ Ping timed out for ${modelId} in ${region} after ${probeTimeoutMs}ms; ${reachable ? "keeping" : "skipping"} ${models.length} catalog entries.`),
             probeTimeoutMs,
@@ -259,8 +328,10 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
       } finally {
         // Also stop sibling probes when an authentication failure aborts discovery.
         regionController.abort();
+        if (this.directDiscoveryController === regionController) { this.directDiscoveryController = undefined; }
       }
 
+      if (revision !== this.connectionRevision) { throw new Error("Configuration changed during discovery."); }
       const reachableModels = new Set(results.flat());
       const available = candidates.filter((model) => reachableModels.has(model));
 
@@ -290,7 +361,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
   setProjectId(projectId: string): void {
     this.projectId = projectId;
-    this.discoveryDone = false;
+    this.resetConnection();
   }
 
   /**
@@ -299,6 +370,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
    */
   public clearModels(): void {
     this.availableModels = [];
+    if (this.getProxyUrl()) { this.catalogResolver.setProxyCatalog?.([]); }
     this.discoveryDone = true;
     this._onDidChange.fire();
     this.logger.log("🚫 Available models cleared due to error.");
@@ -312,7 +384,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
   private async mapModels(): Promise<vscode.LanguageModelChatInformation[]> {
     const catalog = await this.catalogResolver.getEffectiveCatalog();
-    const models = this.discoveryDone || this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels;
+    const models = this.getProxyUrl() || this.discoveryDone || this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels;
 
     // Check if we are running in VS Code 1.120 or higher
     const versionParts = vscode.version.split(".");
@@ -426,34 +498,49 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
     token: vscode.CancellationToken,
   ): Promise<void> {
+    await this.infer(model.id, messages, options, progress, token, vscode.window.activeTextEditor?.document.uri);
+  }
+
+  public async inferCommit(
+    messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions,
+    progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, resource: vscode.Uri,
+  ): Promise<void> {
+    if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
+    if (!this.discoveryDone && !this._discoveryPromise) { void this.discoverModelsAndRegion().catch(() => {}); }
     await this.waitForDiscovery(token);
-    if (this._labelsPromise) {
-      await this._labelsPromise;
-    }
+    const model = this.availableModels.find((entry) => entry.vendor === "google" && entry.id === "gemini-3-flash-preview")
+      ?? this.availableModels.find((entry) => entry.vendor === "google");
+    if (!model) { throw new Error("No allowed Gemini model is available for commit generation. Refresh Models."); }
+    await this.infer(model.id, messages, options, progress, token, resource);
+  }
 
-    const modelId = model.id;
+  public async infer(
+    modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[],
+    options: vscode.ProvideLanguageModelChatResponseOptions,
+    progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken,
+    resource?: vscode.Uri,
+  ): Promise<void> {
+    if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
+    if (this.getProxyUrl() && !this.discoveryDone && !this._discoveryPromise) {
+      void this.discoverModelsAndRegion().catch(() => {});
+    }
+    await this.waitForDiscovery(token);
+    const revision = this.connectionRevision;
+    if (this._labelsPromise) { await this._labelsPromise; }
     const catalog = await this.catalogResolver.getEffectiveCatalog();
-    const spec = (this.discoveryDone || this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels).find((m: ModelSpec) => m.id === modelId);
-
-    this.logger.log(`▶ provideLanguageModelChatResponse called — model: ${modelId}, region: ${this.region}, vendor: ${spec?.vendor}, messages: ${messages.length}`);
-
-    if (!spec) {
-      this.logger.log(`  ❌ Model ID ${modelId} not found in available models catalog`);
-      throw new Error(`Model not available: ${modelId}`);
-    }
-
+    if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
+    if (revision !== this.connectionRevision) { throw new Error("Configuration changed before inference. Refresh Models."); }
+    const spec = (this.getProxyUrl() || this.discoveryDone || this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels).find((m: ModelSpec) => m.id === modelId);
+    if (!spec) { throw new Error(`Model not available: ${modelId}. Refresh Models or select an allowed model.`); }
     const provider = this.activeProviders.get(spec.vendor);
-    if (!provider) {
-      this.logger.log(`  ❌ No plugin provider found for vendor ${spec.vendor}`);
-      throw new Error(`Integration for vendor ${spec.vendor} is not registered.`);
+    if (!provider || (this.getProxyUrl() && !["google", "anthropic"].includes(spec.vendor))) {
+      throw new Error(`Integration for vendor ${spec.vendor} is not available in this mode.`);
     }
-
     // Resolve labels for this specific request (resource-aware)
-    const activeEditor = vscode.window.activeTextEditor;
-    const config = vscode.workspace.getConfiguration("vertexAiChat", activeEditor?.document.uri);
+    const config = vscode.workspace.getConfiguration("vertexAiChat", resource);
     const requestLabels: Record<string, string> = {};
 
-    if (config.get<boolean>("enableUserLabel")) {
+    if (config.get<boolean>("enableUserLabel") && !this.getProxyUrl()) {
       // 0. Check for a custom user label value in settings
       let userLabelValue = this.getValidLabelValue(config.get<string>("userLabelValue"));
 
@@ -475,16 +562,17 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     if (config.get<boolean>("enableProjectLabel")) {
       // 0. Check for a custom project label value in settings (Workspace/Folder level only)
       const inspection = config.inspect<string>("projectLabelValue");
-      let projectLabelValue = this.getValidLabelValue(inspection?.workspaceValue || inspection?.workspaceFolderValue);
+      let projectLabelValue = this.getValidLabelValue(inspection?.workspaceFolderValue || inspection?.workspaceValue);
 
       if (!projectLabelValue) {
         // 1. Try to use the workspace name (e.g. from .code-workspace file)
-        projectLabelValue = this.getValidLabelValue(vscode.workspace.name);
+        const folder = resource ? vscode.workspace.getWorkspaceFolder(resource) : undefined;
+        projectLabelValue = this.getValidLabelValue(vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 1 ? folder?.name : vscode.workspace.name);
 
         if (!projectLabelValue) {
           // 2. Fallback to the active editor's workspace folder
-          if (activeEditor) {
-            projectLabelValue = this.getValidLabelValue(vscode.workspace.getWorkspaceFolder(activeEditor.document.uri)?.name);
+          if (resource) {
+            projectLabelValue = this.getValidLabelValue(vscode.workspace.getWorkspaceFolder(resource)?.name);
           }
         }
 
@@ -509,14 +597,14 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
       this.logger.log(`  ✅ Successfully completed request via plugin ${provider.vendor}`);
 
       if (result.usage.input > 0 || result.usage.output > 0) {
-        this.usageTracker
+        await this.usageTracker
           .recordUsage(modelId, {
             input: result.usage.input,
             output: result.usage.output,
             cache_read: result.usage.cache_read,
             cache_create: result.usage.cache_create,
             characters: result.charCount,
-          })
+          }, spec.pricing)
           .catch((err) => this.logger.log(`  ⚠️ Failed to record usage: ${err}`));
       }
     } catch (e) {

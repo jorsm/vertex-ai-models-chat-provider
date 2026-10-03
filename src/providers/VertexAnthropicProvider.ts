@@ -7,6 +7,8 @@ import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
 import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, resolveClaudeModelId } from "./ClaudeThinking";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
+import { ProxyGateway, isGatewayRetryable, normalizeGatewayError, gatewayRetryDelayMs } from "../ProxyGateway";
+import { requestCancellation, cancellableRequest } from "../utils/cancellation";
 
 // ─── Provider Plugin ───────────────────────────────────────────────────────
 
@@ -17,15 +19,21 @@ export class VertexAnthropicProvider implements VertexModelProvider {
   private region!: string;
   private labels: Record<string, string> = {};
   private readonly logger = new Logger("VertexAnthropicProvider");
-  private readonly thinkingReplayCache = new ClaudeThinkingReplayCache();
+  private thinkingReplayCache = new ClaudeThinkingReplayCache();
+  private gateway?: ProxyGateway;
 
-  initialize(projectId: string, region: string, authOptions?: any): void {
+  initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void {
     this.projectId = projectId;
     this.region = region;
+    this.gateway = gateway;
+    this.thinkingReplayCache = new ClaudeThinkingReplayCache();
     this.client = new AnthropicVertex({
       projectId: this.projectId,
       region: this.region,
-      ...(authOptions
+      ...(gateway ? {
+        baseURL: `${gateway.url}/v1`, authClient: gateway.authClient,
+        fetch: gateway.fetch as any, maxRetries: 0,
+      } : authOptions
         ? {
             googleAuth: new GoogleAuth({
               ...authOptions,
@@ -88,14 +96,16 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     labels?: Record<string, string>,
     spec?: ModelSpec,
   ): Promise<ChatInferenceResult> {
+    const gateway = this.gateway;
+    const cancellation = requestCancellation(token, gateway?.signal);
     const { actualId, effort, requestConfig } = resolveClaudeModelId(spec?.version ?? modelId);
     this.logger.log(`▶ Anthropic Plugin provideLanguageModelChatResponse called — requested: ${modelId} -> executed: ${actualId}${effort ? ` (${effort} effort)` : ""}, region: ${this.region}, messages: ${messages.length}`);
 
     const requestLabels = labels || this.labels;
-    const requestOptions =
+    const requestOptions = { signal: cancellation.signal, ...(
       Object.keys(requestLabels).length > 0
         ? { headers: { "X-Vertex-AI-Labels": Buffer.from(JSON.stringify(requestLabels), "utf8").toString("base64") } }
-        : undefined;
+        : {}), ...(gateway ? { maxRetries: 0 } : {}) };
     if (Object.keys(requestLabels).length > 0) {
       this.logger.log(`  🏷️  Labels: ${JSON.stringify(requestLabels)}`);
     }
@@ -114,7 +124,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
       this.logMappedMessages(actualId, mappedMessages, systemBlocks, tools, maxTokens);
 
       const stream = await withRetry<any>(
-        () =>
+        () => cancellableRequest(() =>
           this.client.messages.create({
             model: actualId,
             messages: mappedMessages,
@@ -123,15 +133,17 @@ export class VertexAnthropicProvider implements VertexModelProvider {
             ...requestConfig,
             ...(systemBlocks ? { system: systemBlocks } : {}),
             ...(tools?.length ? { tools } : {}),
-          } as any, requestOptions),
+          } as any, requestOptions), cancellation.signal),
         {
           token: token,
+          ...(gateway ? { maxRetries: 2, maxRetryDurationMs: 60_000, shouldRetry: isGatewayRetryable, retryDelayMs: gatewayRetryDelayMs } : {}),
         },
       );
 
       this.logger.log(`  Stream created successfully`);
 
-      const usage = await this.processStream(stream, charCount, progress, token);
+      const usage = await this.processStream(stream, charCount, progress, token, cancellation.signal);
+      if (cancellation.signal.aborted) { throw new vscode.CancellationError(); }
 
       // Report token usage to VS Code (MIME type 'usage') for Copilot Chat indicator
       if (typeof vscode.LanguageModelDataPart !== "undefined") {
@@ -154,9 +166,13 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
       return { usage, charCount };
     } catch (e: any) {
+      if (cancellation.signal.aborted) { throw new vscode.CancellationError(); }
+      if (gateway) { throw normalizeGatewayError(e); }
       this.logger.log(`  ❌ Anthropic provideLanguageModelChatResponse error: ${e}`);
       checkAuthError(e);
       throw e;
+    } finally {
+      cancellation.dispose();
     }
   }
 
@@ -406,13 +422,14 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
   // ── Stream processing ─────────────────────────────────────────────────
 
-  private async processStream(stream: AsyncIterable<any>, charCount: { assistant_text: number; tool_use: number }, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken): Promise<{ input: number; output: number; cache_read: number; cache_create: number }> {
+  private async processStream(stream: AsyncIterable<any>, charCount: { assistant_text: number; tool_use: number }, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, signal?: AbortSignal): Promise<{ input: number; output: number; cache_read: number; cache_create: number }> {
     const contentAccumulator = new ClaudeStreamContentAccumulator();
     const tokenUsage = { input: 0, output: 0, cache_read: 0, cache_create: 0 };
     let chunkCount = 0;
     let cancelled = false;
 
     for await (const chunk of stream) {
+      if (signal?.aborted) { throw new vscode.CancellationError(); }
       chunkCount++;
       if (token.isCancellationRequested) {
         this.logger.log(`  Cancelled after ${chunkCount} chunks`);
@@ -422,6 +439,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
       this.handleStreamChunk(chunk, charCount, progress, contentAccumulator, tokenUsage);
     }
 
+    if (signal?.aborted) { throw new vscode.CancellationError(); }
     if (!cancelled) {
       const replay = contentAccumulator.createThinkingReplay();
       if (replay) {

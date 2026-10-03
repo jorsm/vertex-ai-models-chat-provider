@@ -1,9 +1,6 @@
 import * as vscode from "vscode";
-import { VertexGoogleProvider } from "./providers/VertexGoogleProvider";
-import { UsageTrackerService } from "./UsageTrackerService";
+import type { VertexChatModelDispatcher } from "./VertexChatModelDispatcher";
 import { Logger } from "./utils/Logger";
-
-const MODEL_ID = "gemini-3-flash-preview";
 
 export const DEFAULT_SYSTEM_PROMPT = `You are an expert Principal Software Engineer and a strict adherent to clean Git history. Your task is to analyze \`git diff\` outputs and generate professional, highly accurate commit messages following the Conventional Commits specification.
 
@@ -108,7 +105,7 @@ export function resolveCommitMessageResourceUri(context?: CommitMessageCommandCo
  * Collects staged diffs, sends them to the LLM, and writes the generated
  * commit message into the SCM input box.
  */
-export async function generateCommitMessage(provider: VertexGoogleProvider, usageTracker: UsageTrackerService, context?: CommitMessageCommandContext): Promise<void> {
+export async function generateCommitMessage(provider: VertexChatModelDispatcher, context?: CommitMessageCommandContext): Promise<void> {
   const git = await getGitAPI();
   if (!git) {
     const remoteContext = vscode.env.remoteName ? ` in this ${vscode.env.remoteName} remote window` : " in this extension host";
@@ -159,7 +156,7 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
   }
 
   const combinedDiff = diffParts.join("\n");
-  logger.log(`── Sending ${combinedDiff.length} chars of diff to ${MODEL_ID}…`);
+  logger.log(`── Sending ${combinedDiff.length} chars of diff to an available Gemini model…`);
 
   const config = vscode.workspace.getConfiguration("vertexAiChat", repo.rootUri ?? resourceUri);
   const customPrompt = config.get<string>("commitMessagePrompt")?.trim();
@@ -176,7 +173,8 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
     tools: [],
     toolMode: vscode.LanguageModelChatToolMode.Auto,
   };
-  const token = new vscode.CancellationTokenSource().token;
+  const cancellation = new vscode.CancellationTokenSource();
+  const token = cancellation.token;
 
   repo.inputBox.value = "⏳ Generating commit message…";
 
@@ -191,25 +189,24 @@ export async function generateCommitMessage(provider: VertexGoogleProvider, usag
   };
 
   try {
-    const result = await provider.provideLanguageModelChatResponse(MODEL_ID, messages, options, progress, token);
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Generating commit message", cancellable: true }, async (_progress, progressToken) => {
+      const subscription = progressToken.onCancellationRequested(() => cancellation.cancel());
+      try {
+        if (progressToken.isCancellationRequested) { cancellation.cancel(); }
+        await provider.inferCommit(messages, options, progress, token, repo.rootUri);
+      } finally { subscription.dispose(); }
+    });
     commitMessage = commitMessage.trim();
     logger.log(`✅ Generated: ${commitMessage}`);
     repo.inputBox.value = commitMessage;
 
-    if (result.usage.input > 0 || result.usage.output > 0) {
-      usageTracker
-        .recordUsage(MODEL_ID, {
-          input: result.usage.input,
-          output: result.usage.output,
-          cache_read: result.usage.cache_read,
-          cache_create: result.usage.cache_create,
-          characters: result.charCount,
-        })
-        .catch((err) => logger.log(`⚠️ Failed to record usage: ${err}`));
-    }
   } catch (e) {
     logger.log(`❌ LLM call failed: ${e}`);
     repo.inputBox.value = "";
-    vscode.window.showErrorMessage(`Vertex AI Models Chat Provider: Failed to generate commit message — ${e}`);
+    if (!(e instanceof vscode.CancellationError)) {
+      vscode.window.showErrorMessage(`Vertex AI Models Chat Provider: Failed to generate commit message — ${e}`);
+    }
+  } finally {
+    cancellation.dispose();
   }
 }

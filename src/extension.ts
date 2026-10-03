@@ -8,6 +8,7 @@ import { UsageTrackerService } from "./UsageTrackerService";
 import { VertexChatModelDispatcher } from "./VertexChatModelDispatcher";
 import { Logger } from "./utils/Logger";
 import { VertexAuthenticationError } from "./utils/retry";
+import { GatewayError } from "./ProxyGateway";
 
 export async function activate(context: vscode.ExtensionContext) {
   // Initialize the logger
@@ -42,6 +43,10 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(costStatusBar);
 
   const provider = new VertexChatModelDispatcher(projectId, usageTracker, authManager, catalogResolver);
+  context.subscriptions.push(provider);
+  context.subscriptions.push(provider.onDidChangeLanguageModelChatInformation(() => {
+    costStatusBar.updateStatusBar().catch((err) => Logger.getLogger("extension").log(`Status bar discovery refresh failed: ${err}`));
+  }));
 
   // Register dashboard command
   context.subscriptions.push(
@@ -102,7 +107,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register command for SCM "Generate Commit Message" button in the CHANGES toolbar
   context.subscriptions.push(
     vscode.commands.registerCommand("vertexAiChat.generateCommitMessage", (commandContext?: vscode.Uri | vscode.SourceControl) =>
-      generateCommitMessage(provider.getGoogleProvider(), usageTracker, commandContext),
+      generateCommitMessage(provider, commandContext),
     ),
   );
 
@@ -153,6 +158,7 @@ export async function activate(context: vscode.ExtensionContext) {
     refreshTimer = setTimeout(() => {
       refreshTimer = null;
       catalogResolver.invalidateCache();
+      provider.resetConnection();
       costStatusBar.updateStatusBar().catch((err) => Logger.getLogger("extension").log(`⚠️ Status bar catalog refresh failed: ${err}`));
       runDiscovery(provider, authManager).catch((err) => Logger.getLogger("extension").log(`⚠️ Catalog refresh discovery failed: ${err}`));
     }, 300);
@@ -183,13 +189,14 @@ export async function activate(context: vscode.ExtensionContext) {
   // Re-run discovery when projectId setting changes
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(async (e) => {
-      if (e.affectsConfiguration("vertexAiChat.projectId")) {
+      if (e.affectsConfiguration("vertexAiChat.projectId") || e.affectsConfiguration("vertexAiChat.proxyUrl")) {
         const newConfig = vscode.workspace.getConfiguration("vertexAiChat");
         const newProjectId = newConfig.get<string>("projectId") || "";
         if (newProjectId) {
           vscode.window.showInformationMessage(`Google Agent Platform: Project changed to "${newProjectId}". Re-discovering models…`);
         }
         provider.setProjectId(newProjectId);
+        await provider.updateLabels();
         await runDiscovery(provider, authManager);
       }
       if (e.affectsConfiguration("vertexAiChat.enableUserLabel") || e.affectsConfiguration("vertexAiChat.enableProjectLabel")) {
@@ -207,21 +214,28 @@ export async function activate(context: vscode.ExtensionContext) {
  * @param authManager The authentication manager for resolving credentials.
  */
 async function runDiscovery(provider: VertexChatModelDispatcher, authManager: AuthManager): Promise<void> {
+  const revision = provider.getConnectionRevision();
   try {
     const result = await provider.discoverModelsAndRegion();
+    if (revision !== provider.getConnectionRevision()) { return; }
     if (result.availableModels.length > 0) {
       // Success: notify user of available models and the selected region
       const names = result.availableModels.map((m) => m.displayName).join(", ");
       vscode.window.showInformationMessage(`Google Agent Platform: ${result.availableModels.length} model(s) available via ${result.region}: ${names}`);
     } else {
       // No models found: warn user to check their project configuration
-      vscode.window.showWarningMessage("Google Agent Platform: No models available. Check your Google Cloud Model Garden setup.");
+      vscode.window.showWarningMessage(provider.getProxyUrl()
+        ? "Vertex AI proxy: The server returned no available models. Check the proxy policy."
+        : "Google Agent Platform: No models available. Check your Google Cloud Model Garden setup.");
     }
   } catch (e: any) {
+    if (revision !== provider.getConnectionRevision()) { return; }
     // Clear any stale model list to prevent "silent fallbacks" in the chat UI
     provider.clearModels();
 
-    if (e instanceof AuthConfigurationError) {
+    if (e instanceof GatewayError) {
+      vscode.window.showErrorMessage(`Vertex AI proxy: ${e.message}`);
+    } else if (e instanceof AuthConfigurationError) {
       const selectAction = "Select Authentication Method";
       const selection = await vscode.window.showErrorMessage(e.message, selectAction);
       if (selection === selectAction && (await authManager.selectAuthMethod())) {

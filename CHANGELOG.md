@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Experimental
+
+- Optional `vertexAiChat.proxyUrl` for a Python Cloud Function gateway, with personal Google CLI ID tokens, a complete server catalog (variants, capabilities, limits and prices) and no direct fallback. Gemini and Claude only in proxy mode.
+- Share chat/commit routing, repository-scoped project labels and usage accounting. Connect cancellation to both SDK transports and preserve native streaming/tool signatures.
+- Offline integration coverage against the locked SDK versions. Actual function/IAM authentication and VS Code extension-host verification remain mandatory before release; see `docs/proxy-implementation-plan.md`.
+
 ### Changed
 
 - Probe each distinct model endpoint once per region during discovery, sharing availability across its effort variants and omitting effort parameters from discovery requests.

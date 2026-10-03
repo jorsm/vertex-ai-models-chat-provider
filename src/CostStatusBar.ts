@@ -44,7 +44,9 @@ export class CostStatusBar implements vscode.Disposable {
   public async updateStatusBar(): Promise<void> {
     try {
       const todayCost = await this.usageTracker.getTodayTotalCost();
-      const identity = await this.authManager.getIdentity();
+      const endpointSetting = vscode.workspace.getConfiguration("vertexAiChat").inspect<string>("proxyUrl");
+      const proxy = endpointSetting?.globalValue?.trim() || endpointSetting?.defaultValue?.trim();
+      const identity = proxy ? undefined : await this.authManager.getIdentity();
       const activeMethod = this.authManager.getActiveMethod();
       const config = vscode.workspace.getConfiguration("vertexAiChat");
 
@@ -65,7 +67,10 @@ export class CostStatusBar implements vscode.Disposable {
       let icon = "$(pulse)"; // Default
       let methodDesc = "Default (ADC)";
 
-      if (activeMethod) {
+      if (proxy) {
+        icon = "$(cloud)";
+        methodDesc = "Proxy: personal gcloud login";
+      } else if (activeMethod) {
         if (activeMethod.type === "secret") {
           icon = "$(key)";
           methodDesc = `Secret: ${activeMethod.value}`;
@@ -85,20 +90,21 @@ export class CostStatusBar implements vscode.Disposable {
         catalogDesc = "Workspace Override (`.vscode/models.json`)";
       } else if (catalogSource === "user") {
         catalogDesc = "User Override";
+      } else if (catalogSource === "proxy") {
+        catalogDesc = "Server Catalog";
       }
 
       // Format to 2 decimal places with $
       const formattedCost = `$${todayCost.toFixed(2)}`;
       this.statusBarItem.text = `${icon} Today: ${formattedCost}`;
 
-      const identityText = identity ? `**Account:** ${identity}` : "**Account:** Not signed in (using ADC)";
+      const identityText = proxy ? "**Account:** Personal CLI account; verified by the proxy" : identity ? `**Account:** ${identity}` : "**Account:** Not signed in (using ADC)";
 
       const tooltip = new vscode.MarkdownString();
       tooltip.appendMarkdown(`### Vertex AI Usage\n\n`);
       tooltip.appendMarkdown(`**Today's Cost:** ${formattedCost}\n\n`);
       tooltip.appendMarkdown(`---\n\n`);
-      tooltip.appendMarkdown(`**Project:** \`${projectId || "(Unset)"}\`\n`);
-      tooltip.appendMarkdown(`*Source: ${projectSource}*\n\n`);
+      tooltip.appendMarkdown(proxy ? "**Project:** Managed by the proxy\n\n" : `**Project:** \`${projectId || "(Unset)"}\`\n*Source: ${projectSource}*\n\n`);
       tooltip.appendMarkdown(`**Auth Method:** ${methodDesc}\n\n`);
       tooltip.appendMarkdown(`**Model Catalog:** ${catalogDesc}\n\n`);
       tooltip.appendMarkdown(`${identityText}\n\n`);

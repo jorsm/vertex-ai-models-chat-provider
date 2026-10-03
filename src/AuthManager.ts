@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as util from "util";
 import * as vscode from "vscode";
 import { Logger } from "./utils/Logger";
+import { GatewayError } from "./ProxyGateway";
 
 const execFileAsync = util.promisify(childProcess.execFile);
 
@@ -39,6 +40,57 @@ interface ServiceAccountCredentials {
 }
 
 export class AuthManager {
+  private proxyToken?: { token: string; expires: number };
+  private proxyTokenPromise?: Promise<string>;
+  private proxyTokenRevision = 0;
+
+  public clearProxyToken(): void {
+    this.proxyToken = undefined;
+    this.proxyTokenRevision++;
+    this.proxyTokenPromise = undefined;
+  }
+
+  /** Developer POC: explicitly uses the personal CLI identity, separately from Vertex ADC/SA. */
+  public getProxyIdToken(): Promise<string> {
+    if (this.proxyToken && this.proxyToken.expires > Date.now()) {
+      return Promise.resolve(this.proxyToken.token);
+    }
+    if (!this.proxyTokenPromise) {
+      const promise = this.acquireProxyIdToken(this.proxyTokenRevision);
+      this.proxyTokenPromise = promise;
+      void promise.finally(() => {
+        if (this.proxyTokenPromise === promise) { this.proxyTokenPromise = undefined; }
+      }).catch(() => {});
+    }
+    return this.proxyTokenPromise;
+  }
+
+  private async acquireProxyIdToken(revision: number): Promise<string> {
+    try {
+      const command = process.platform === "win32" ? "cmd.exe" : "gcloud";
+      const args = process.platform === "win32"
+        ? ["/d", "/s", "/c", "gcloud.cmd auth print-identity-token --quiet --verbosity=error"]
+        : ["auth", "print-identity-token", "--quiet", "--verbosity=error"];
+      const result = await execFileAsync(command, args, {
+        timeout: 30_000, maxBuffer: 64 * 1024,
+        env: { ...process.env, CLOUDSDK_CORE_DISABLE_PROMPTS: "true", CLOUDSDK_CORE_DISABLE_FILE_LOGGING: "true", CLOUDSDK_CORE_LOG_HTTP: "false" },
+      });
+      const token = result.stdout.trim();
+      const parts = token.split(".");
+      if (parts.length !== 3) { throw new Error(); }
+      // Local shape checks only. Signature/authorization are verified by the gateway.
+      const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+      if (revision !== this.proxyTokenRevision || typeof claims.email !== "string" || claims.email.toLowerCase().endsWith(".gserviceaccount.com") || claims.email_verified !== true || typeof claims.exp !== "number" || claims.exp * 1000 <= Date.now() + 60_000) {
+        throw new Error();
+      }
+      this.proxyToken = { token, expires: Math.min(claims.exp * 1000 - 60_000, Date.now() + 60_000) };
+      return token;
+    } catch {
+      // Never surface subprocess stderr: it can contain bearer tokens or credential paths.
+      throw new GatewayError("Cannot obtain a personal Google ID token for the proxy. Run 'gcloud auth login' with your user account (without service-account impersonation), then Refresh Models.", 401);
+    }
+  }
+
   private readonly logger = new Logger("AuthManager");
   private readonly _onAuthUpdated = new vscode.EventEmitter<void>();
   public readonly onAuthUpdated = this._onAuthUpdated.event;

@@ -16,6 +16,8 @@ export interface RetryLogEntry {
 }
 
 export interface RetryOptions {
+  shouldRetry?: (error: any) => boolean;
+  retryDelayMs?: (error: any) => number;
   /** Maximum number of retries before giving up (default: unlimited when duration-based retry is enabled) */
   maxRetries?: number;
   /** Base delay in milliseconds for exponential backoff (default: 2000) */
@@ -88,14 +90,14 @@ export async function withRetry<T>(operation: () => Promise<T>, options?: RetryO
       return result;
     } catch (e: any) {
       const elapsedMs = Date.now() - startTime;
-      if (!isRetryableError(e) || attempt >= maxRetries || elapsedMs >= maxRetryDurationMs) {
+      if (!(options?.shouldRetry ?? isRetryableError)(e) || attempt >= maxRetries || elapsedMs >= maxRetryDurationMs) {
         cleanupTimer();
         logRetrySummary(false, attempt, retryLog, e, options?.log);
         throw e;
       }
 
       attempt++;
-      const delayMs = calculateDelay(attempt, baseDelayMs, maxDelayMs);
+      const delayMs = Math.max(calculateDelay(attempt, baseDelayMs, maxDelayMs), options?.retryDelayMs?.(e) ?? 0);
       const timeLeftMs = Math.max(0, maxRetryDurationMs - elapsedMs);
       const actualDelayMs = Math.min(delayMs, timeLeftMs);
 
@@ -106,7 +108,18 @@ export async function withRetry<T>(operation: () => Promise<T>, options?: RetryO
       }
 
       handleRetryAttempt(attempt, maxRetries, actualDelayMs, e, retryLog);
-      await new Promise((resolve) => setTimeout(resolve, actualDelayMs));
+      try {
+        await new Promise<void>((resolve, reject) => {
+          let subscription: vscode.Disposable | undefined;
+          const timer = setTimeout(() => { subscription?.dispose(); resolve(); }, actualDelayMs);
+          const cancel = () => { clearTimeout(timer); subscription?.dispose(); reject(new vscode.CancellationError()); };
+          subscription = options?.token?.onCancellationRequested(cancel);
+          if (options?.token?.isCancellationRequested) { cancel(); }
+        });
+      } catch (error) {
+        cleanupTimer();
+        throw error;
+      }
     }
   }
 }

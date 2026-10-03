@@ -18,6 +18,14 @@ Use Google Gemini, Anthropic Claude, and xAI Grok directly in the standard VS Co
 
 ## ☁️ Google Cloud prerequisites
 
+### Experimental enterprise proxy
+
+Set `vertexAiChat.proxyUrl` in **User Settings** to a Python Cloud Function v2 gateway. Proxy mode uses the personal account signed in with `gcloud auth login`, server-controlled model discovery, and Gemini/Claude streaming. It requires no client `projectId` or direct Vertex permissions and never falls back to direct Vertex. Grok is available only in direct mode. Empty `proxyUrl` preserves direct mode.
+
+The server supplies the complete approved catalog, including variants, capabilities, token limits and estimated prices. Local model catalogs are ignored in proxy mode. Discovery sends no workspace labels and performs no inference probes. The authenticated server sets the user label regardless of `enableUserLabel`; project labels remain opt-in. Refresh Models after changing the endpoint or CLI account. The endpoint is machine-scoped to prevent a workspace from selecting a credential destination.
+
+**Development only, not release-ready:** generic CLI ID tokens are a developer POC. The reference proxy still needs the discovery/routing/label contract described in [the implementation and release plan](docs/proxy-implementation-plan.md). Real function authentication, production token flow, IAM and VS Code extension-host tests remain required before release. The prerequisites below describe direct mode.
+
 Before you start, make sure the target Google Cloud project is ready:
 
 1. **Enable the API:** Enable the Agent Platform API (`aiplatform.googleapis.com`). See the [Google Agent Platform documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform).

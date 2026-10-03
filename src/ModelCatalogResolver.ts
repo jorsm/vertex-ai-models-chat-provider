@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import bundledCatalog from "./models.json";
-import { ModelCatalog } from "./providers/VertexModelProvider";
+import { ModelCatalog, ModelSpec } from "./providers/VertexModelProvider";
 import { Logger } from "./utils/Logger";
 
 /**
@@ -20,6 +20,12 @@ export class ModelCatalogResolver implements vscode.Disposable {
 
   /** Cached effective catalog + its source. Invalidated by `invalidateCache()` (e.g. on file save). */
   private cached: { catalog: ModelCatalog; source: "workspace" | "user" | "bundled" } | null = null;
+  private proxyCatalog?: ModelCatalog;
+
+  /** In proxy mode even an empty catalog is authoritative; never use a local fallback. */
+  setProxyCatalog(models: ModelSpec[] | undefined): void {
+    this.proxyCatalog = models === undefined ? undefined : { candidateModels: models, regionPriority: [] };
+  }
 
   /** Suppresses repeated error popups for the same broken file until it changes. */
   private lastErroredPath: string | null = null;
@@ -87,6 +93,7 @@ export class ModelCatalogResolver implements vscode.Disposable {
    * (never throws — callers always get a usable catalog).
    */
   async getEffectiveCatalog(): Promise<ModelCatalog> {
+    if (this.proxyCatalog) { return this.proxyCatalog; }
     if (this.cached) {
       return this.cached.catalog;
     }
@@ -114,9 +121,10 @@ export class ModelCatalogResolver implements vscode.Disposable {
   }
 
   /**
-   * Returns the source of the active catalog: 'workspace', 'user', or 'bundled'.
+   * Returns the active source, including 'proxy' for the complete server catalog.
    */
-  async getActiveSource(): Promise<"workspace" | "user" | "bundled"> {
+  async getActiveSource(): Promise<"workspace" | "user" | "bundled" | "proxy"> {
+    if (this.proxyCatalog) { return "proxy"; }
     if (!this.cached) {
       await this.getEffectiveCatalog();
     }
