@@ -246,6 +246,17 @@ test("proxy user label falls back to the client Google identity when no custom v
     "vscode-vertex-ai-user": "developer_example_com",
   });
 });
+test("proxyUrl and projectId fail closed when both are configured", async () => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  const h = harness([model("denied")]);
+  h.dispatcher.setProjectId("direct-project");
+  await assert.rejects(
+    h.dispatcher.discoverModelsAndRegion(),
+    (error) => error instanceof GatewayError && /mutually exclusive/.test(error.message),
+  );
+  assert.deepEqual(await h.dispatcher.provideLanguageModelChatInformation(), []);
+  assert.equal(h.calls.length, 0);
+});
 test("failed or empty server discovery never exposes the unfiltered local catalog", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
   const h = harness([model("denied")]);
@@ -508,7 +519,7 @@ test("late direct credentials cannot reinitialize providers after switching to t
   const old = h.dispatcher.discoverModelsAndRegion();
   await entered.promise;
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
-  h.dispatcher.resetConnection();
+  h.dispatcher.setProjectId("");
   fakeDiscovery(t, [{ id: "gemini-test", vendor: "google" }]);
   await h.dispatcher.discoverModelsAndRegion();
   credentials.resolve(undefined);

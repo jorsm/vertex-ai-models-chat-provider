@@ -198,6 +198,14 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     const proxyUrl = this.getProxyUrl();
     if (revision !== this.connectionRevision) { throw new Error("Configuration changed during discovery."); }
+    if (proxyUrl && this.projectId.trim()) {
+      const message = "Configuration conflict: 'vertexAiChat.proxyUrl' and 'vertexAiChat.projectId' are mutually exclusive. Clear one of them and Refresh Models.";
+      this.logger.log(`❌ ${message}`);
+      this.catalogResolver.setProxyCatalog?.([]);
+      this.clearModels();
+      this.discoveryDone = true;
+      throw new GatewayError(message);
+    }
     if (proxyUrl) {
       this.gateway?.dispose();
       const gateway = new ProxyGateway(proxyUrl, () => this.authManager.getProxyIdToken());

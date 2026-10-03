@@ -102,13 +102,13 @@
           "default": "",
           "scope": "machine",
           "order": 5,
-          "description": "Experimental enterprise Cloud Function proxy URL (HTTPS; loopback HTTP for tests). Uses your personal gcloud auth login identity and server-controlled model discovery. No client GCP project is needed. No direct fallback. Leave empty for direct Vertex. Configure in user settings, not workspace settings."
+          "description": "Experimental enterprise Cloud Function proxy URL (HTTPS; loopback HTTP for tests). Uses your personal gcloud auth login identity and server-controlled model discovery. Mutually exclusive with vertexAiChat.projectId. No direct fallback. Leave empty for direct Vertex. Configure in user settings, not workspace settings."
         },
         "vertexAiChat.projectId": {
           "type": "string",
           "default": "",
           "order": 10,
-          "description": "GCP Project ID to use with Google Agent Platform. Models and regions are auto-discovered."
+          "description": "GCP Project ID to use with Google Agent Platform direct mode. Mutually exclusive with vertexAiChat.proxyUrl. Models and regions are auto-discovered."
         },
         "vertexAiChat.modelDiscoveryTimeoutSeconds": {
           "type": "integer",
