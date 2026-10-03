@@ -14,11 +14,11 @@ Status: experimental branch, not approved for release. Baseline checkpoint: `da3
 
 The existing proxy under `/home/jan/Noovle/noovle-ai-companion-manager/api` is reference code, not an accepted contract.
 
-`GET <proxyUrl>/v1/models` returns a complete catalog using the existing `ModelSpec` shape. For example:
+`GET <proxyUrl>/discovery` returns a complete catalog using the existing `ModelSpec` shape. For example:
 
 ```json
 {
-  "models": [{
+  "candidateModels": [{
     "id": "company-gemini",
     "vendor": "google",
     "version": "gemini-2.5-flash",
@@ -28,13 +28,14 @@ The existing proxy under `/home/jan/Noovle/noovle-ai-companion-manager/api` is r
     "maxOutputTokens": 65536,
     "capabilities": { "imageInput": true, "toolCalling": true },
     "pricing": { "input": 0.3, "output": 2.5, "cache_read": 0.03 }
-  }]
+  }],
+  "regionPriority": ["global"]
 }
 ```
 
 The example is a contract illustration, not a verified current model/price recommendation. Each entry must have a unique UI `id`; `version` is the native backend model/effort alias understood by the provider. Optional `cache_create` and `longContext` pricing follow `ModelSpec`. IDs/versions cannot contain routes or URLs. Names, positive integer token limits, boolean capabilities and finite non-negative prices are validated before publishing any model. Unsupported vendors, duplicates or incomplete entries invalidate the response.
 
-An empty list means no access. No client project, region or upstream URL is supplied. Only returned variants appear; no prefix matching or local catalog expansion is used. Discovery is bounded by the configured timeout and limited to 1 MiB. Failure clears the server catalog and must not restore a local fallback. Server pricing feeds both model information and usage estimates; each request retains its selected prices even if the catalog changes before usage is recorded.
+The original `/v1/models` endpoint remains a server compatibility alias with a `models` envelope; the extension requests only `/discovery` and does not try another endpoint after errors. `regionPriority` is informational: the server controls upstream routing. An empty list means no access. No client project, region or upstream URL is supplied. Only returned variants appear; no prefix matching or local catalog expansion is used. Discovery is bounded by the configured timeout and limited to 1 MiB. Failure clears the server catalog and must not restore a local fallback. Server pricing feeds both model information and usage estimates; each request retains its selected prices even if the catalog changes before usage is recorded.
 
 Inference preserves SDK-native Vertex routes, JSON and SSE. SDK paths use the reserved project `gateway` and location `global` as transport placeholders, not real destinations. The server MUST replace these with its own project and per-model region. Gemini uses root JSON `labels`; Claude uses base64 JSON `X-Vertex-AI-Labels`. The server MUST accept missing client user labels and replace any supplied user identity with the verified email. A denied model returns 403. Before-stream errors use the native provider envelope; upstream authentication failures must be distinguishable from caller 401 errors. No automatic gateway retries are assumed.
 
@@ -48,6 +49,8 @@ Inference preserves SDK-native Vertex routes, JSON and SSE. SDK paths use the re
 6. Run the full existing suite, TypeScript, lint and bundle using lockfile dependencies. Review the resulting diff; do not tag, push or publish.
 
 ## Proxy compatibility status (2026-10-03)
+
+Upstream review of `c8bc8a7`, `c3b7a49`, `c0bf147`: selectively retained `/discovery` naming/schema, native SDK route cleanup and template-based OpenAPI in proxy commit `321ae45`. Kept `develop` independent. The newest upstream suite fails two discovery cases after its catalog file was deleted; actual VS Code sees no models. Our extension now uses authenticated `/discovery`, and the adapted proxy passes 63 regression cases, 18 live HTTP cases and 11 actual extension-host checks. See [the commit review](proxy-upstream-review.md).
 
 Pulled the clean reference `develop` branch to `e3f5f56`. The unmodified server was run in Docker: authenticated discovery returned 404, missing client user attribution returned 400, and native routes retained the dummy project. The actual VS Code extension activated successfully against it and published no models after discovery failure.
 

@@ -97,5 +97,128 @@
     }
   },
   "proxyCompatibilityCommit": "9f8d51e",
-  "proxyCompatibilityImage": "sha256:e04ab50c7d6b971d6b156afb7f5dfcd1980c5c24bd8fb0353a52fdf6b7f97fae"
+  "proxyCompatibilityImage": "sha256:e04ab50c7d6b971d6b156afb7f5dfcd1980c5c24bd8fb0353a52fdf6b7f97fae",
+  "upstreamReview": {
+    "upstreamCommits": [
+      "c8bc8a7",
+      "c3b7a49",
+      "c0bf147"
+    ],
+    "proxyBranch": "codex/extension-proxy-integration",
+    "proxyCommit": "321ae45",
+    "proxyImage": "sha256:a6ca3bb2162830578f77114a11ed27b011e2017c3229401a4814f4bcf51c8ce8",
+    "upstreamUnitPassed": 30,
+    "upstreamUnitFailed": 2,
+    "upstreamHttpChecks": {
+      "unauthenticated_discovery": {
+        "status": 200,
+        "candidate_count": 0
+      },
+      "authenticated_discovery": {
+        "status": 200,
+        "candidate_count": 0
+      },
+      "extension_previous_discovery_status": 404,
+      "missing_user_label": {
+        "status": 400,
+        "policy": "FAILED_PRECONDITION"
+      }
+    },
+    "upstreamTransformChecks": {
+      "preservesClientProjectAndRegion": true,
+      "claudeRootLabelsPresent": true,
+      "userLabelRemainsClientSupplied": true
+    },
+    "upstreamExtensionHost": {
+      "ok": false,
+      "checks": [
+        "actual bundled development extension activated"
+      ],
+      "details": [
+        {
+          "models": []
+        }
+      ],
+      "error": "AssertionError [ERR_ASSERTION]: the configured server catalog must offer Gemini and Claude"
+    },
+    "compatibleProxyRegressionPassed": 63,
+    "compatibleLiveHttpPassed": 18,
+    "compatibleLiveHttpSkipped": 1,
+    "compatibleExtensionHost": {
+      "ok": true,
+      "checks": [
+        "actual bundled development extension activated",
+        "actual model picker exposes complete server catalog, including IDs absent locally",
+        "proxy-live-gemini: public VS Code sendRequest streamed through Docker to real Vertex",
+        "proxy-live-claude: public VS Code sendRequest streamed through Docker to real Vertex",
+        "proxy-live-gemini: native tool call and signed continuation accepted by real Vertex",
+        "proxy-live-gemini: cancellation before output completed promptly",
+        "proxy-live-gemini: cancellation after first streamed text reached the real provider",
+        "proxy-live-claude: native tool call and signed continuation accepted by real Vertex",
+        "proxy-live-claude: cancellation before output completed promptly",
+        "proxy-live-claude: cancellation after first streamed text reached the real provider",
+        "actual SCM command generated a commit message via proxy and recorded usage once"
+      ],
+      "details": [
+        {
+          "models": [
+            {
+              "id": "proxy-live-gemini",
+              "name": "Local proxy gemini-3.8-flash",
+              "vendor": "google-vertex",
+              "family": "gemini",
+              "maxInputTokens": 1048576
+            },
+            {
+              "id": "proxy-live-claude",
+              "name": "Local proxy claude-sonnet-5-5",
+              "vendor": "google-vertex",
+              "family": "claude",
+              "maxInputTokens": 1000000
+            }
+          ]
+        },
+        {
+          "id": "proxy-live-gemini",
+          "text": "OK",
+          "parts": 2,
+          "durationMs": 2609
+        },
+        {
+          "id": "proxy-live-claude",
+          "text": "OK",
+          "parts": 1,
+          "durationMs": 1626
+        },
+        {
+          "id": "proxy-live-gemini",
+          "tool": "proxy_probe",
+          "continuation": "PROXY_TOOL_OK"
+        },
+        {
+          "id": "proxy-live-gemini",
+          "cancellationBeforeOutputMs": 256,
+          "rejected": true
+        },
+        {
+          "id": "proxy-live-claude",
+          "tool": "proxy_probe",
+          "continuation": "PROXY_TOOL_OK"
+        },
+        {
+          "id": "proxy-live-claude",
+          "cancellationBeforeOutputMs": 252,
+          "rejected": true
+        },
+        {
+          "commitMessage": "test(proxy): add local integration fixture",
+          "usageRecords": 7
+        }
+      ]
+    },
+    "extensionCasesPassed": 93,
+    "extensionCasesSkipped": 2,
+    "deployed": false,
+    "pushed": false
+  }
 }

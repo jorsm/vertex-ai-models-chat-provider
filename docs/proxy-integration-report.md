@@ -6,12 +6,16 @@ The unmodified latest proxy was tested first, then the agreed compatibility chan
 
 - Extension: `codex/cloud-function-proxy`, implementation `08798f7` plus the reproduction scripts in this report's commit.
 - Reference proxy: clean `develop`, pulled fast-forward from `99c542d` to `e3f5f56`.
-- Compatible proxy: local `codex/extension-proxy-integration`, commit `9f8d51e`, based on `e3f5f56`. The normal proxy checkout remains on `develop`.
+- Compatible proxy: local `codex/extension-proxy-integration`, commit `9f8d51e`, based on `e3f5f56`. This describes the first test run; the proxy checkout is now on `codex/extension-proxy-integration`. See the later [three-commit review](proxy-upstream-review.md) for current revisions and results.
 - Docker Python 3.14.8 with Functions Framework 3.10.2; final compatible image builds and passes packaged application smoke tests.
 - Actual installed VS Code 1.140.0, with the bundled extension under development and isolated user data/extensions directories.
 - Vertex destination: `noovle-cloud-ai-companion`, global. Proxy listens on loopback only. Real Google caller ID tokens are validated; local auth bypass is false. The upstream identity uses the existing ADC file mounted read-only. This does not reproduce a production runtime service account.
 
-## Results
+## Later upstream review
+
+Reviewed upstream `c8bc8a7`, `c3b7a49`, `c0bf147` and continued the separate proxy branch with `321ae45`. Latest results: 63 proxy regressions, 18 live HTTP tests (1 skipped), 11 actual VS Code checks and 93 extension cases (2 skipped). `/discovery` now provides the canonical complete catalog; `/v1/models` remains a server alias. Both proxy branches remain independent. [Review and next steps](proxy-upstream-review.md).
+
+## Initial results
 
 | Check | Result |
 |---|---|

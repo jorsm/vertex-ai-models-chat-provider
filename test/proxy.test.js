@@ -131,21 +131,26 @@ test("token acquisition rejects SA, expired, unverified and malformed tokens wit
 test("server catalog supplies complete metadata and validates IDs, prices, limits, capabilities and duplicates", () => {
   const entry = model("server-only-high", "google", "backend-high");
   assert.deepEqual(parseProxyCatalog({ models: [entry] }), [entry]);
+  assert.deepEqual(parseProxyCatalog({ candidateModels: [entry], regionPriority: ["global"] }), [entry]);
+  assert.deepEqual(parseProxyCatalog({ candidateModels: [], regionPriority: [] }), []);
   for (const invalid of [model("https://evil.test"), model("grok", "grok"), { ...entry, version: "projects/elsewhere" },
     { ...entry, pricing: { input: -1, output: 1 } }, { ...entry, pricing: { input: 1, output: Infinity } },
     { ...entry, maxOutputTokens: 0 }, { ...entry, capabilities: {} }, { id: "incomplete", vendor: "google" },
     { ...entry, pricing: { input: 1, output: 2, longContext: { input: 3, output: 4, inputThresholdTokens: -1 } } }]) {
     assert.throws(() => parseProxyCatalog({ models: [invalid] }), GatewayError);
   }
-  for (const payload of [{}, { models: null }, { models: [entry, entry] }]) assert.throws(() => parseProxyCatalog(payload), GatewayError);
+  for (const payload of [{}, { models: null }, { models: [entry, entry] }, { candidateModels: [entry] },
+    { candidateModels: [entry], regionPriority: ["https://elsewhere"] },
+    { candidateModels: [entry], regionPriority: [], models: [] },
+    { candidateModels: [{ id: "incomplete" }], regionPriority: ["global"] }]) assert.throws(() => parseProxyCatalog(payload), GatewayError);
 });
 test("authenticated discovery sends only an ID token and bounds a stalled credential provider", async () => {
   const calls = [];
   const gateway = new ProxyGateway("https://gateway.test/base", async () => "personal-token", async (url, init) => {
-    calls.push([url, init]); return Response.json({ models: [] });
+    calls.push([url, init]); return Response.json({ candidateModels: [], regionPriority: ["global"] });
   });
   assert.deepEqual(await gateway.discover(100), []);
-  assert.equal(calls[0][0], "https://gateway.test/base/v1/models");
+  assert.equal(calls[0][0], "https://gateway.test/base/discovery");
   assert.equal(new Headers(calls[0][1].headers).get("Authorization"), "Bearer personal-token");
   assert.equal(calls[0][1].body, undefined);
   assert.equal(calls[0][1].redirect, "error");
@@ -159,6 +164,17 @@ test("gateway transport rejects another origin/base path and removes quota/API-k
   await gateway.fetch("https://gateway.test/base/v1/models", { headers: { "x-goog-user-project": "personal-project", "x-goog-api-key": "key" } });
   assert.equal(headers.get("x-goog-user-project"), null);
   assert.equal(headers.get("x-goog-api-key"), null);
+});
+test("canonical discovery failures never try another endpoint or catalog source", async () => {
+  for (const status of [401, 403, 404, 500]) {
+    const calls = [];
+    const gateway = new ProxyGateway("https://gateway.test/base", async () => "token", async (url) => {
+      calls.push(url);
+      return Response.json({ error: { code: status } }, { status });
+    });
+    await assert.rejects(gateway.discover(100), (error) => error instanceof GatewayError && error.status === status);
+    assert.deepEqual(calls, ["https://gateway.test/base/discovery"]);
+  }
 });
 test("policy and caller/upstream authentication errors never retry even with quota-like text", async () => {
   for (const status of [400, 401, 403, 404, 413, 502]) {

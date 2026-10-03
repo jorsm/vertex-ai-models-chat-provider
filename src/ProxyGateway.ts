@@ -72,8 +72,15 @@ class GatewayAuthClient extends OAuth2Client {
 }
 
 export function parseProxyCatalog(payload: unknown): ModelSpec[] {
-  if (!payload || typeof payload !== "object" || !("models" in payload) || !Array.isArray(payload.models)) {
-    throw new GatewayError("Invalid proxy discovery response: expected a models array.");
+  if (!payload || typeof payload !== "object") {
+    throw new GatewayError("Invalid proxy discovery response: expected a catalog object.");
+  }
+  // The server's canonical discovery schema; retain the original explicit envelope.
+  const entries = "candidateModels" in payload ? payload.candidateModels : "models" in payload ? payload.models : undefined;
+  if (!Array.isArray(entries) || ("candidateModels" in payload && "models" in payload)
+    || ("candidateModels" in payload && (!("regionPriority" in payload) || !Array.isArray(payload.regionPriority)
+      || !payload.regionPriority.every((region) => typeof region === "string" && /^[a-z][a-z0-9-]*$/.test(region))))) {
+    throw new GatewayError("Invalid proxy discovery response: expected complete candidateModels and regionPriority, or a legacy models array.");
   }
   const ids = new Set<string>();
   const validId = (value: unknown) => typeof value === "string" && /^[a-zA-Z0-9_.@-]{1,256}$/.test(value);
@@ -86,7 +93,7 @@ export function parseProxyCatalog(payload: unknown): ModelSpec[] {
     ...(rates.cache_read !== undefined ? { cache_read: rates.cache_read } : {}),
     ...(rates.cache_create !== undefined ? { cache_create: rates.cache_create } : {}),
   });
-  return payload.models.map((entry: any): ModelSpec => {
+  return entries.map((entry: any): ModelSpec => {
     if (!entry || !["google", "anthropic"].includes(entry.vendor) || !validId(entry.id) || !validId(entry.version)
       || ids.has(entry.id) || !validText(entry.displayName) || !validText(entry.family)
       || !positiveInteger(entry.maxInputTokens) || !positiveInteger(entry.maxOutputTokens)
@@ -157,7 +164,7 @@ export class ProxyGateway {
         this.getToken().then(resolve, reject).finally(() => controller.signal.removeEventListener("abort", cancel));
       });
       controller.signal.throwIfAborted();
-      const response = await this.fetch(`${this.url}/v1/models`, {
+      const response = await this.fetch(`${this.url}/discovery`, {
         headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
       });
       if (!response.ok) {
