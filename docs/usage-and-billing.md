@@ -60,15 +60,15 @@ Cleans up the webview panel and disposes of all internal event listeners and sub
 ### CostStatusBar
 [source](../src/CostStatusBar.ts)
 Manages a persistent status bar item that displays today's total estimated cost and the active authentication identity. It updates in real-time as usage is recorded or authentication methods change, using dynamic icons to reflect the active auth type:
+- **$(cloud)**: Experimental proxy mode (personal gcloud login) or Google Application Default Credentials (ADC).
 - **$(key)**: Encrypted Service Account secret.
 - **$(file)**: Legacy linked Service Account file retained for existing workspace configurations. New file selections are imported as encrypted secrets.
-- **$(cloud)**: Google Application Default Credentials (ADC).
 - **$(pulse)**: Default or disconnected state.
 
 #### constructor
 [source](../src/CostStatusBar.ts)
 `constructor(usageTracker: UsageTrackerService, authManager: AuthManager, catalogResolver: ModelCatalogResolver)`
-Initializes the status bar item at the right side of the status bar (priority 100) and binds it to the dashboard display command. It subscribes to usage and authentication updates to refresh the UI automatically, presenting a rich Markdown tooltip that includes the current GCP project ID, active authentication method, and account identity.
+Initializes the status bar item at the right side of the status bar (priority 100) and binds it to the dashboard display command. It subscribes to usage and authentication updates to refresh the UI automatically, presenting a rich Markdown tooltip that includes the current GCP project ID (or proxy status), active authentication method, model catalog source (Bundled, Workspace, User, or Server), and account identity.
 - `usageTracker`: An instance of `UsageTrackerService` used to retrieve daily cost totals.
 - `authManager`: An instance of `AuthManager` used to identify the current user or service account.
 - `catalogResolver`: The resolver used to show the active model catalog source in the status-bar tooltip.
@@ -96,15 +96,16 @@ An event that fires whenever a new usage entry is successfully recorded, allowin
 
 #### calculateCost
 [source](../src/UsageTrackerService.ts)
-`public async calculateCost(model: string, tokens: Required<TokenUsage>): Promise<number>`
-Calculates the total cost for a specific request by mapping the model ID to its pricing definitions in the active model catalog.
+`public async calculateCost(model: string, tokens: Required<TokenUsage>, requestPricing?: ModelSpec["pricing"]): Promise<number>`
+Calculates the total cost for a specific request. It prefers prices provided for the specific request via `requestPricing`, otherwise mapping the model ID to its pricing definitions in the active model catalog. It also accounts for long-context billing rates when total context tokens (input, cache_read, and cache_create) exceed the model's threshold.
 - `model`: The model identifier (e.g., `claude-sonnet-5`).
 - `tokens`: A breakdown including input, output, cache_read, and cache_create counts.
+- `requestPricing`: (Optional) Pricing rates captured at the time of the request.
 
 #### recordUsage
 [source](../src/UsageTrackerService.ts)
-`public async recordUsage(model: string, usage: TokenUsage): Promise<void>`
-Records a single usage entry. It calculates the cost, standardizes the payload (including characters for system, user text, assistant text, images, tool use, and tool results), and appends it to a daily log file (`YYYYMMDD.jsonl`).
+`public async recordUsage(model: string, usage: TokenUsage, requestPricing?: ModelSpec["pricing"]): Promise<void>`
+Records a single usage entry. It calculates the cost (optionally using `requestPricing`), standardizes the payload (including characters for system, user text, assistant text, images, tool use, and tool results), and appends it to a daily log file (`YYYYMMDD.jsonl`) using local time for the filename.
 
 #### getUsageForDate
 [source](../src/UsageTrackerService.ts)

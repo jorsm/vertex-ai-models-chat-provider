@@ -49,7 +49,7 @@ The central class that implements `vscode.LanguageModelChatProvider`. It manages
 - `provideTokenCount(...)`: [source](../src/VertexChatModelDispatcher.ts) Calculates or estimates token counts for messages. It delegates to provider-specific counting logic if available, falling back to a heuristic of ~4 characters per token if no provider logic is found.
 - `provideLanguageModelChatResponse(...)`: [source](../src/VertexChatModelDispatcher.ts) Streams the chat response from the appropriate vendor provider. It automatically waits for any in-progress model discovery or label resolution to complete before starting inference.
 - `inferCommit(...)`: [source](../src/VertexChatModelDispatcher.ts) Special inference path for AI commit message generation. It ensures discovery is complete and attempts to use a Gemini Flash model for the request.
-- `infer(...)`: [source](../src/VertexChatModelDispatcher.ts) Internal method that executes the inference request. It resolves and injects request-level labels for cost attribution if enabled. When a proxy is active, it enforces vendor restrictions (Google and Anthropic only) and skips client-side user label resolution as the proxy server handles it. It records detailed usage (input, output, cache_read, cache_create, and total character counts) via the `UsageTrackerService`.
+- `infer(...)`: [source](../src/VertexChatModelDispatcher.ts) Internal method that executes the inference request. It resolves and injects request-level labels for cost attribution if enabled. For the `vscode-vertex-ai-user` label, it checks `vertexAiChat.userLabelValue` settings before falling back to the cached identity. For the `vscode-vertex-ai-project` label, it checks the `vertexAiChat.projectLabelValue` setting (specifically workspace/folder overrides), then falls back to the workspace name, the active editor's workspace folder name, or finally the first workspace folder name. When a proxy is active, it enforces vendor restrictions (Google and Anthropic only) and skips client-side user label resolution as the proxy server handles it. It warns via VS Code notification if a label is enabled but cannot be resolved. It records detailed usage (input, output, cache_read, cache_create, and total character counts) via the `UsageTrackerService`.
 - `getAnthropicProvider()`: [source](../src/VertexChatModelDispatcher.ts) Returns the registered `VertexAnthropicProvider` instance.
 - `getGoogleProvider()`: [source](../src/VertexChatModelDispatcher.ts) Returns the registered `VertexGoogleProvider` instance.
 
@@ -118,19 +118,20 @@ The main entry point for the VS Code extension. It handles:
     - `vertexAiChat.setServiceAccountKey`: Securely saves a Service Account JSON key to OS storage.
     - `vertexAiChat.setServiceAccountPath`: Imports a selected Service Account JSON file into `SecretStorage`. The command identifier is retained for compatibility; no new path is stored and the source file is unchanged.
     - `vertexAiChat.removeServiceAccount`: Deletes only the extension's stored copy of a named Service Account; removing the active credential resets the workspace to ADC without changing Google Cloud resources.
-    - `vertexAiChat.selectAuthMethod`: Switches the active authentication method.
+    - `vertexAiChat.selectAuthMethod`: Switches the active authentication method via a QuickPick menu.
     - `vertexAiChat.clearAuthMethod`: Resets the workspace to use Default Application Credentials (ADC).
     - `vertexAiChat.openUserModelsFile`: Creates (seeded from the bundled catalog) / opens the user-level `models.json` for editing.
     - `vertexAiChat.openWorkspaceModelsFile`: Creates (seeded from the bundled catalog) / opens `.vscode/models.json` for editing.
-- Watching for configuration changes (specifically `vertexAiChat.projectId`, `enableUserLabel`, and `enableProjectLabel`) to trigger re-discovery and update metadata labels.
+- Watching for configuration changes (specifically `vertexAiChat.projectId`, `vertexAiChat.proxyUrl`, `enableUserLabel`, and `enableProjectLabel`) to trigger re-discovery and update metadata labels.
 - Watching the workspace and user custom `models.json` files via `FileSystemWatcher` to invalidate the catalog cache and re-run discovery on save (debounced ~300ms).
 
 ### runDiscovery
 [source](../src/extension.ts)
 A helper function that triggers the model discovery process on the dispatcher and provides UI feedback (Information, Warning, or Error messages) to the user based on the results.
 
-In the event of a failure (networking, project errors, or authentication), it clears any stale model list to prevent silent model fallbacks in the chat UI. Authentication failures use two explicit workflows:
+In the event of a failure (networking, project errors, or authentication), it clears any stale model list to prevent silent model fallbacks in the chat UI. Authentication failures use three explicit workflows:
 
+- A `GatewayError` displays a specific error message for proxy configuration issues.
 - A `VertexAuthenticationError` offers `gcloud auth application-default login` in the workspace environment, switches the active method to ADC, and re-runs discovery after confirmed success.
 - An `AuthConfigurationError` from a missing or invalid explicitly selected Service Account fails closed and offers the authentication-method picker. It never substitutes an ambient ADC identity.
 

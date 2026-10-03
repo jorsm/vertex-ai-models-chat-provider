@@ -9,12 +9,14 @@
 - [API Reference](#api-reference)
     - [VertexAnthropicProvider](#vertexanthropicprovider)
         - [initialize](#initialize)
+        - [getDiscoveryModelId](#getdiscoverymodelid)
         - [setLabels](#setlabels)
         - [pingModel](#pingmodel)
         - [provideTokenCount](#providetokencount)
         - [provideLanguageModelChatResponse](#providelanguagemodelchatresponse)
     - [VertexGoogleProvider](#vertexgoogleprovider)
         - [initialize](#initialize-1)
+        - [getDiscoveryModelId](#getdiscoverymodelid-1)
         - [setLabels](#setlabels-1)
         - [pingModel](#pingmodel-1)
         - [provideTokenCount](#providetokencount-1)
@@ -59,6 +61,12 @@ The `VertexAnthropicProvider` class implements the `VertexModelProvider` interfa
 
 Sets the GCP Project ID and regional endpoint for the Anthropic Vertex client. If provided, `authOptions` are used to configure the underlying `GoogleAuth` instance with the necessary cloud-platform scopes. If a `gateway` is provided, the client is configured to route all requests through the proxy URL using the gateway's authentication client and fetch implementation, disabling SDK-level retries in favor of the shared provider retry logic.
 
+#### getDiscoveryModelId
+[source](../src/providers/VertexAnthropicProvider.ts)
+`getDiscoveryModelId(modelVersion: string): string`
+
+Resolves a catalog model version string (which may include effort suffixes) to its actual backend model ID. For Anthropic models, this strips effort aliases (e.g., `-max`) to identify the underlying endpoint used for reachability probes.
+
 #### setLabels
 [source](../src/providers/VertexAnthropicProvider.ts)
 `setLabels(labels: Record<string, string>): void`
@@ -102,6 +110,12 @@ The `VertexGoogleProvider` class implements the `VertexModelProvider` interface 
 `initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void`
 
 Sets the GCP Project ID and regional endpoint (e.g., `us-central1`) for the provider. It also initiates a dynamic schema discovery process to fetch the latest supported OpenAPI 3.0 schema keys from the Vertex AI Discovery API, ensuring tool definitions remain compatible with API updates. If provided, `authOptions` are stored and passed to the `GoogleGenAI` client during lazy initialization. When initialized with a `gateway`, the provider configures the Gen AI client to route requests through the proxy gateway and skips direct schema discovery.
+
+#### getDiscoveryModelId
+[source](../src/providers/VertexGoogleProvider.ts)
+`getDiscoveryModelId(modelVersion: string): string`
+
+Resolves the requested VS Code model ID to the actual Vertex AI endpoint name. For Gemini models, this strips thinking aliases (e.g., `-high`) to ensure discovery pings target the base model endpoint.
 
 #### setLabels
 [source](../src/providers/VertexGoogleProvider.ts)
