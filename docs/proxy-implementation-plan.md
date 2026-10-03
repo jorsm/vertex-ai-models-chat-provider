@@ -47,15 +47,13 @@ Inference preserves SDK-native Vertex routes, JSON and SSE. SDK paths use the re
 5. Test URL validation, auth refresh/failure, complete server catalogs/variants/pricing, no project requirement, no pings/direct calls, repository labels, SDK wire requests, SSE output before completion, usage/tool signatures, denial, partial-stream failure and cancellation.
 6. Run the full existing suite, TypeScript, lint and bundle using lockfile dependencies. Review the resulting diff; do not tag, push or publish.
 
-## Reference proxy gaps affecting compatibility
+## Proxy compatibility status (2026-10-03)
 
-- There is currently no discovery endpoint returning the complete catalog.
-- Governance requires both client labels and writes a third authenticated-user label, contrary to the agreed user-label behavior.
-- Forwarding currently preserves client project/location paths rather than constructing the configured destination.
-- Governance errors currently return 400 rather than the agreed model-denial 403.
-- The optional EXPECTED_AUDIENCE check must be compatible with the chosen developer ID token; generic CLI tokens are not a production authentication solution.
+Pulled the clean reference `develop` branch to `e3f5f56`. The unmodified server was run in Docker: authenticated discovery returned 404, missing client user attribution returned 400, and native routes retained the dummy project. The actual VS Code extension activated successfully against it and published no models after discovery failure.
 
-These changes must be agreed and applied to the proxy before real integration testing. No proxy deployment or IAM mutation is part of this extension change.
+The isolated proxy branch `codex/extension-proxy-integration` adds the complete catalog endpoint, exact model authorization, canonical user attribution, native destination rewriting, Claude header-only labels, 403 policy responses and distinct upstream authentication errors. It also prevents local callers forging Cloud Run verification markers. This branch is local and not deployed.
+
+With that branch running in Docker/Functions Framework, actual VS Code 1.140.0 passed model selection, real Gemini and Claude streaming, tool continuations, cancellation and commit generation against `noovle-cloud-ai-companion`. See [the integration report](proxy-integration-report.md) and [recorded results](proxy-integration-results.json).
 
 ## Completed local validation (2026-10-03)
 
@@ -65,15 +63,15 @@ These changes must be agreed and applied to the proxy before real integration te
 - Native SDK tests exercise serialized Vertex paths, ID-token headers, Gemini JSON labels, Claude label headers, SSE output before completion, signed tool continuations, failure after partial output and cancellation during credential acquisition, discovery, backoff and streaming. Server-only models and prices work without local catalog entries; invalid/empty catalogs cannot restore local models.
 - Found and corrected stale discovery reinitialization after a mode change and cancellation waiting for initial discovery. Pinned Google SDK retry options would obscure 401/403 errors, so proxy mode omits that retry layer and uses the bounded shared retry policy.
 
-## Release gates still requiring a real environment
+## Release gates still outstanding
 
-- Authorized/unauthorized human accounts; refresh, expiry, revocation and personal identity attribution on the actual function.
-- Production-appropriate token flow and audience contract. Google documents generic CLI ID tokens for development, not production.
-- Gemini and Claude streaming, signed tool continuations, cancellation before/after first output and residual upstream consumption.
-- Direct Vertex denied for the user while proxy inference succeeds; no direct calls when gateway discovery or inference fails.
-- Commit generation against a repository other than the active editor, one usage record, denied-model feedback.
-- Actual VS Code extension-host activation and model picker; remote host account placement; no credential forwarding to workspace-selected endpoints.
+- Deployed Cloud Function/Cloud Run edge invocation with authorized and unauthorized users, audience validation, token expiry/refresh/revocation and production service-account attribution. The project's Cloud Functions API is disabled; no deployment or IAM mutation was performed. Local tests used verified personal caller ID tokens and existing user ADC for upstream access, rather than a production runtime service account.
+- Production-appropriate token flow. Google documents generic CLI ID tokens for development, not production.
+- Other model/effort variants, minimum supported VS Code, Windows and remote extension hosts. The tested live catalog included Gemini 3.8 Flash and Claude Sonnet 5.5 with medium effort.
+- Residual upstream consumption/billing after cancellation. Client cancellation and SDK transport abort are tested; immediate upstream termination and billing cessation are not established.
+- Prove successful proxy inference for an Invoker-only user lacking direct Vertex IAM. The current test account has Vertex AI User and Editor.
+- Review/merge the separate proxy compatibility branch before releasing the extension option.
 
-Offline tests do not satisfy these live release gates.
+Local Docker and actual extension-host checks passed, but do not satisfy these remaining production gates.
 
 Official authentication references: [Cloud Functions v2 invocation](https://docs.cloud.google.com/functions/docs/securing/authenticating), [developer invocation](https://docs.cloud.google.com/run/docs/authenticating/developers), [generic development ID tokens](https://docs.cloud.google.com/docs/authentication/get-id-token).
