@@ -186,16 +186,26 @@ export async function activate(context: vscode.ExtensionContext) {
   // If projectId is present, run discovery in the background on activation
   runDiscovery(provider, authManager);
 
-  // Re-run discovery when projectId setting changes
+  // Re-run discovery whenever either connection destination setting changes.
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(async (e) => {
-      if (e.affectsConfiguration("vertexAiChat.projectId") || e.affectsConfiguration("vertexAiChat.proxyUrl")) {
+      const projectIdChanged = e.affectsConfiguration("vertexAiChat.projectId");
+      const proxyUrlChanged = e.affectsConfiguration("vertexAiChat.proxyUrl");
+      if (projectIdChanged || proxyUrlChanged) {
         const newConfig = vscode.workspace.getConfiguration("vertexAiChat");
         const newProjectId = newConfig.get<string>("projectId") || "";
-        if (newProjectId) {
+        if (projectIdChanged && newProjectId) {
           vscode.window.showInformationMessage(`Google Agent Platform: Project changed to "${newProjectId}". Re-discovering models…`);
         }
         provider.setProjectId(newProjectId);
+
+        // Surface mutually-exclusive destination settings immediately. Label
+        // resolution can invoke gcloud and must not delay this configuration error.
+        if (proxyUrlChanged && provider.getProxyUrl() && newProjectId.trim()) {
+          await runDiscovery(provider, authManager);
+          return;
+        }
+
         await provider.updateLabels();
         await runDiscovery(provider, authManager);
       }
