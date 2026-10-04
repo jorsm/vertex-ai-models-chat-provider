@@ -29,6 +29,7 @@ Typical [proxy use cases](docs/proxy.md#example-use-cases) include:
 - Require user and/or project labels and reject calls when required attribution is missing.
 - Prevent forged user attribution by deriving the caller from the verified Google account email rather than a client label.
 - Block expensive, old, or deprecated models, or restrict them to authorized teams.
+- Give junior developers a lower-cost starter catalog and unlock advanced models, such as Fable, after training, mentor approval, and demonstrated cost awareness.
 - Collect real-time usage and estimated costs as requests complete, while billing data is still pending.
 - Analyze request counts, model adoption, input/output/cache tokens, latency, and errors.
 - Route requests by project label to a client's GCP project and linked billing account, keeping one proxy URL and login for users across multiple clients.

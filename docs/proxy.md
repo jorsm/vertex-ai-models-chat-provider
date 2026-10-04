@@ -50,6 +50,14 @@ You want general users to use approved lower-cost models, reserve more expensive
 
 Filter `/discovery` for the authenticated caller and enforce the same policy on every inference route. Return `403` for a disallowed model even if the caller crafts a POST request directly. Check the resolved backend model and allowed effort settings explicitly; hiding a picker entry alone does not prevent its use.
 
+### Give users progressive access to models
+
+You want model access to reflect each developer's experience, training, and ability to manage usage costs. For example, a junior developer initially receives only approved, lower-cost models and a small personal budget. Access to higher-cost models such as Fable requires a mentor's approval after the developer demonstrates effective use and cost awareness.
+
+Maintain access profiles on the server, keyed by verified Google identity or trusted organizational group membership. A starter profile can expose only lower-cost models; a trained profile can add selected advanced models with a larger budget; a specialist profile can grant access for specific workloads. Filter `/discovery` for each caller and enforce the same permissions on inference requests. Users cannot promote themselves through client labels or settings.
+
+Define concrete progression criteria, such as completing onboarding, reviewing generated code, solving tasks independently, selecting an appropriate model for the task, and staying within an agreed budget. Use the proxy's usage statistics to support a review with the developer and their mentor, then update the access profile and refresh the model catalog. The aim is to support learning and responsible spending: access to a more capable model alone does not establish either skill or cost discipline.
+
 ### Monitor estimated costs in real time
 
 Your operations team wants to see spend as requests complete instead of waiting for billing data to become available. Capture provider-reported input, output, and cache usage from the stream, apply your server-maintained rate card, and publish estimates to a central dashboard or metrics service.
