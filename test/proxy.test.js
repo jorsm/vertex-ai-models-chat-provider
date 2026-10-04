@@ -946,3 +946,36 @@ for (const proxy of [false, true]) {
     });
   }
 }
+
+
+for (const changed of ["tools", "system", "history", "assistant"]) {
+  test(`Claude continuation drops invalidated thinking when ${changed} changes, before HTTP`, async (t) => {
+    const requests = streamingFetch(t, [
+      claudeEvent({type: "message_start", message: {id: "msg", role: "assistant", content: [], usage: {input_tokens: 1, output_tokens: 0}}}),
+      claudeEvent({type: "content_block_start", index: 0, content_block: {type: "thinking", thinking: "", signature: ""}}),
+      claudeEvent({type: "content_block_delta", index: 0, delta: {type: "signature_delta", signature: "signed"}}),
+      claudeEvent({type: "content_block_stop", index: 0}),
+      claudeEvent({type: "content_block_start", index: 1, content_block: {type: "tool_use", id: "tool-guard", name: "lookup", input: {}}}),
+      claudeEvent({type: "content_block_stop", index: 1}),
+      claudeEvent({type: "message_stop"}),
+    ]);
+    const provider = new VertexAnthropicProvider();
+    provider.initialize("gateway", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
+    const first = [{role: 0, content: [new TextPart("system")]}, ...userMessage()];
+    const tools = [{name: "lookup", description: "original", inputSchema: {type: "object", properties: {}}}];
+    const run = (messages, requestTools) => provider.provideLanguageModelChatResponse("claude-sonnet-5-5-high", messages, {tools: requestTools}, {report() {}}, cancellation().token, {}, model("claude-sonnet-5-5-high", "anthropic"));
+    await run(first, tools);
+    const next = [...first, {role: 2, content: [new ToolCallPart("tool-guard", "lookup", {})]}, {role: 1, content: [new ToolResultPart("tool-guard", [new TextPart("done")])]}];
+    if (changed === "system") next[0] = {role: 0, content: [new TextPart("different system")]};
+    if (changed === "history") next[1] = {role: 1, content: [new TextPart("different user content")]};
+    if (changed === "assistant") next[2] = {role: 2, content: [new ToolCallPart("tool-guard", "lookup", {changed: true})]};
+    await run(next, changed === "tools" ? [...tools, {name: "added", description: "new", inputSchema: {type: "object"}}] : tools);
+    assert.equal(requests.length, 2);
+    const body = requests[1].body;
+    assert.ok(body.messages.every(m => m.content.every(b => b.type !== "thinking" && b.type !== "redacted_thinking")));
+    assert.equal(body.messages[1].content[0].type, "tool_use");
+    assert.deepEqual(body.messages[1].content[0].input, changed === "assistant" ? {changed: true} : {});
+    assert.equal(body.messages[2].content[0].type, "tool_result");
+    assert.equal(body.thinking.type, "adaptive");
+  });
+}

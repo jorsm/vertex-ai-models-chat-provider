@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, resolveClaudeModelId } = require("../out/providers/ClaudeThinking.js");
+const { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix, resolveClaudeModelId } = require("../out/providers/ClaudeThinking.js");
 
 test("resolves every supported Claude effort suffix for custom catalogs", () => {
   for (const effort of ["low", "medium", "high", "xhigh", "max"]) {
@@ -94,4 +94,43 @@ test("finds only exact tool-call groups and returns defensive copies", () => {
     toolCallIds: ["tool-3"],
   });
   assert.equal(cache.find(["tool-1", "tool-2"]), undefined);
+});
+
+
+test("binds replay to tools and context, permanently discarding mismatches", () => {
+  const replay = { blocks: [
+    { type: "thinking", thinking: "", signature: "signed" },
+    { type: "tool_use", id: "tool-1", name: "lookup", input: {} },
+  ], toolCallIds: ["tool-1"] };
+  const original = new ClaudeThinkingPrefix("claude-sonnet-5-5", [], [{ name: "lookup", input_schema: {} }]);
+  original.append({ role: "user", content: [{ type: "text", text: "first" }] });
+  const cache = new ClaudeThinkingReplayCache();
+  const hash = original.fingerprint(replay.blocks);
+  cache.store(replay, hash);
+  assert.ok(cache.find(["tool-1"], hash));
+  const changed = new ClaudeThinkingPrefix("claude-sonnet-5-5", [], [{ name: "another", input_schema: {} }]);
+  changed.append({ role: "user", content: [{ type: "text", text: "first" }] });
+  assert.equal(cache.find(["tool-1"], changed.fingerprint(replay.blocks)), undefined);
+  assert.equal(cache.find(["tool-1"], hash), undefined);
+});
+
+test("cache markers do not invalidate thinking, actual tool inputs do", () => {
+  const build = (marked) => {
+    const prefix = new ClaudeThinkingPrefix("claude", [{ type: "text", text: "system", ...(marked ? {cache_control: {type: "ephemeral"}} : {}) }]);
+    prefix.append({ role: "user", content: [{ type: "tool_result", tool_use_id: "first", content: [{ type: "text", text: "result", ...(marked ? {cache_control: {type: "ephemeral"}} : {}) }] }] });
+    return prefix;
+  };
+  const blocks = [{ type: "tool_use", id: "tool", name: "lookup", input: { cache_control: "actual user data" } }];
+  assert.equal(build(true).fingerprint(blocks), build(false).fingerprint(blocks));
+  assert.notEqual(build(false).fingerprint(blocks), build(false).fingerprint([{...blocks[0], input: {cache_control: "changed"}}]));
+});
+
+test("removing earlier thinking invalidates later cached turns", () => {
+  const first = { role: "assistant", content: [{ type: "thinking", thinking: "", signature: "first" }, { type: "tool_use", id: "one", name: "lookup", input: {} }] };
+  const oldPrefix = new ClaudeThinkingPrefix("claude");
+  oldPrefix.append(first);
+  const newPrefix = new ClaudeThinkingPrefix("claude");
+  newPrefix.append({...first, content: first.content.slice(1)});
+  const second = [{type: "tool_use", id: "two", name: "lookup", input: {}}];
+  assert.notEqual(oldPrefix.fingerprint(second), newPrefix.fingerprint(second));
 });

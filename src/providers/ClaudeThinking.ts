@@ -1,3 +1,5 @@
+import { createHash, Hash } from "node:crypto";
+
 export const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 export type ClaudeEffort = (typeof CLAUDE_EFFORTS)[number];
@@ -153,7 +155,42 @@ export class ClaudeStreamContentAccumulator {
   }
 }
 
-type CachedReplay = ClaudeThinkingReplay;
+function withoutCacheMarker(block: any): any {
+  const { cache_control: _cacheControl, ...rest } = block;
+  if (rest.type === "tool_result" && Array.isArray(rest.content)) {
+    rest.content = rest.content.map(withoutCacheMarker);
+  }
+  return rest;
+}
+
+/** Incremental hash: keep no copy of prompts, tool results or reasoning. */
+export class ClaudeThinkingPrefix {
+  private hash: Hash;
+
+  constructor(model: string, system?: any[], tools?: any[], hash?: Hash) {
+    this.hash = hash ?? createHash("sha256").update(JSON.stringify({
+      model, system: (system ?? []).map(withoutCacheMarker),
+      tools: (tools ?? []).map(withoutCacheMarker),
+    }));
+  }
+
+  append(message: any): void {
+    this.hash.update(JSON.stringify({ role: message.role, content: message.content.map(withoutCacheMarker) }));
+  }
+
+  copy(): ClaudeThinkingPrefix {
+    return new ClaudeThinkingPrefix("", undefined, undefined, this.hash.copy());
+  }
+
+  fingerprint(assistantBlocks: readonly any[]): string {
+    const visible = assistantBlocks.filter((block) => block.type !== "thinking" && block.type !== "redacted_thinking");
+    const copy = this.copy();
+    copy.append({ role: "assistant", content: visible });
+    return copy.hash.digest("hex");
+  }
+}
+
+type CachedReplay = ClaudeThinkingReplay & { prefixFingerprint?: string };
 
 /** Keeps a bounded set of signed assistant turns for VS Code tool continuations. */
 export class ClaudeThinkingReplayCache {
@@ -162,10 +199,11 @@ export class ClaudeThinkingReplayCache {
 
   constructor(private readonly maxTurns = 64) {}
 
-  store(replay: ClaudeThinkingReplay): void {
+  store(replay: ClaudeThinkingReplay, prefixFingerprint?: string): void {
     const cached: CachedReplay = {
       blocks: cloneReplayBlocks(replay.blocks),
       toolCallIds: [...replay.toolCallIds],
+      prefixFingerprint,
     };
     this.turns.push(cached);
     for (const callId of cached.toolCallIds) {
@@ -185,11 +223,19 @@ export class ClaudeThinkingReplayCache {
     }
   }
 
-  find(toolCallIds: readonly string[]): ClaudeReplayBlock[] | undefined {
+  find(toolCallIds: readonly string[], prefixFingerprint?: string): ClaudeReplayBlock[] | undefined {
     const requestedIds = new Set(toolCallIds);
     for (const callId of requestedIds) {
       const replay = this.byToolCallId.get(callId);
       if (replay && replay.toolCallIds.length === requestedIds.size && replay.toolCallIds.every((id) => requestedIds.has(id))) {
+        if (prefixFingerprint !== undefined && replay.prefixFingerprint !== prefixFingerprint) {
+          // Never resurrect a block after its prefix changed, even if a later
+          // request happens to reconstruct the old context again.
+          for (const id of replay.toolCallIds) {
+            if (this.byToolCallId.get(id) === replay) { this.byToolCallId.delete(id); }
+          }
+          return undefined;
+        }
         return cloneReplayBlocks(replay.blocks);
       }
     }

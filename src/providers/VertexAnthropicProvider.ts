@@ -5,7 +5,7 @@ import { Logger } from "../utils/Logger";
 import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryableError } from "../utils/discovery";
 import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
-import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, resolveClaudeModelId } from "./ClaudeThinking";
+import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix, resolveClaudeModelId } from "./ClaudeThinking";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 import { ProxyGateway, isGatewayRetryable, normalizeGatewayError, gatewayRetryDelayMs } from "../ProxyGateway";
 import { requestCancellation, cancellableRequest } from "../utils/cancellation";
@@ -119,6 +119,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
       const tools = this.mapTools(options, charCount);
 
+      const thinkingPrefix = this.restoreThinking(actualId, systemBlocks, tools, mappedMessages);
       this.applyCacheControl(tools, systemBlocks, mappedMessages);
 
       this.logMappedMessages(actualId, mappedMessages, systemBlocks, tools, maxTokens);
@@ -142,7 +143,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
       this.logger.log(`  Stream created successfully`);
 
-      const usage = await this.processStream(stream, charCount, progress, token, cancellation.signal);
+      const usage = await this.processStream(stream, charCount, progress, token, cancellation.signal, thinkingPrefix);
       if (cancellation.signal.aborted) { throw new vscode.CancellationError(); }
 
       // Report token usage to VS Code (MIME type 'usage') for Copilot Chat indicator
@@ -196,16 +197,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
       }
 
       const role = roleNum === vscode.LanguageModelChatMessageRole.User ? "user" : "assistant";
-      let contentParts = this.mapContentParts(msg.content, role, charCount);
-      if (role === "assistant") {
-        const toolCallIds = msg.content.flatMap((part) => (part instanceof vscode.LanguageModelToolCallPart ? [part.callId] : []));
-        const replayedBlocks = this.thinkingReplayCache.find(toolCallIds);
-        if (replayedBlocks) {
-          contentParts = replayedBlocks;
-          const hiddenBlockCount = replayedBlocks.filter((block) => block.type === "thinking" || block.type === "redacted_thinking").length;
-          this.logger.log(`     ↪ Restored ${hiddenBlockCount} signed thinking block(s) for ${toolCallIds.length} tool call(s)`);
-        }
-      }
+      const contentParts = this.mapContentParts(msg.content, role, charCount);
       mappedMessages.push({ role, content: contentParts });
     }
 
@@ -216,6 +208,25 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
     const systemBlocks = systemParts.length > 0 ? systemParts.map((text) => ({ type: "text", text })) : undefined;
     return { systemBlocks, mappedMessages };
+  }
+
+  private restoreThinking(model: string, system: any[] | undefined, tools: any[] | undefined, messages: any[]): ClaudeThinkingPrefix {
+    const prefix = new ClaudeThinkingPrefix(model, system, tools);
+    for (const message of messages) {
+      if (message.role === "assistant") {
+        const ids = message.content.flatMap((block: any) => block.type === "tool_use" ? [block.id] : []);
+        const hadReplay = this.thinkingReplayCache.find(ids) !== undefined;
+        const blocks = this.thinkingReplayCache.find(ids, prefix.fingerprint(message.content));
+        if (blocks) {
+          message.content = blocks;
+          this.logger.log(`  Restored signed thinking for ${ids.length} tool call(s): prefix unchanged`);
+        } else if (hadReplay) {
+          this.logger.log(`  Discarded cached thinking for ${ids.length} tool call(s): context, tools or assistant content changed`);
+        }
+      }
+      prefix.append(message);
+    }
+    return prefix;
   }
 
   private roleName(roleNum: vscode.LanguageModelChatMessageRole): string {
@@ -422,7 +433,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
   // ── Stream processing ─────────────────────────────────────────────────
 
-  private async processStream(stream: AsyncIterable<any>, charCount: { assistant_text: number; tool_use: number }, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, signal?: AbortSignal): Promise<{ input: number; output: number; cache_read: number; cache_create: number }> {
+  private async processStream(stream: AsyncIterable<any>, charCount: { assistant_text: number; tool_use: number }, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, signal?: AbortSignal, thinkingPrefix?: ClaudeThinkingPrefix): Promise<{ input: number; output: number; cache_read: number; cache_create: number }> {
     const contentAccumulator = new ClaudeStreamContentAccumulator();
     const tokenUsage = { input: 0, output: 0, cache_read: 0, cache_create: 0 };
     let chunkCount = 0;
@@ -443,7 +454,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     if (!cancelled) {
       const replay = contentAccumulator.createThinkingReplay();
       if (replay) {
-        this.thinkingReplayCache.store(replay);
+        this.thinkingReplayCache.store(replay, thinkingPrefix?.fingerprint(replay.blocks));
         const hiddenBlockCount = replay.blocks.filter((block) => block.type === "thinking" || block.type === "redacted_thinking").length;
         this.logger.log(`  🔒 Retained ${hiddenBlockCount} signed thinking block(s) for ${replay.toolCallIds.length} tool continuation(s)`);
       }
