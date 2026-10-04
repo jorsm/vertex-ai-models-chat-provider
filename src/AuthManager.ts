@@ -46,6 +46,7 @@ export class AuthManager {
   private identityCache?: { value: string; expires: number };
   private identityPromise?: Promise<string | undefined>;
   private identityRevision = 0;
+  private gcloudOperationQueue: Promise<void> = Promise.resolve();
 
   public clearProxyToken(): void {
     this.proxyToken = undefined;
@@ -69,15 +70,22 @@ export class AuthManager {
   }
 
   private async acquireProxyIdToken(revision: number): Promise<string> {
+    const startedAt = Date.now();
     try {
       const command = process.platform === "win32" ? "cmd.exe" : "gcloud";
       const args = process.platform === "win32"
         ? ["/d", "/s", "/c", "gcloud.cmd auth print-identity-token --quiet --verbosity=error"]
         : ["auth", "print-identity-token", "--quiet", "--verbosity=error"];
-      const result = await execFileAsync(command, args, {
-        timeout: 30_000, maxBuffer: 64 * 1024,
-        env: { ...process.env, CLOUDSDK_CORE_DISABLE_PROMPTS: "true", CLOUDSDK_CORE_DISABLE_FILE_LOGGING: "true", CLOUDSDK_CORE_LOG_HTTP: "false" },
-      });
+      const result = await this.runGcloudOperation(() => execFileAsync(command, args, {
+        timeout: 60_000, maxBuffer: 64 * 1024, windowsHide: true,
+        env: {
+          ...process.env,
+          CLOUDSDK_CORE_DISABLE_PROMPTS: "true",
+          CLOUDSDK_CORE_DISABLE_FILE_LOGGING: "true",
+          CLOUDSDK_CORE_LOG_HTTP: "false",
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: "true",
+        },
+      }));
       const token = result.stdout.trim();
       const parts = token.split(".");
       if (parts.length !== 3) { throw new Error(); }
@@ -88,10 +96,21 @@ export class AuthManager {
       }
       this.proxyToken = { token, expires: Math.min(claims.exp * 1000 - 60_000, Date.now() + 60_000) };
       return token;
-    } catch {
+    } catch (error: any) {
       // Never surface subprocess stderr: it can contain bearer tokens or credential paths.
+      const reason = error?.killed || error?.signal ? "gcloud timed out"
+        : error?.code === "ENOENT" ? "gcloud executable not found"
+          : "gcloud returned an invalid or unavailable personal token";
+      this.logger.log(`Personal proxy ID token acquisition failed after ${Date.now() - startedAt} ms (${reason}).`);
       throw new GatewayError("Cannot obtain a personal Google ID token for the proxy. Run 'gcloud auth login' with your user account (without service-account impersonation), then Refresh Models.", 401);
     }
+  }
+
+  /** Cloud SDK commands share configuration files and must not overlap on Windows. */
+  private runGcloudOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.gcloudOperationQueue.then(operation, operation);
+    this.gcloudOperationQueue = result.then(() => undefined, () => undefined);
+    return result;
   }
 
   private readonly logger = new Logger("AuthManager");
@@ -389,7 +408,18 @@ export class AuthManager {
     const previousIdentity = this.identityCache?.value;
     try {
       const command = AuthManager.getGcloudAccountCommand();
-      const { stdout } = await execFileAsync(command.executable, command.args, { encoding: "utf8", windowsHide: true });
+      const { stdout } = await this.runGcloudOperation(() => execFileAsync(command.executable, command.args, {
+        encoding: "utf8",
+        timeout: 60_000,
+        windowsHide: true,
+        env: {
+          ...process.env,
+          CLOUDSDK_CORE_DISABLE_PROMPTS: "true",
+          CLOUDSDK_CORE_DISABLE_FILE_LOGGING: "true",
+          CLOUDSDK_CORE_LOG_HTTP: "false",
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: "true",
+        },
+      }));
       const email = stdout.split(/\r?\n/, 1)[0]?.trim();
       if (email && email !== "(unset)" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         if (revision === this.identityRevision) {

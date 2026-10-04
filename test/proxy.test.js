@@ -63,6 +63,7 @@ try {
         credentialCommandCount++;
         credentialCommand = args;
         if (commandResult instanceof Error) throw commandResult;
+        if (typeof commandResult === "function") return commandResult(...args);
         return { stdout: commandResult, stderr: "" };
       };
       return { ...actual, execFile };
@@ -95,6 +96,7 @@ test.afterEach(() => {
   for (const key of Object.keys(settings)) delete settings[key];
   for (const key of Object.keys(inspections)) delete inspections[key];
   credentialCommandCount = 0;
+  commandResult = undefined;
 });
 
 test("proxy URL validates HTTPS, optional base path and loopback; rejects token/query/arbitrary schemes", () => {
@@ -117,7 +119,7 @@ test("token acquisition uses a bounded personal CLI command, caches briefly and 
   commandResult = jwt();
   const first = await auth.getProxyIdToken();
   assert.equal(first, commandResult);
-  assert.equal(credentialCommand[2].timeout, 30_000);
+  assert.equal(credentialCommand[2].timeout, 60_000);
   assert.equal(credentialCommand[2].env.CLOUDSDK_CORE_LOG_HTTP, "false");
   assert.ok(!credentialCommand[1].join(" ").includes("--audiences"));
   commandResult = jwt({ sub: "next" });
@@ -139,6 +141,36 @@ test("client identity resolution is shared and caches the last successful gcloud
   commandResult = new Error("temporary gcloud failure");
   assert.equal(await auth.getIdentity(), "developer@example.com");
   assert.equal(credentialCommandCount, 1);
+});
+test("client identity and proxy token gcloud commands are serialized", async () => {
+  const auth = new AuthManager({ workspaceState: { get: () => undefined } });
+  const firstStarted = deferred();
+  const releaseFirst = deferred();
+  const expectedToken = jwt();
+  let active = 0;
+  let maxActive = 0;
+  let invocation = 0;
+  commandResult = async (_executable, args) => {
+    active++;
+    maxActive = Math.max(maxActive, active);
+    if (++invocation === 1) {
+      firstStarted.resolve();
+      await releaseFirst.promise;
+    }
+    const stdout = args.join(" ").includes("print-identity-token") ? expectedToken : "developer@example.com\n";
+    active--;
+    return { stdout, stderr: "" };
+  };
+
+  const identity = auth.getIdentity();
+  await firstStarted.promise;
+  const token = auth.getProxyIdToken();
+  await flush();
+  assert.equal(maxActive, 1);
+  releaseFirst.resolve();
+  assert.equal(await identity, "developer@example.com");
+  assert.equal(await token, expectedToken);
+  assert.equal(maxActive, 1);
 });
 test("server catalog supplies complete metadata and validates IDs, prices, limits, capabilities and duplicates", () => {
   const entry = model("server-only-high", "google", "backend-high");
