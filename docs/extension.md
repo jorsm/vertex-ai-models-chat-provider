@@ -20,7 +20,7 @@ The extension follows a standard VS Code extension architecture with several spe
 *   **Settings Migration**: Automatically migrates `projectId` and `hideBillingWarning` settings from the legacy `vertexAnthropic` configuration namespace to the current `vertexAiChat` namespace.
 *   **Service Initialization**: Orchestrates the `ModelCatalogResolver`, `UsageTrackerService`, `CostStatusBar`, and `VertexChatModelDispatcher`.
 *   **Provider Registration**: Registers a `LanguageModelChatProvider` for the `google-vertex` vendor, displayed as "Google Agent Platform (Vertex AI)", allowing the models to be used within the native VS Code Chat interface.
-*   **Model Discovery**: Implements a discovery mechanism that probes GCP regions to identify available models. This process is triggered on activation, configuration changes, or manually via command.
+*   **Model Discovery**: Direct mode probes GCP regions; [proxy mode](proxy.md) authenticates `GET /discovery` and uses the server's complete authorized catalog without inference probes. Discovery runs on activation, configuration changes, or manually via command.
 *   **Remote Host Support**: Runs in the workspace extension host. In a remote window, the extension must be installed remotely and uses authentication available in that environment.
 *   **Command Registration**: Exposes commands for dashboard access, model refresh, tool debugging, Service Account lifecycle management, and optional AI-powered commit-message generation.
 
@@ -52,7 +52,7 @@ Initializes the extension's internal state and registers its contributions with 
     - `vertexAiChat.openWorkspaceModelsFile`: Creates or opens the workspace `.vscode/models.json` model catalog.
 6.  Registers the chat provider with the `vscode.lm` API.
 7.  Starts an initial background discovery of models.
-8.  Sets up a listener for `onDidChangeConfiguration` to update the project ID and re-run discovery if changed.
+8.  Sets up configuration listeners to reset the connection and re-run discovery when `projectId`, `proxyUrl`, or the discovery timeout changes. `proxyUrl` and `projectId` are mutually exclusive; a conflict clears available models.
 
 ### runDiscovery
 [source](../src/extension.ts)

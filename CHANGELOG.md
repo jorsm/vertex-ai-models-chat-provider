@@ -6,20 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-### Experimental
+### Added
 
-- Optional `vertexAiChat.proxyUrl` for a Python Cloud Function gateway, with personal Google CLI ID tokens, a complete server catalog (variants, capabilities, limits and prices) and no direct fallback. Gemini and Claude only in proxy mode.
+- Optional `vertexAiChat.proxyUrl` for an enterprise HTTP gateway where organizations can implement centralized metrics, policies, and business logic. Uses personal Google CLI ID tokens, a complete server catalog (variants, capabilities, limits and prices), and no direct fallback. Gemini and Claude only in proxy mode.
 - Share chat/commit routing, repository-scoped project labels and usage accounting. Connect cancellation to both SDK transports and preserve native streaming/tool signatures.
-- Offline integration coverage against the locked SDK versions. Actual function/IAM authentication and VS Code extension-host verification remain mandatory before release; see `docs/proxy-implementation-plan.md`.
+- Consolidated [proxy setup and implementation contract](docs/proxy.md) and [compatibility verification](docs/proxy-compatibility.md), replacing development plans, branch reviews, and recorded demonstration results.
+- Configurable model discovery timeout via `vertexAiChat.modelDiscoveryTimeoutSeconds`, with a default of 45 seconds per endpoint probe in each region.
 
 ### Changed
 
 - Probe each distinct model endpoint once per region during discovery, sharing availability across its effort variants and omitting effort parameters from discovery requests.
 - Stagger endpoint discovery starts, limit concurrency to three, and retry transient failures up to three times with randomized backoff within the configured timeout. Keep all catalog effort variants available after a 429 response even when retries are exhausted.
-
-### Added
-
-- Configurable model discovery timeout via `vertexAiChat.modelDiscoveryTimeoutSeconds`, with a default of 45 seconds per endpoint probe in each region.
 
 ## [0.6.8] — 2026-10-01
 

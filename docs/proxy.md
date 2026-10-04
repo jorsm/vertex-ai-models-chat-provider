@@ -1,0 +1,297 @@
+# Enterprise proxy
+
+`vertexAiChat.proxyUrl` routes Gemini and Claude discovery and inference through an organization-managed HTTP service. Use it when you need centralized metrics, model access rules, quotas, cost allocation, auditing, or other business logic around model calls. Chat, tool continuations, and AI commit-message generation all use this transport.
+
+The extension handles the VS Code integration and native model protocols. Your proxy authenticates callers, publishes the approved catalog, applies your policies, selects the upstream Google Cloud project and region, and forwards responses. You can implement it with Cloud Run, a Cloud Run function, or another HTTP service that meets the authentication and protocol contract below; Python is not a requirement.
+
+```mermaid
+flowchart LR
+    Client[VS Code extension] -->|Google ID token| Proxy[Enterprise proxy]
+    Proxy --> Policy[Authorization, metrics, quotas and business logic]
+    Policy -->|Server credentials, project and region| Vertex[Vertex AI: Gemini or Claude]
+    Vertex -->|Native streaming response| Proxy
+    Proxy -->|Native streaming response| Client
+```
+
+## Core access model: users invoke the proxy, the proxy invokes Vertex
+
+The central principle of an enforced enterprise proxy is to separate service invocation from model access. Users receive permission to invoke the proxy service, while the application's Google runtime identity receives permission to call Vertex APIs on their behalf. This applies whether you host the proxy on Cloud Run, Cloud Functions, or another compatible service.
+
+| Principal | Permissions in this model |
+| --- | --- |
+| End user | Invoke the proxy service and authenticate as themselves. For IAM-protected Cloud Run and Cloud Functions v2, grant an invocation role such as `roles/run.invoker` on the service. |
+| Proxy runtime identity | Call the approved Vertex APIs in the server-selected project, typically using a dedicated attached Service Account granted Agent Platform User (`roles/aiplatform.user`) or a narrower role covering the required API operations. |
+
+Remove **Agent Platform User (`roles/aiplatform.user`) from end users** on the projects whose access you want to govern through the proxy. They should no longer be able to call Vertex directly using their personal Google credentials. The runtime Service Account performs the upstream call after the proxy authenticates the user and applies its business logic. Vertex authorizes that runtime identity; the proxy records the verified end user for attribution and policy enforcement.
+
+Removing that one role is sufficient only if users have no equivalent access through another grant. Check group membership, inherited folder/organization grants, custom roles, and broader roles such as Editor, Owner, or Agent Platform Administrator. Remove any grants that still permit direct inference, such as `aiplatform.endpoints.predict`, in the governed projects. Do not give end users keys or impersonation permissions for the privileged proxy identity, which would provide another way around the proxy. See [Agent Platform IAM roles and permissions](https://docs.cloud.google.com/iam/docs/roles-permissions/aiplatform) and [function invocation authentication](https://docs.cloud.google.com/functions/docs/securing/authenticating).
+
+Setting `proxyUrl` changes this extension's routing; it does not modify IAM or prevent users from using another client. The organization's effective IAM policy is what makes the proxy the required entry point. The hosting platform's invocation permissions and the runtime identity's Vertex permissions must be configured separately.
+
+## Example use cases
+
+The following are policies you can implement in your proxy. Configuring `proxyUrl` routes requests through your service; it does not enable these controls automatically. Apply inference policies before calling Vertex, and collect usage as the native response streams back.
+
+### Require user or project labels
+
+You need every request attributed to a user, a project, or both. For example, your organization requires `vscode-vertex-ai-project` to contain an approved cost-center identifier before any inference is allowed.
+
+Read Gemini labels from the body and Claude labels from `X-Vertex-AI-Labels`. Reject missing, empty, or invalid required values before forwarding the request, using a `400` error that identifies the missing requirement. You can require an incoming user label or populate it from the authenticated caller before validating the effective labels. Keep discovery accessible without attribution labels: the extension does not send them on `/discovery`.
+
+### Prevent forged user attribution
+
+A caller sets `userLabelValue` to a colleague's name to attribute usage to someone else. Use the email from the verified Google ID token sent with the call as the authoritative caller, rather than trusting `vscode-vertex-ai-user`.
+
+Derive your user attribution from that verified identity, either overwriting the effective user label or storing a separate authenticated-user field. Sanitize the value when forwarding it as a Vertex label. A client label may remain useful as descriptive metadata, but it must not determine whose permissions, quota, or budget apply. Decoding a token without verifying it is insufficient.
+
+### Restrict expensive, old, or deprecated models
+
+You want general users to use approved lower-cost models, reserve more expensive models for selected teams, and retire older versions on a planned date.
+
+Filter `/discovery` for the authenticated caller and enforce the same policy on every inference route. Return `403` for a disallowed model even if the caller crafts a POST request directly. Check the resolved backend model and allowed effort settings explicitly; hiding a picker entry alone does not prevent its use.
+
+### Monitor estimated costs in real time
+
+Your operations team wants to see spend as requests complete instead of waiting for billing data to become available. Capture provider-reported input, output, and cache usage from the stream, apply your server-maintained rate card, and publish estimates to a central dashboard or metrics service.
+
+Track in-flight requests separately and update estimates incrementally where the provider supplies usage. Not every stream includes continuous token totals, so final usage may only be available near completion. These are operational estimates: reconcile them with Cloud Billing rather than treating them as final invoice amounts. Record failures and cancellations too, without assuming they consumed no upstream tokens.
+
+### Analyze model and token usage
+
+You want to compare model adoption across teams, identify requests with high token consumption, or measure cache effectiveness and latency.
+
+Aggregate request counts, input/output/cache tokens, duration, errors, and cancellations by model, authenticated user, and authorized project. For example, report weekly model usage by team, cache-hit ratios, or token consumption before and after a model migration. These statistics can be collected from metadata without retaining prompts or responses.
+
+### Route each client's usage to its own GCP project and billing account
+
+You serve several clients and want each client's Vertex usage charged to its own billing account, while every user keeps the same `proxyUrl` and personal Google login. Use `vscode-vertex-ai-project` as a logical routing key and maintain an explicit mapping on the server:
+
+| Project label | Upstream GCP project | Linked Cloud Billing account |
+| --- | --- | --- |
+| `client_a` | `client-a-ai` | Client A's billing account |
+| `client_b` | `client-b-ai` | Client B's billing account |
+| `internal` | `company-internal-ai` | Your organization's billing account |
+
+Enable `vertexAiChat.enableProjectLabel` for users and set `vertexAiChat.projectLabelValue` in each workspace/folder to the agreed routing key, or map the automatic workspace-name label if your naming convention is stable. Keep `vertexAiChat.projectId` empty in proxy mode. Users switch working repositories without changing the endpoint, credentials, or upstream GCP project settings. In a multi-root workspace, requests use the relevant resource's project label; commit generation uses the target repository.
+
+For each inference request, resolve the label through the server-owned mapping, verify that the authenticated caller is authorized for that client, and rebuild the Vertex route using the mapped GCP project and configured model region. The proxy's runtime identity must have the required Vertex permissions in each destination project, or the proxy can select an authorized runtime credential for that destination. End users retain invocation permission on the proxy and no direct Vertex access in those projects.
+
+Provision each destination project with its intended billing account beforehand. Vertex usage in that project is charged to the linked account; the label selects your routing rule, and the resulting upstream project determines the billing destination. You do not pass a billing account ID as an inference parameter or change a project's billing association per call. See [Google's project-to-billing-account model](https://docs.cloud.google.com/billing/docs/how-to/view-linked).
+
+Reject missing or unknown routing keys and unauthorized client selections before inference, rather than silently charging another project. Record both the logical label and resolved GCP project for metrics and budget checks. Discovery carries no project label, so publish the caller's approved catalog there and enforce destination-specific model availability again when handling inference. This supports N clients, N GCP projects, and N billing accounts behind a single user-facing proxy configuration.
+
+### Enforce budgets per user or project
+
+You want a daily estimated-spend limit per authenticated user and a monthly limit per project, with different allowances for different teams.
+
+Maintain shared budget counters on the server and check them before inference. Reserve an estimated allowance atomically for each admitted request, then reconcile it against reported usage; otherwise simultaneous requests can each pass the same budget check and exceed the limit. Bound output tokens where appropriate and define how to account for failures, cancellations, and usage not reported by the provider.
+
+Use the verified caller identity and validate that the caller can charge the selected project; a client-controlled project label alone is not sufficient. Reject exhausted budgets with a permanent policy error such as `403` and a clear message. Reserve `429` for temporary rate limits, since the extension retries it. Budget enforcement based on estimates should include an allowance for in-flight work and later billing adjustments.
+
+## Configure the extension
+
+Sign in with your personal Google account in the environment where the workspace extension host runs:
+
+```sh
+gcloud auth login
+```
+
+Configure the base URL in **User Settings**, and clear `vertexAiChat.projectId` from user, workspace, and folder settings where it is set:
+
+```json
+{
+  "vertexAiChat.proxyUrl": "https://ai-proxy.example.com",
+  "vertexAiChat.projectId": ""
+}
+```
+
+Run **Google Agent Platform: Refresh Models**. In Remote SSH, Dev Containers, and Codespaces, `gcloud`, the personal login, and access to the proxy must be available in the remote workspace environment.
+
+| Setting or behavior | Proxy mode |
+| --- | --- |
+| `proxyUrl` | Machine-scoped; only the user setting selects the endpoint. Workspace overrides are ignored. |
+| URL format | Absolute HTTPS URL, optionally with a base path. HTTP is accepted only on `localhost`, `127.0.0.1`, or `[::1]`. Credentials, query strings, and fragments are rejected. |
+| `projectId` | Mutually exclusive with a nonempty `proxyUrl`. A conflict exposes no models until one setting is cleared. |
+| Client authentication | Personal `gcloud auth login` identity, separate from ADC or stored Service Accounts used for direct mode. |
+| Model catalog | Supplied exclusively by the proxy. Bundled, user, and workspace catalogs are ignored. |
+| Providers | Google Gemini and Anthropic Claude. Grok is supported in direct mode only. |
+| Discovery | One authenticated `GET /discovery`; no inference probes or attribution labels. |
+| Failure | An empty or failed discovery exposes no models. Requests never fall back to direct Vertex. |
+
+Leave `proxyUrl` empty to use direct mode, with your own `projectId` and ADC or Service Account credentials. Refresh Models after changing the active CLI account or the server catalog. The extension does not install or deploy a proxy for you.
+
+## Implement a compatible proxy
+
+### Required endpoints
+
+All paths below are appended to `proxyUrl`. If the setting is `https://ai-proxy.example.com/team`, expose `/team/discovery` and `/team/v1/projects/...`. Do not include `/v1` in the configured base URL unless you intentionally want an additional `/v1` segment.
+
+| Method | Path relative to `proxyUrl` | Response |
+| --- | --- | --- |
+| `GET` | `/discovery` | Complete authorized model catalog as JSON. |
+| `POST` | `/v1/projects/gateway/locations/global/publishers/google/models/{model}:streamGenerateContent?alt=sse` | Gemini Vertex JSON request and native Server-Sent Events response. |
+| `POST` | `/v1/projects/gateway/locations/global/publishers/anthropic/models/{model}:streamRawPredict` | Claude Vertex JSON request and native Server-Sent Events response. |
+
+Implement each inference route for the vendors you advertise. `/health`, `/openapi.json`, and `/v1/models` are optional operational endpoints; the extension does not call them. There is no fallback discovery route and no extension-specific `/predict` endpoint. A standard HTTP forwarding proxy or an OpenAI `/chat/completions` endpoint alone does not implement this contract.
+
+### Authentication and upstream identity
+
+Discovery and inference send:
+
+```http
+Authorization: Bearer <personal-google-id-token>
+```
+
+The extension obtains this token using `gcloud auth print-identity-token --quiet --verbosity=error`, without `--audiences` or service-account impersonation. It locally checks token shape, verified personal email, and expiry; your server or trusted authentication edge must verify the signature, issuer, token validity, and authorization for the intended service. Local decoding is not server authentication.
+
+The token is cached in memory until one minute before expiry. Concurrent token requests share acquisition, CLI operations are serialized within the authentication manager, and a timed-out token command receives one retry. Each CLI attempt has a 20-second deadline, with Windows process-tree cleanup where a batch launcher is used. Refresh Models clears the token cache.
+
+**Authentication compatibility:** the current client has no configurable target audience, interactive proxy OAuth flow, API-key authentication, or service-account token mode. Google documents generic CLI user ID tokens for development invocation of Cloud Run and Cloud Run functions, rather than production authentication. A proxy that requires an audience-bound token or another login flow needs a corresponding client authentication change; changing `proxyUrl` alone does not provide one. See [Google's ID-token guidance](https://docs.cloud.google.com/docs/authentication/get-id-token#generic) and [Cloud Run developer authentication](https://docs.cloud.google.com/run/docs/authenticating/developers).
+
+Follow the [core access model](#core-access-model-users-invoke-the-proxy-the-proxy-invokes-vertex): the personal token authenticates the caller to the proxy; the application's Google runtime identity authorizes upstream Vertex calls. Select the billing project, upstream regions, and runtime permissions on the server. Do not forward the incoming caller token to Vertex as its access credential. For an IAM-protected Cloud Run service, grant authorized callers invocation permission as described in the [Cloud Run authentication guide](https://docs.cloud.google.com/run/docs/authenticating/developers).
+
+### Discovery catalog
+
+Return HTTP 200 with `Content-Type: application/json` and this canonical envelope:
+
+```json
+{
+  "candidateModels": [
+    {
+      "id": "company-gemini",
+      "vendor": "google",
+      "version": "gemini-2.5-flash",
+      "displayName": "Company Gemini",
+      "family": "gemini",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "capabilities": { "imageInput": true, "toolCalling": true },
+      "pricing": { "input": 0.3, "output": 2.5, "cache_read": 0.03 }
+    },
+    {
+      "id": "company-claude-medium",
+      "vendor": "anthropic",
+      "version": "claude-sonnet-5-5-medium",
+      "displayName": "Company Claude Medium",
+      "family": "claude",
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "capabilities": { "imageInput": true, "toolCalling": true },
+      "pricing": { "input": 3, "output": 15, "cache_read": 0.3, "cache_create": 3.75 }
+    }
+  ],
+  "regionPriority": ["global"]
+}
+```
+
+These entries illustrate the schema. Populate versions, limits, capabilities, and prices from your own approved catalog; the example is not a current rate card or an access guarantee.
+
+| Field | Contract |
+| --- | --- |
+| `id` | Unique UI identifier, 1–256 characters matching `[a-zA-Z0-9_.@-]`. It may differ from the backend model. |
+| `vendor` | Exactly `google` or `anthropic`. |
+| `version` | Backend model identifier or provider-supported effort/thinking alias, with the same character constraints as `id`. Routes and URLs are invalid. |
+| `displayName`, `family` | Nonempty text, at most 256 characters. Use the appropriate family, such as `gemini` or `claude`. |
+| `maxInputTokens`, `maxOutputTokens` | Positive safe integers. The advertised output limit is used in generation requests. |
+| `capabilities` | Required boolean `imageInput` and `toolCalling` fields. Advertise capabilities your proxy preserves. |
+| `pricing` | Required finite, non-negative `input` and `output` rates in USD per million tokens. Optional `cache_read` and `cache_create` use the same units. |
+| `pricing.longContext` | Optional replacement rate card with a positive integer `inputThresholdTokens`, required `input`/`output`, and optional cache rates. Applies to the whole request when total input, including cached tokens, exceeds the threshold. |
+| `regionPriority` | Required array in the canonical envelope; each string matches `[a-z][a-z0-9-]*`. Informational in proxy mode: the server selects upstream regions. An empty array is accepted. |
+
+The legacy `{ "models": [...] }` envelope is also accepted at `/discovery`, but do not return both `models` and `candidateModels`. Prefer the canonical format for new implementations.
+
+Filter discovery using the authenticated caller's permissions. Return an empty `candidateModels` array when the caller has no available models. Reject unauthorized inference independently of discovery: clients can issue requests outside the picker. Use exact model authorization after resolving supported aliases; broad prefix matching can authorize unintended models.
+
+The extension publishes only the variants explicitly returned. It does not synthesize variants or supplement an empty catalog. Duplicate IDs, unsupported vendors, invalid metadata, malformed JSON, or a response larger than 1 MiB invalidate the whole response. Discovery uses `vertexAiChat.modelDiscoveryTimeoutSeconds` (45 seconds by default), including token acquisition and response reading. The server's prices drive model information and local usage estimates, with each request retaining its selected rate card.
+
+### Route rewriting and request bodies
+
+`gateway` and `global` in the incoming paths are transport placeholders. Rebuild the upstream route using a server-selected project and the region configured for that model. Never interpret `gateway` as a real billing project or let a client path select an arbitrary project, region, hostname, or upstream URL.
+
+The `{model}` path component comes from the catalog's `version`, after the provider resolves supported aliases. For example, a Claude entry ending in `-medium` is sent to the base model with the effort in the JSON request. Your allowlist must authorize that base model and any effort restrictions you enforce. The UI `id` is not an upstream route.
+
+Preserve SDK-native requests:
+
+- Gemini sends `contents`, optional `systemInstruction`, `generationConfig`, tools and tool configuration, and root JSON `labels` when enabled. Preserve image data, function calls/responses, and `thoughtSignature` fields through continuations.
+- Claude sends its Vertex message payload, including `anthropic_version`, `messages`, `max_tokens`, `stream`, and optional system blocks, tools, thinking/effort configuration, and cache controls. Preserve signed and redacted thinking blocks and tool-result continuations.
+
+Client authentication is independent of these payloads. The client does not send an upstream Service Account key or API key. Its proxy transport removes `x-goog-user-project` and `x-goog-api-key` headers.
+
+### Labels and enterprise policies
+
+Optional inference attribution uses these client label keys:
+
+| Label | Resolution |
+| --- | --- |
+| `vscode-vertex-ai-user` | Enabled by `enableUserLabel`; explicit `userLabelValue`, otherwise the resolved client Google identity. |
+| `vscode-vertex-ai-project` | Enabled by `enableProjectLabel`; workspace/folder `projectLabelValue`, otherwise the workspace or target repository name. |
+
+Values are sanitized to lowercase letters, digits, underscores, and hyphens, start with a letter, and are truncated to 63 characters. A missing value produces a warning and that label is omitted. Discovery sends neither label. Gemini inference carries labels in the root JSON body; Claude uses `X-Vertex-AI-Labels`, containing base64-encoded UTF-8 JSON. Do not inject root JSON `labels` into Claude requests.
+
+Client labels are attribution hints, not proof of identity or permission. Derive the authenticated caller independently from verified authentication and keep that dimension separate in your metrics. Your business logic can map callers to teams or cost centers, require a project label, overwrite attribution, enforce model/effort access, set per-user limits, or reject requests before upstream inference. These policies belong to your proxy and are not automatically provided by the setting.
+
+Record latency, outcomes, model, authenticated caller, policy decisions, token/cache usage, and cost estimates as needed. Usage can arrive in streaming metadata, so measure it while preserving the native stream. The extension's local dashboard remains a client estimate; centralized metrics and enforcement must be implemented on the server. Decide explicitly what request content, if any, your organization retains, and keep bearer tokens out of logs.
+
+### Streaming responses and cancellation
+
+Return successful inference as HTTP 200 with `Content-Type: text/event-stream`, forwarding events incrementally. Disable response buffering in your handler and any intermediate gateway. Preserve provider usage, finish reasons, tool calls, and signature metadata; replacing the stream with plain text loses extension functionality.
+
+A Gemini event uses native JSON in an SSE `data` field, for example:
+
+```text
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Hello"}]}}]}
+
+```
+
+Claude uses its native event types (`message_start`, `content_block_start`, `content_block_delta`, `content_block_stop`, `message_delta`, and `message_stop`), for example:
+
+```text
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+
+```
+
+These are individual event illustrations, not complete responses. Each SSE frame ends with a blank line. Preserve the full upstream sequence and forward `alt=sse` for Gemini.
+
+VS Code Stop aborts the client transport. Configuration changes also abort the old gateway. On client disconnection, close the upstream stream and release resources. Client cancellation does not itself guarantee immediate cessation of upstream computation or billing. After streaming begins, terminate failures using the native provider protocol or close the stream; do not append an unrelated JSON response or restart generation.
+
+### Errors and retries
+
+Return non-2xx status codes before streaming starts, using the provider-compatible JSON error envelope. For example, a policy denial:
+
+```json
+{
+  "error": {
+    "code": 403,
+    "message": "This model is not available for your team.",
+    "status": "PERMISSION_DENIED"
+  }
+}
+```
+
+| HTTP status | Meaning and extension behavior |
+| --- | --- |
+| `400` | Invalid input or unmet policy requirement; no inference retry. |
+| `401` | Missing or invalid caller authentication; the extension suggests personal CLI reauthentication. |
+| `403` | Caller authenticated but request/model denied; no inference retry. |
+| `404` | Unknown route/model; no alternate endpoint is tried. |
+| `429`, `503` | Temporary quota/availability failure; eligible for up to two pre-stream inference retries, with a 60-second retry budget. Preserve `Retry-After` when present. |
+| `502` with `error.status` or `error.reason` set to `UPSTREAM_AUTHENTICATION_FAILED` | Proxy's upstream credentials failed; no inference retry and no instruction to replace the caller's login. |
+
+Other statuses are not automatically retried by the proxy inference policy. Do not describe permanent denials as `429` or `503`. Retry eligibility uses HTTP status and the upstream-authentication marker, not quota-related words in the message. Discovery itself does not use the inference retry loop. Partial streams are never restarted, and both SDKs' additional retry layers are disabled in proxy mode.
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| Configuration conflict | Clear `projectId` at every applicable settings scope, or clear the user `proxyUrl` to return to direct mode. |
+| Empty picker | Verify authenticated `/discovery`, approved models, metadata validity, and the complete envelope. Local catalogs cannot restore missing server models. |
+| Token acquisition failure | Check the active personal CLI account and ensure impersonation is unset in the extension-host environment; run `gcloud auth login` when credentials need renewal. |
+| CLI timeout | Inspect **Google Agent Platform for Copilot Chat** in Output and network access. A timeout is distinct from expired credentials. |
+| CLI absent after installation | Restart VS Code so its extension host receives the updated PATH. |
+| Redirect or route failure | Expose endpoints directly under the configured base path. Redirect responses are rejected. |
+| Text arrives only at completion | Disable server/gateway buffering and verify native SSE framing. |
+| Tools or later turns fail | Preserve signatures, native tool payloads, and complete provider event sequences. |
+| Upstream authentication failure | Repair the proxy runtime's credentials and Vertex permissions. |
+
+Use the [compatibility verification guide](proxy-compatibility.md) to validate your implementation. The contract is implemented by [ProxyGateway](../src/ProxyGateway.ts), [AuthManager](../src/AuthManager.ts), [the dispatcher](../src/VertexChatModelDispatcher.ts), and the [Gemini](../src/providers/VertexGoogleProvider.ts) and [Claude](../src/providers/VertexAnthropicProvider.ts) providers.

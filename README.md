@@ -5,7 +5,7 @@
 
 ## Native Gemini, Claude, and Grok models in VS Code Copilot Chat
 
-Use Google Gemini, Anthropic Claude, and xAI Grok directly in the standard VS Code Chat panel. The extension authenticates with Google Cloud, sends requests through Google Agent Platform (Vertex AI), and bills the project you select.
+Use Google Gemini, Anthropic Claude, and xAI Grok directly in the standard VS Code Chat panel. With direct Vertex access, the extension authenticates with Google Cloud and bills the project you select. Organizations can route Gemini and Claude through an enterprise proxy to centralize metrics, access policies, and business logic.
 
 <p align="center">
   <img src="images/demo.gif" alt="Google Agent Platform for Copilot Chat demo" width="800">
@@ -18,13 +18,36 @@ Use Google Gemini, Anthropic Claude, and xAI Grok directly in the standard VS Co
 
 ## ☁️ Google Cloud prerequisites
 
-### Experimental enterprise proxy
+### Enterprise proxy with `proxyUrl`
 
-Set `vertexAiChat.proxyUrl` in **User Settings** to a Python Cloud Function v2 gateway. Proxy mode uses the personal account signed in with `gcloud auth login`, server-controlled model discovery, and Gemini/Claude streaming. It requires no client `projectId` or direct Vertex permissions and never falls back to direct Vertex. `proxyUrl` and `projectId` are mutually exclusive; configuring both fails closed and exposes no models until one is cleared. Grok is available only in direct mode. Empty `proxyUrl` preserves direct mode.
+For enterprise metrics or precise controls over model usage, set `vertexAiChat.proxyUrl` to your organization's HTTP gateway. Gemini and Claude calls, including tool continuations and AI commit generation, pass through that service. Implement your business logic there: caller authorization, approved models, quotas, auditing, cost attribution, and centralized usage metrics. The proxy chooses the upstream Google Cloud project and regions and invokes Vertex with its own credentials.
 
-The server supplies the complete approved catalog, including variants, capabilities, token limits and estimated prices. Local model catalogs are ignored in proxy mode. Discovery sends no workspace labels and performs no inference probes. Inference can send the optional client attribution labels: `vscode-vertex-ai-user` uses an explicit `userLabelValue` when configured and otherwise falls back to the active Google identity, while `projectLabelValue` retains its workspace-name fallback. The proxy independently derives the authenticated caller label from the verified OIDC token. Refresh Models after changing the endpoint or CLI account. The endpoint is machine-scoped to prevent a workspace from selecting a credential destination.
+The [core access model](docs/proxy.md#core-access-model-users-invoke-the-proxy-the-proxy-invokes-vertex) makes the proxy the required entry point: grant users only permission to invoke the service, remove their Agent Platform User (`roles/aiplatform.user`) role and any equivalent direct Vertex access, and grant the required Vertex permissions to the proxy application's Google runtime identity. That identity calls Vertex on the authenticated user's behalf after applying your policies. `proxyUrl` configures routing; your IAM configuration prevents bypassing the proxy.
 
-**Development only, not release-ready:** generic CLI ID tokens are a developer POC. The reference proxy still needs the discovery/routing/label contract described in [the implementation and release plan](docs/proxy-implementation-plan.md). Real function authentication, production token flow, IAM and VS Code extension-host tests remain required before release. The prerequisites below describe direct mode.
+Typical [proxy use cases](docs/proxy.md#example-use-cases) include:
+
+- Require user and/or project labels and reject calls when required attribution is missing.
+- Prevent forged user attribution by deriving the caller from the verified Google account email rather than a client label.
+- Block expensive, old, or deprecated models, or restrict them to authorized teams.
+- Collect real-time usage and estimated costs as requests complete, while billing data is still pending.
+- Analyze request counts, model adoption, input/output/cache tokens, latency, and errors.
+- Route requests by project label to a client's GCP project and linked billing account, keeping one proxy URL and login for users across multiple clients.
+- Enforce separate budgets for authenticated users and authorized projects.
+
+These policies are implemented by your proxy. Sign in with your personal account using `gcloud auth login` in the extension-host environment, configure the URL in **User Settings**, clear any `vertexAiChat.projectId` setting, and run **Google Agent Platform: Refresh Models**:
+
+```json
+{
+  "vertexAiChat.proxyUrl": "https://ai-proxy.example.com",
+  "vertexAiChat.projectId": ""
+}
+```
+
+The server supplies the entire approved catalog, including variants, capabilities, token limits, and estimated prices. Local catalogs are ignored; discovery performs no inference probes. `proxyUrl` and `projectId` are mutually exclusive, and proxy failures never fall back to direct Vertex. Grok is available only in direct mode. Leave `proxyUrl` empty to use the direct setup below.
+
+See [Enterprise proxy: setup and implementation contract](docs/proxy.md) for authentication compatibility, required endpoints, JSON/SSE formats, labels, errors, and server responsibilities, and [Verify proxy compatibility](docs/proxy-compatibility.md) for integration checks. Proxy policy and metrics are implemented by your service; the setting supplies the transport.
+
+### Direct Vertex access
 
 Before you start, make sure the target Google Cloud project is ready:
 
@@ -36,6 +59,8 @@ Before you start, make sure the target Google Cloud project is ready:
 > **Pro tip:** Set a [monthly Agent Platform spend cap](https://docs.cloud.google.com/billing/docs/how-to/budgets-spend-caps) to receive alerts at 50% and 80% and pause new usage at the limit. Enforcement isn't instant, so some overage is still possible.
 
 ## 🚀 Quick start
+
+The following steps configure direct Vertex access. For an organization-managed gateway, follow the [enterprise proxy setup](docs/proxy.md#configure-the-extension).
 
 1. **Install** **Google Agent Platform for Copilot Chat** from the VS Code Marketplace.
 2. **Authenticate** in the environment where the extension runs:
@@ -57,7 +82,7 @@ Before you start, make sure the target Google Cloud project is ready:
 
 For Remote SSH, Dev Containers, and Codespaces, install the extension and configure credentials in the remote workspace environment. See [Setup & Configuration](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Setup-&-Configuration).
 
-Model discovery groups effort variants by their model endpoint and shares each endpoint's result across its catalog entries. It allows up to **45 seconds per endpoint in each region** by default, covering its requests and retry delays after it leaves the queue. If a model needs more time to respond, change **Model Discovery Timeout Seconds** in VS Code Settings or set a custom value in user or workspace settings:
+In direct mode, model discovery groups effort variants by their model endpoint and shares each endpoint's result across its catalog entries. It allows up to **45 seconds per endpoint in each region** by default, covering its requests and retry delays after it leaves the queue. In proxy mode, the same setting bounds the authenticated discovery request rather than individual model probes. If discovery needs more time, change **Model Discovery Timeout Seconds** in VS Code Settings or set a custom value in user or workspace settings:
 
 ```json
 {
@@ -79,7 +104,7 @@ Run **Google Agent Platform: Refresh Models** to apply the new timeout. Discover
 
 ## 🤖 Supported models
 
-Models are discovered for your project and region, so only models your project can access appear in the picker.
+In direct mode, models are discovered for your project and region. In proxy mode, only models in the server's approved catalog appear in the picker.
 
 | Provider  | Current catalog                                                                 | Details                                                                                                                      |
 | :-------- | :------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------- |
@@ -91,7 +116,7 @@ Claude Fable 5 and 5.1 require Model Garden access and are subject to Google's [
 
 ### Use your own model catalog
 
-Need a different model set or region order? Create a workspace `.vscode/models.json` with **Google Agent Platform: Open Workspace models.json**, or a private user catalog with **Open User Models Catalog File**. Both are seeded from the bundled catalog and receive JSON schema validation. A custom catalog fully replaces the bundled catalog, so include every model you want available. See [Model Discovery & Project Switching](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-Discovery-&-Project-Switching) for precedence, multi-root behavior, and examples.
+In direct mode, need a different model set or region order? Create a workspace `.vscode/models.json` with **Google Agent Platform: Open Workspace models.json**, or a private user catalog with **Open User Models Catalog File**. Both are seeded from the bundled catalog and receive JSON schema validation. A custom catalog fully replaces the bundled catalog, so include every model you want available. In proxy mode, configure the catalog on your server instead; local catalog files are ignored. See [Model Discovery & Project Switching](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-Discovery-&-Project-Switching) for precedence, multi-root behavior, and examples.
 
 For Claude 5 models that support adaptive thinking and the selected [effort](https://platform.claude.com/docs/en/build-with-claude/effort), append `-low`, `-medium`, `-high`, `-xhigh`, or `-max` to both the custom entry's `id` and `version`. The extension removes the suffix before calling Vertex AI, enables adaptive thinking with hidden traces, and sends the selected effort. Unsuffixed generation-5 models use each model's API default effort. For Claude Sonnet 5.5 that default is `high`; the bundled `Medium` entry follows Anthropic's recommended starting point for well-specified agentic coding and multistep tool use. Move to `high` for harder or longer work, and reserve `xhigh` or `max` for workloads where evaluations show a quality gain.
 
@@ -105,6 +130,7 @@ Labels are not forwarded to Billing for Provisioned Throughput. Prefer explicit,
 
 | Topic                                  | Where to go                                                                                                                                                                                                                                 |
 | :------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Enterprise proxy and centralized controls | [Setup and implementation contract](docs/proxy.md) · [Compatibility verification](docs/proxy-compatibility.md) |
 | Authentication and workspace settings  | [Setup & Configuration](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Setup-&-Configuration) · [Service Account Authentication](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Service-Account-Authentication) |
 | Usage dashboard and BigQuery reporting | [Usage & Billing](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Usage-&-Billing) · [Advanced Billing Reports](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Advanced-Billing-Reports)                         |
 | Custom model catalogs and discovery    | [Model Discovery & Project Switching](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-Discovery-&-Project-Switching)                                                                                                     |

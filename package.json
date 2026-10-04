@@ -106,7 +106,7 @@
           "default": "",
           "scope": "machine",
           "order": 5,
-          "description": "Experimental enterprise Cloud Function proxy URL (HTTPS; loopback HTTP for tests). Uses your personal gcloud auth login identity and server-controlled model discovery. Mutually exclusive with vertexAiChat.projectId. No direct fallback. Leave empty for direct Vertex. Configure in user settings, not workspace settings."
+          "description": "Enterprise proxy base URL for centralized metrics, policies and business logic (HTTPS; loopback HTTP for local testing). Uses your personal gcloud auth login identity and a server-controlled Gemini/Claude catalog. Mutually exclusive with vertexAiChat.projectId. No direct fallback. Leave empty for direct Vertex. Configure in user settings, not workspace settings."
         },
         "vertexAiChat.projectId": {
           "type": "string",

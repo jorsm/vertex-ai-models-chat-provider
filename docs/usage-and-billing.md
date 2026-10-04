@@ -28,7 +28,9 @@ The usage and billing module is centered around the `DashboardWebview`, which pr
 
 ## Request labels and Cloud Billing
 
-The local dashboard is a per-machine estimate. For centralized, invoice-oriented reporting, enable Google Cloud Billing export to BigQuery and use request labels. The extension can attach `vscode-vertex-ai-user` and `vscode-vertex-ai-project` to Gemini and Anthropic Claude requests; Grok does not currently send billing labels.
+The local dashboard is a per-machine estimate. In [proxy mode](proxy.md), prices come from the approved server catalog and each request retains its selected rate card. Implement centralized usage metrics, quotas, and attribution in the proxy, deriving the authenticated caller independently from client labels. The client dashboard does not enforce organizational budgets.
+
+For centralized, invoice-oriented reporting, enable Google Cloud Billing export to BigQuery and use request labels. The extension can attach `vscode-vertex-ai-user` and `vscode-vertex-ai-project` to Gemini and Anthropic Claude requests; Grok does not currently send billing labels.
 
 Set either a custom `userLabelValue` or `projectLabelValue` when you need stable report dimensions. If an enabled label cannot resolve to either a custom value or its automatic fallback, the request proceeds without that one label and the extension emits a single VS Code warning plus an output-channel warning. This prevents silent loss of an opted-in attribution dimension.
 
@@ -60,7 +62,7 @@ Cleans up the webview panel and disposes of all internal event listeners and sub
 ### CostStatusBar
 [source](../src/CostStatusBar.ts)
 Manages a persistent status bar item that displays today's total estimated cost and the active authentication identity. It updates in real-time as usage is recorded or authentication methods change, using dynamic icons to reflect the active auth type:
-- **$(cloud)**: Experimental proxy mode (personal gcloud login) or Google Application Default Credentials (ADC).
+- **$(cloud)**: Proxy mode (personal gcloud login) or Google Application Default Credentials (ADC).
 - **$(key)**: Encrypted Service Account secret.
 - **$(file)**: Legacy linked Service Account file retained for existing workspace configurations. New file selections are imported as encrypted secrets.
 - **$(pulse)**: Default or disconnected state.
