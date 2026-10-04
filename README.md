@@ -18,38 +18,6 @@ Use Google Gemini, Anthropic Claude, and xAI Grok directly in the standard VS Co
 
 ## ☁️ Google Cloud prerequisites
 
-### Enterprise proxy with `proxyUrl`
-
-For enterprise metrics or precise controls over model usage, set `vertexAiChat.proxyUrl` to your organization's HTTP gateway. Gemini and Claude calls, including tool continuations and AI commit generation, pass through that service. Implement your business logic there: caller authorization, approved models, quotas, auditing, cost attribution, and centralized usage metrics. The proxy chooses the upstream Google Cloud project and regions and invokes Vertex with its own credentials.
-
-The [core access model](docs/proxy.md#core-access-model-users-invoke-the-proxy-the-proxy-invokes-vertex) makes the proxy the required entry point: grant users only permission to invoke the service, remove their Agent Platform User (`roles/aiplatform.user`) role and any equivalent direct Vertex access, and grant the required Vertex permissions to the proxy application's Google runtime identity. That identity calls Vertex on the authenticated user's behalf after applying your policies. `proxyUrl` configures routing; your IAM configuration prevents bypassing the proxy.
-
-Typical [proxy use cases](docs/proxy.md#example-use-cases) include:
-
-- Require user and/or project labels and reject calls when required attribution is missing.
-- Prevent forged user attribution by deriving the caller from the verified Google account email rather than a client label.
-- Block expensive, old, or deprecated models, or restrict them to authorized teams.
-- Give junior developers a lower-cost starter catalog and unlock advanced models, such as Fable, after training, mentor approval, and demonstrated cost awareness.
-- Collect real-time usage and estimated costs as requests complete, while billing data is still pending.
-- Analyze request counts, model adoption, input/output/cache tokens, latency, and errors.
-- Route requests by project label to a client's GCP project and linked billing account, keeping one proxy URL and login for users across multiple clients.
-- Enforce separate budgets for authenticated users and authorized projects.
-
-These policies are implemented by your proxy. Sign in with your personal account using `gcloud auth login` in the extension-host environment, configure the URL in **User Settings**, clear any `vertexAiChat.projectId` setting, and run **Google Agent Platform: Refresh Models**:
-
-```json
-{
-  "vertexAiChat.proxyUrl": "https://ai-proxy.example.com",
-  "vertexAiChat.projectId": ""
-}
-```
-
-The server supplies the entire approved catalog, including variants, capabilities, token limits, and estimated prices. Local catalogs are ignored; discovery performs no inference probes. `proxyUrl` and `projectId` are mutually exclusive, and proxy failures never fall back to direct Vertex. Grok is available only in direct mode. Leave `proxyUrl` empty to use the direct setup below.
-
-See [Enterprise proxy: setup and implementation contract](docs/proxy.md) for authentication compatibility, required endpoints, JSON/SSE formats, labels, errors, and server responsibilities, and [Verify proxy compatibility](docs/proxy-compatibility.md) for integration checks. Proxy policy and metrics are implemented by your service; the setting supplies the transport.
-
-### Direct Vertex access
-
 Before you start, make sure the target Google Cloud project is ready:
 
 1. **Enable the API:** Enable the Agent Platform API (`aiplatform.googleapis.com`). See the [Google Agent Platform documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform).
@@ -60,8 +28,6 @@ Before you start, make sure the target Google Cloud project is ready:
 > **Pro tip:** Set a [monthly Agent Platform spend cap](https://docs.cloud.google.com/billing/docs/how-to/budgets-spend-caps) to receive alerts at 50% and 80% and pause new usage at the limit. Enforcement isn't instant, so some overage is still possible.
 
 ## 🚀 Quick start
-
-The following steps configure direct Vertex access. For an organization-managed gateway, follow the [enterprise proxy setup](docs/proxy.md#configure-the-extension).
 
 1. **Install** **Google Agent Platform for Copilot Chat** from the VS Code Marketplace.
 2. **Authenticate** in the environment where the extension runs:
@@ -83,7 +49,7 @@ The following steps configure direct Vertex access. For an organization-managed 
 
 For Remote SSH, Dev Containers, and Codespaces, install the extension and configure credentials in the remote workspace environment. See [Setup & Configuration](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Setup-&-Configuration).
 
-In direct mode, model discovery groups effort variants by their model endpoint and shares each endpoint's result across its catalog entries. It allows up to **45 seconds per endpoint in each region** by default, covering its requests and retry delays after it leaves the queue. In proxy mode, the same setting bounds the authenticated discovery request rather than individual model probes. If discovery needs more time, change **Model Discovery Timeout Seconds** in VS Code Settings or set a custom value in user or workspace settings:
+In direct mode, model discovery groups effort variants by their model endpoint and shares each endpoint's result across its catalog entries. It allows up to **45 seconds per endpoint in each region** by default, covering its requests and retry delays after it leaves the queue. If discovery needs more time, change **Model Discovery Timeout Seconds** in VS Code Settings or set a custom value in user or workspace settings:
 
 ```json
 {
@@ -92,6 +58,12 @@ In direct mode, model discovery groups effort variants by their model endpoint a
 ```
 
 Run **Google Agent Platform: Refresh Models** to apply the new timeout. Discovery runs at most **three endpoints concurrently**, spacing initial starts by 500–1,000 ms. Transient failures receive up to **three retries after the first attempt**, with randomized exponential backoff; `Retry-After` is honored within the endpoint's timeout. Endpoints that return 429 remain available with all their catalog effort variants even if retries are exhausted. Endpoints that never respond are skipped. Queue time can make the entire discovery run longer than the per-endpoint timeout.
+
+## Enterprise proxy with `proxyUrl`
+
+For organizations that need centralized model access, budgets, telemetry, or routing to different client billing projects, `vertexAiChat.proxyUrl` routes Gemini and Claude calls through your own service. The proxy is where you implement those policies and business logic.
+
+See the [enterprise proxy guide](docs/proxy.md) for use cases, configuration, the access model, and the implementation contract.
 
 ## ✨ Key features
 
