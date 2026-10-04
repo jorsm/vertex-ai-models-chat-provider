@@ -43,6 +43,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   private _discoveryPromise: Promise<DiscoveryResult> | null = null;
   private readonly discoveryStartDelayMs = getDiscoveryStartDelayMs;
   private _labelsPromise: Promise<void> | null = null;
+  private labelUpdateRevision = 0;
   private cachedUserEmail: string | undefined;
   private readonly missingLabelWarnings = new Set<"user" | "project">();
   private readonly logger = new Logger("VertexChatModelDispatcher");
@@ -84,21 +85,24 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   }
 
   public updateLabels(): Promise<void> {
-    this._labelsPromise = this._updateLabelsImpl();
+    const revision = ++this.labelUpdateRevision;
+    this._labelsPromise = this._updateLabelsImpl(revision);
     return this._labelsPromise;
   }
 
-  private async _updateLabelsImpl(): Promise<void> {
-    const revision = this.connectionRevision;
+  private async _updateLabelsImpl(labelRevision: number): Promise<void> {
+    const connectionRevision = this.connectionRevision;
     const config = vscode.workspace.getConfiguration("vertexAiChat");
     const enableUser = config.get<boolean>("enableUserLabel");
 
-    this.cachedUserEmail = undefined;
+    let resolvedIdentity: string | undefined;
     if (enableUser) {
-      const identity = await this.authManager.getIdentity();
-      if (revision !== this.connectionRevision) { return; }
-      this.cachedUserEmail = identity;
+      resolvedIdentity = await this.authManager.getIdentity();
     }
+    if (connectionRevision !== this.connectionRevision || labelRevision !== this.labelUpdateRevision) {
+      return;
+    }
+    this.cachedUserEmail = resolvedIdentity;
 
     // Still push the user label to providers as a baseline
     const labels: Record<string, string> = {};
@@ -199,7 +203,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const proxyUrl = this.getProxyUrl();
     if (revision !== this.connectionRevision) { throw new Error("Configuration changed during discovery."); }
     if (proxyUrl && this.projectId.trim()) {
-      const message = "Configuration conflict: 'vertexAiChat.proxyUrl' and 'vertexAiChat.projectId' are mutually exclusive. Clear one of them and Refresh Models.";
+      const message = "Configuration conflict: 'vertexAiChat.proxyUrl' and 'vertexAiChat.projectId' are mutually exclusive. Clear one of them; model discovery will restart automatically.";
       this.logger.log(`❌ ${message}`);
       this.catalogResolver.setProxyCatalog?.([]);
       this.clearModels();
@@ -552,6 +556,14 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     if (config.get<boolean>("enableUserLabel")) {
       // 0. Check for a custom user label value in settings
       let userLabelValue = this.getValidLabelValue(config.get<string>("userLabelValue"));
+
+      // A startup/configuration refresh may have completed before gcloud was
+      // ready. Retry once for this request rather than sending an incomplete
+      // label set to either direct Vertex or the proxy.
+      if (!userLabelValue && !this.cachedUserEmail) {
+        await this.updateLabels();
+        if (revision !== this.connectionRevision) { throw new Error("Configuration changed before inference. Refresh Models."); }
+      }
 
       if (!userLabelValue) {
         // 1. Fallback to cached identity

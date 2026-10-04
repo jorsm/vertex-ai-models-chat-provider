@@ -41,6 +41,7 @@ const vscode = {
 };
 let credentialCommand;
 let commandResult;
+let credentialCommandCount = 0;
 const originalLoad = Module._load;
 let AuthManager, ProxyGateway, GatewayError, validateProxyUrl, parseProxyCatalog, isGatewayRetryable, ModelCatalogResolver, UsageTrackerService;
 let VertexChatModelDispatcher, VertexGoogleProvider, VertexAnthropicProvider, CostStatusBar;
@@ -52,12 +53,14 @@ try {
     if (request === "child_process") {
       const actual = originalLoad.call(this, request, parent, main);
       const execFile = (...args) => {
+        credentialCommandCount++;
         credentialCommand = args.slice(0, -1);
         const cb = args.at(-1);
         if (commandResult instanceof Error) cb(commandResult);
         else cb(null, commandResult, "");
       };
       execFile[require("node:util").promisify.custom] = async (...args) => {
+        credentialCommandCount++;
         credentialCommand = args;
         if (commandResult instanceof Error) throw commandResult;
         return { stdout: commandResult, stderr: "" };
@@ -91,6 +94,7 @@ const jwt = (claims = {}) => `header.${Buffer.from(JSON.stringify({ email: "deve
 test.afterEach(() => {
   for (const key of Object.keys(settings)) delete settings[key];
   for (const key of Object.keys(inspections)) delete inspections[key];
+  credentialCommandCount = 0;
 });
 
 test("proxy URL validates HTTPS, optional base path and loopback; rejects token/query/arbitrary schemes", () => {
@@ -127,6 +131,14 @@ test("token acquisition rejects SA, expired, unverified and malformed tokens wit
     const auth = new AuthManager({});
     await assert.rejects(auth.getProxyIdToken(), (error) => error.status === 401 && !error.message.includes("secret"));
   }
+});
+test("client identity resolution is shared and caches the last successful gcloud account", async () => {
+  const auth = new AuthManager({ workspaceState: { get: () => undefined } });
+  commandResult = "developer@example.com\n";
+  assert.equal(await auth.getIdentity(), "developer@example.com");
+  commandResult = new Error("temporary gcloud failure");
+  assert.equal(await auth.getIdentity(), "developer@example.com");
+  assert.equal(credentialCommandCount, 1);
 });
 test("server catalog supplies complete metadata and validates IDs, prices, limits, capabilities and duplicates", () => {
   const entry = model("server-only-high", "google", "backend-high");
@@ -186,10 +198,10 @@ test("policy and caller/upstream authentication errors never retry even with quo
   assert.equal(isGatewayRetryable({ status: 503 }), true);
 });
 
-function harness(models) {
+function harness(models, authOverrides = {}) {
   class Dispatcher extends VertexChatModelDispatcher { registerProviders() {} }
   const records = [], calls = [];
-  const auth = { onAuthUpdated() {}, getProxyIdToken: async () => "personal-token", getResolvedAuthOptions: async () => { throw Error("must not resolve Vertex credentials"); }, getIdentity: async () => "developer@example.com" };
+  const auth = { onAuthUpdated() {}, getProxyIdToken: async () => "personal-token", getResolvedAuthOptions: async () => { throw Error("must not resolve Vertex credentials"); }, getIdentity: async () => "developer@example.com", ...authOverrides };
   let proxyCatalog;
   const resolver = {
     setProxyCatalog(value) { proxyCatalog = value === undefined ? undefined : { candidateModels: value, regionPriority: [] }; },
@@ -245,6 +257,40 @@ test("proxy user label falls back to the client Google identity when no custom v
   assert.deepEqual(h.calls.at(-1)[7], {
     "vscode-vertex-ai-user": "developer_example_com",
   });
+});
+test("a request retries client identity resolution once when startup left the user label empty", async (t) => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  settings.enableUserLabel = true;
+  let identityCalls = 0;
+  const remote = [model("gemini-test")];
+  fakeDiscovery(t, remote);
+  const h = harness(remote, {
+    getIdentity: async () => ++identityCalls === 1 ? undefined : "retry@example.com",
+  });
+  await h.dispatcher.discoverModelsAndRegion();
+  await h.dispatcher.infer("gemini-test", userMessage(), { tools: [] }, { report() {} }, cancellation().token);
+  assert.equal(identityCalls, 2);
+  assert.deepEqual(h.calls.at(-1)[7], { "vscode-vertex-ai-user": "retry_example_com" });
+});
+test("a stale label refresh cannot overwrite a newer resolved client identity", async () => {
+  settings.enableUserLabel = true;
+  const first = deferred();
+  const latest = deferred();
+  let identityCalls = 0;
+  class Dispatcher extends VertexChatModelDispatcher { registerProviders() {} }
+  const dispatcher = new Dispatcher("", {}, {
+    onAuthUpdated() {},
+    getIdentity: () => ++identityCalls === 1 ? first.promise : latest.promise,
+  }, { setProxyCatalog() {} });
+  const applied = [];
+  dispatcher.activeProviders.set("google", { setLabels: (labels) => applied.push(labels) });
+  const newestUpdate = dispatcher.updateLabels();
+  latest.resolve("new@example.com");
+  await newestUpdate;
+  first.resolve("old@example.com");
+  await flush();
+  assert.equal(dispatcher.cachedUserEmail, "new@example.com");
+  assert.deepEqual(applied.at(-1), { "vscode-vertex-ai-user": "new_example_com" });
 });
 test("proxyUrl and projectId fail closed when both are configured", async () => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };

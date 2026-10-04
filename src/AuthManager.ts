@@ -43,6 +43,9 @@ export class AuthManager {
   private proxyToken?: { token: string; expires: number };
   private proxyTokenPromise?: Promise<string>;
   private proxyTokenRevision = 0;
+  private identityCache?: { value: string; expires: number };
+  private identityPromise?: Promise<string | undefined>;
+  private identityRevision = 0;
 
   public clearProxyToken(): void {
     this.proxyToken = undefined;
@@ -94,6 +97,13 @@ export class AuthManager {
   private readonly logger = new Logger("AuthManager");
   private readonly _onAuthUpdated = new vscode.EventEmitter<void>();
   public readonly onAuthUpdated = this._onAuthUpdated.event;
+
+  private notifyAuthUpdated(): void {
+    this.identityCache = undefined;
+    this.identityPromise = undefined;
+    this.identityRevision++;
+    this._onAuthUpdated.fire();
+  }
 
   constructor(private readonly context: vscode.ExtensionContext) {
     // No output channel creation needed
@@ -275,7 +285,7 @@ export class AuthManager {
     const removedActiveCredential = active?.type === "secret" && active.value === name;
     if (removedActiveCredential) {
       await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "adc" });
-      this._onAuthUpdated.fire();
+      this.notifyAuthUpdated();
     }
 
     vscode.window.showInformationMessage(`Vertex AI: Removed Service Account '${name}' from this extension. No Google Cloud keys or resources were changed.`);
@@ -334,7 +344,7 @@ export class AuthManager {
       await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "secret", value: name });
     }
 
-    this._onAuthUpdated.fire();
+    this.notifyAuthUpdated();
     return true;
   }
 
@@ -343,30 +353,55 @@ export class AuthManager {
    */
   public async clearAuthMethod(): Promise<void> {
     await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "adc" });
-    this._onAuthUpdated.fire();
+    this.notifyAuthUpdated();
     vscode.window.showInformationMessage("Vertex AI: Authentication reset to Application Default Credentials.");
   }
 
   /**
    * Extracts the user email/identity from the active method.
    */
-  public async getIdentity(): Promise<string | undefined> {
+  public getIdentity(): Promise<string | undefined> {
+    if (this.identityCache && this.identityCache.expires > Date.now()) {
+      return Promise.resolve(this.identityCache.value);
+    }
+    if (!this.identityPromise) {
+      const promise = this.resolveIdentity(this.identityRevision);
+      this.identityPromise = promise;
+      void promise.finally(() => {
+        if (this.identityPromise === promise) { this.identityPromise = undefined; }
+      }).catch(() => {});
+    }
+    return this.identityPromise;
+  }
+
+  private async resolveIdentity(revision: number): Promise<string | undefined> {
     const authOptions = await this.getResolvedAuthOptions();
     if (authOptions?.credentials?.client_email) {
-      return authOptions.credentials.client_email;
+      const identity = authOptions.credentials.client_email;
+      if (revision === this.identityRevision) {
+        this.identityCache = { value: identity, expires: Date.now() + 60_000 };
+      }
+      return revision === this.identityRevision ? identity : undefined;
     }
 
-    // Fallback to gcloud if using ADC
+    // Fallback to gcloud if using ADC. Keep the last valid identity only when
+    // the subprocess fails transiently; an explicit unset/invalid account clears it.
+    const previousIdentity = this.identityCache?.value;
     try {
       const command = AuthManager.getGcloudAccountCommand();
       const { stdout } = await execFileAsync(command.executable, command.args, { encoding: "utf8", windowsHide: true });
       const email = stdout.split(/\r?\n/, 1)[0]?.trim();
       if (email && email !== "(unset)" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return email;
+        if (revision === this.identityRevision) {
+          this.identityCache = { value: email, expires: Date.now() + 60_000 };
+        }
+        return revision === this.identityRevision ? email : undefined;
       }
+      if (revision === this.identityRevision) { this.identityCache = undefined; }
       this.logger.log("Could not extract email from gcloud account output.");
     } catch (e) {
-      this.logger.log(`Failed to get gcloud account email: ${e}`);
+      this.logger.log(`Failed to refresh gcloud account email: ${e}${previousIdentity ? "; keeping the last valid identity" : ""}`);
+      return revision === this.identityRevision ? previousIdentity : undefined;
     }
     return undefined;
   }
@@ -440,7 +475,7 @@ export class AuthManager {
       await this.context.globalState.update(GLOBAL_INDEX_KEY, [...names, name]);
     }
     await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "secret", value: name });
-    this._onAuthUpdated.fire();
+    this.notifyAuthUpdated();
     const sourceFileNotice = importedFromFile ? " The original credential file was not modified; delete it yourself if it is no longer needed." : "";
     vscode.window.showInformationMessage(`Vertex AI: Service Account '${name}' securely stored and activated for this workspace.${sourceFileNotice}`);
     return true;
@@ -505,6 +540,6 @@ export class AuthManager {
 
   private async activateAdc(): Promise<void> {
     await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "adc" });
-    this._onAuthUpdated.fire();
+    this.notifyAuthUpdated();
   }
 }
