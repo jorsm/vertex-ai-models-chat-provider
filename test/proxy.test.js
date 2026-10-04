@@ -57,7 +57,10 @@ try {
         credentialCommand = args.slice(0, -1);
         const cb = args.at(-1);
         if (commandResult instanceof Error) cb(commandResult);
-        else cb(null, commandResult, "");
+        else if (typeof commandResult === "function") {
+          Promise.resolve(commandResult(...args.slice(0, -1))).then(
+            (result) => cb(null, result.stdout, result.stderr), (error) => cb(error));
+        } else cb(null, commandResult, "");
       };
       execFile[require("node:util").promisify.custom] = async (...args) => {
         credentialCommandCount++;
@@ -114,18 +117,31 @@ test("only user settings select a credential destination; workspace override is 
   inspections.proxyUrl.globalValue = "https://trusted.test";
   assert.equal(d.getProxyUrl(), "https://trusted.test");
 });
-test("token acquisition uses a bounded personal CLI command, caches briefly and refreshes explicitly", async () => {
+test("token acquisition uses a bounded personal CLI command, caches until JWT expiry and refreshes explicitly", async () => {
   const auth = new AuthManager({});
-  commandResult = jwt();
-  const first = await auth.getProxyIdToken();
-  assert.equal(first, commandResult);
-  assert.equal(credentialCommand[2].timeout, 60_000);
-  assert.equal(credentialCommand[2].env.CLOUDSDK_CORE_LOG_HTTP, "false");
-  assert.ok(!credentialCommand[1].join(" ").includes("--audiences"));
-  commandResult = jwt({ sub: "next" });
-  assert.equal(await auth.getProxyIdToken(), first);
-  auth.clearProxyToken();
-  assert.equal(await auth.getProxyIdToken(), commandResult);
+  const realNow = Date.now;
+  let now = realNow();
+  Date.now = () => now;
+  try {
+    commandResult = jwt({ exp: now / 1000 + 3600 });
+    const first = await auth.getProxyIdToken();
+    assert.equal(first, commandResult);
+    assert.equal(credentialCommand[2].maxBuffer, 64 * 1024);
+    assert.equal(credentialCommand[2].env.CLOUDSDK_CORE_DISABLE_PROMPTS, "true");
+    assert.equal(credentialCommand[2].env.CLOUDSDK_CORE_LOG_HTTP, "false");
+    assert.ok(!credentialCommand[1].join(" ").includes("--audiences"));
+
+    now += 2 * 60_000;
+    commandResult = jwt({ sub: "next", exp: now / 1000 + 3600 });
+    assert.equal(await auth.getProxyIdToken(), first);
+    assert.equal(credentialCommandCount, 1);
+
+    auth.clearProxyToken();
+    assert.equal(await auth.getProxyIdToken(), commandResult);
+    assert.equal(credentialCommandCount, 2);
+  } finally {
+    Date.now = realNow;
+  }
 });
 test("token acquisition rejects SA, expired, unverified and malformed tokens without exposing stderr", async () => {
   for (const output of [jwt({ email: "service@project.iam.gserviceaccount.com" }), jwt({ email_verified: false }), jwt({ exp: 1 }), "not-a-token", new Error("Authorization: Bearer secret")]) {
@@ -140,6 +156,32 @@ test("client identity resolution is shared and caches the last successful gcloud
   assert.equal(await auth.getIdentity(), "developer@example.com");
   commandResult = new Error("temporary gcloud failure");
   assert.equal(await auth.getIdentity(), "developer@example.com");
+  assert.equal(credentialCommandCount, 1);
+});
+test("a transient gcloud timeout retries once and shares recovery across callers", async () => {
+  const auth = new AuthManager({});
+  const expected = jwt();
+  let attempts = 0;
+  commandResult = async () => {
+    if (++attempts === 1) throw Object.assign(new Error("timeout with secret stderr"), { code: "GCLOUD_TIMEOUT", killed: true });
+    return { stdout: expected, stderr: "" };
+  };
+  assert.deepEqual(await Promise.all([auth.getProxyIdToken(), auth.getProxyIdToken()]), [expected, expected]);
+  assert.equal(attempts, 2);
+});
+test("persistent timeout is bounded and is not reported as expired authentication", async () => {
+  commandResult = Object.assign(new Error("secret stderr"), { code: "GCLOUD_TIMEOUT", killed: true });
+  await assert.rejects(new AuthManager({}).getProxyIdToken(), (error) =>
+    error.status === 503 && /timed out/.test(error.message) && !/gcloud auth login|secret stderr/.test(error.message));
+  assert.equal(credentialCommandCount, 2);
+});
+test("refresh during timeout recovery prevents a superseded request from retrying", async () => {
+  const auth = new AuthManager({});
+  commandResult = async () => {
+    auth.clearProxyToken();
+    throw Object.assign(new Error("timeout"), { code: "GCLOUD_TIMEOUT", killed: true });
+  };
+  await assert.rejects(auth.getProxyIdToken());
   assert.equal(credentialCommandCount, 1);
 });
 test("client identity and proxy token gcloud commands are serialized", async () => {
@@ -592,16 +634,18 @@ for (const [vendor, Provider] of [["google", VertexGoogleProvider], ["anthropic"
     assert.equal(calls, 0);
   });
 }
-test("brief token cache automatically refreshes after one minute", async () => {
+test("token cache automatically refreshes one minute before JWT expiry", async () => {
   const originalNow = Date.now;
   let now = originalNow();
   Date.now = () => now;
   try {
     const auth = new AuthManager({});
-    commandResult = jwt({ sub: "first" });
+    commandResult = jwt({ sub: "first", exp: now / 1000 + 300 });
     const first = await auth.getProxyIdToken();
     commandResult = jwt({ sub: "second" });
-    now += 61_000;
+    now += 239_000;
+    assert.equal(await auth.getProxyIdToken(), first);
+    now += 2_000;
     assert.notEqual(await auth.getProxyIdToken(), first);
   } finally { Date.now = originalNow; }
 });

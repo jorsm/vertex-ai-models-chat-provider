@@ -1,36 +1,24 @@
 const assert = require("node:assert/strict");
-const Module = require("node:module");
 const test = require("node:test");
-
-const originalLoad = Module._load;
-Module._load = function (request, parent, isMain) {
-  if (request === "vscode") {
-    return {};
-  }
-  return originalLoad.call(this, request, parent, isMain);
-};
-
-let AuthManager;
-try {
-  ({ AuthManager } = require("../out/AuthManager.js"));
-} finally {
-  Module._load = originalLoad;
-}
+const { resolveGcloudCommand } = require("../out/utils/gcloud.js");
+const args = ["config", "get-value", "account"];
 
 test("invokes gcloud directly on POSIX platforms", () => {
-  assert.deepEqual(AuthManager.getGcloudAccountCommand("linux"), {
+  assert.deepEqual(resolveGcloudCommand(args, "linux"), {
     executable: "gcloud",
     args: ["config", "get-value", "account"],
+    direct: true,
   });
 });
 
 test("invokes the Windows gcloud launcher through cmd.exe", () => {
-  assert.deepEqual(AuthManager.getGcloudAccountCommand("win32", "C:\\Windows\\System32\\cmd.exe"), {
+  assert.deepEqual(resolveGcloudCommand(args, "win32", { ComSpec: "C:\\Windows\\System32\\cmd.exe" }, () => false), {
     executable: "C:\\Windows\\System32\\cmd.exe",
     args: ["/d", "/s", "/c", "gcloud.cmd config get-value account"],
+    direct: false,
   });
 });
 
 test("falls back to cmd.exe when ComSpec is unavailable", () => {
-  assert.equal(AuthManager.getGcloudAccountCommand("win32", undefined).executable, "cmd.exe");
+  assert.equal(resolveGcloudCommand(args, "win32", {}, () => false).executable, "cmd.exe");
 });

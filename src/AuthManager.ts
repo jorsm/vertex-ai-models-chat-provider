@@ -1,11 +1,8 @@
-import * as childProcess from "child_process";
 import * as fs from "fs";
-import * as util from "util";
 import * as vscode from "vscode";
 import { Logger } from "./utils/Logger";
 import { GatewayError } from "./ProxyGateway";
-
-const execFileAsync = util.promisify(childProcess.execFile);
+import { runGcloud } from "./utils/gcloud";
 
 export type AuthMethodType = "secret" | "file" | "adc";
 
@@ -72,20 +69,20 @@ export class AuthManager {
   private async acquireProxyIdToken(revision: number): Promise<string> {
     const startedAt = Date.now();
     try {
-      const command = process.platform === "win32" ? "cmd.exe" : "gcloud";
-      const args = process.platform === "win32"
-        ? ["/d", "/s", "/c", "gcloud.cmd auth print-identity-token --quiet --verbosity=error"]
-        : ["auth", "print-identity-token", "--quiet", "--verbosity=error"];
-      const result = await this.runGcloudOperation(() => execFileAsync(command, args, {
-        timeout: 60_000, maxBuffer: 64 * 1024, windowsHide: true,
-        env: {
-          ...process.env,
-          CLOUDSDK_CORE_DISABLE_PROMPTS: "true",
-          CLOUDSDK_CORE_DISABLE_FILE_LOGGING: "true",
-          CLOUDSDK_CORE_LOG_HTTP: "false",
-          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: "true",
-        },
-      }));
+      const result = await this.runGcloudOperation(async () => {
+        for (let attempt = 1; ; attempt++) {
+          if (revision !== this.proxyTokenRevision) { throw new Error("Token request superseded"); }
+          const attemptStartedAt = Date.now();
+          try {
+            const result = await runGcloud(["auth", "print-identity-token", "--quiet", "--verbosity=error"]);
+            this.logger.log(`Personal proxy ID token acquired in ${Date.now() - attemptStartedAt} ms (attempt ${attempt}).`);
+            return result;
+          } catch (error: any) {
+            if (error?.code !== "GCLOUD_TIMEOUT" || attempt !== 1 || revision !== this.proxyTokenRevision) { throw error; }
+            this.logger.log("gcloud token command timed out; process terminated, retrying once.");
+          }
+        }
+      });
       const token = result.stdout.trim();
       const parts = token.split(".");
       if (parts.length !== 3) { throw new Error(); }
@@ -94,7 +91,9 @@ export class AuthManager {
       if (revision !== this.proxyTokenRevision || typeof claims.email !== "string" || claims.email.toLowerCase().endsWith(".gserviceaccount.com") || claims.email_verified !== true || typeof claims.exp !== "number" || claims.exp * 1000 <= Date.now() + 60_000) {
         throw new Error();
       }
-      this.proxyToken = { token, expires: Math.min(claims.exp * 1000 - 60_000, Date.now() + 60_000) };
+      // Reuse the CLI token for its actual lifetime. Refresh one minute before
+      // expiry instead of invoking gcloud again after every minute.
+      this.proxyToken = { token, expires: claims.exp * 1000 - 60_000 };
       return token;
     } catch (error: any) {
       // Never surface subprocess stderr: it can contain bearer tokens or credential paths.
@@ -102,6 +101,12 @@ export class AuthManager {
         : error?.code === "ENOENT" ? "gcloud executable not found"
           : "gcloud returned an invalid or unavailable personal token";
       this.logger.log(`Personal proxy ID token acquisition failed after ${Date.now() - startedAt} ms (${reason}).`);
+      if (error?.killed || error?.signal) {
+        throw new GatewayError("The gcloud token command timed out. This does not mean your Google login expired. Check the Google Agent Platform output and your network, then Refresh Models.", 503);
+      }
+      if (error?.code === "ENOENT") {
+        throw new GatewayError("Google Cloud CLI was not found in the VS Code extension host PATH. Install gcloud or restart VS Code after updating PATH, then Refresh Models.", 503);
+      }
       throw new GatewayError("Cannot obtain a personal Google ID token for the proxy. Run 'gcloud auth login' with your user account (without service-account impersonation), then Refresh Models.", 401);
     }
   }
@@ -407,19 +412,7 @@ export class AuthManager {
     // the subprocess fails transiently; an explicit unset/invalid account clears it.
     const previousIdentity = this.identityCache?.value;
     try {
-      const command = AuthManager.getGcloudAccountCommand();
-      const { stdout } = await this.runGcloudOperation(() => execFileAsync(command.executable, command.args, {
-        encoding: "utf8",
-        timeout: 60_000,
-        windowsHide: true,
-        env: {
-          ...process.env,
-          CLOUDSDK_CORE_DISABLE_PROMPTS: "true",
-          CLOUDSDK_CORE_DISABLE_FILE_LOGGING: "true",
-          CLOUDSDK_CORE_LOG_HTTP: "false",
-          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: "true",
-        },
-      }));
+      const { stdout } = await this.runGcloudOperation(() => runGcloud(["config", "get-value", "account"]));
       const email = stdout.split(/\r?\n/, 1)[0]?.trim();
       if (email && email !== "(unset)" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         if (revision === this.identityRevision) {
@@ -430,25 +423,10 @@ export class AuthManager {
       if (revision === this.identityRevision) { this.identityCache = undefined; }
       this.logger.log("Could not extract email from gcloud account output.");
     } catch (e) {
-      this.logger.log(`Failed to refresh gcloud account email: ${e}${previousIdentity ? "; keeping the last valid identity" : ""}`);
+      this.logger.log(`Failed to refresh gcloud account email${previousIdentity ? "; keeping the last valid identity" : ""}.`);
       return revision === this.identityRevision ? previousIdentity : undefined;
     }
     return undefined;
-  }
-
-  private static getGcloudAccountCommand(platform: NodeJS.Platform = process.platform, comSpec?: string): { executable: string; args: string[] } {
-    const effectiveComSpec = arguments.length > 1 ? comSpec : process.env.ComSpec;
-    if (platform === "win32") {
-      return {
-        executable: effectiveComSpec || "cmd.exe",
-        args: ["/d", "/s", "/c", "gcloud.cmd config get-value account"],
-      };
-    }
-
-    return {
-      executable: "gcloud",
-      args: ["config", "get-value", "account"],
-    };
   }
 
   /** Runs gcloud authentication in the workspace extension host's terminal. */
