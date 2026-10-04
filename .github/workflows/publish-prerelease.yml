@@ -42,3 +42,7 @@ jobs:
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: npx @vscode/vsce publish --pre-release --packagePath "$VSIX_PATH" -p "$VSCE_PAT"
+
+      - name: Wait for Marketplace download availability
+        timeout-minutes: 12
+        uses: ./.github/actions/wait-for-marketplace

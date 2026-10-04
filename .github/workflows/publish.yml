@@ -57,3 +57,7 @@ jobs:
             echo "Marketplace publish failed on attempt $attempt; retrying in ${delay}s."
             sleep "$delay"
           done
+
+      - name: Wait for Marketplace download availability
+        timeout-minutes: 12
+        uses: ./.github/actions/wait-for-marketplace

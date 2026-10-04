@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-action.json
+name: Wait for Marketplace download availability
+description: Poll for up to 10 minutes and verify the downloaded VSIX matches package.json.
+runs:
+  using: composite
+  steps:
+    - name: Verify Marketplace download
+      shell: bash
+      run: |
+        publisher=$(node -p "require('./package.json').publisher")
+        name=$(node -p "require('./package.json').name")
+        version=$(node -p "require('./package.json').version")
+
+        url="https://marketplace.visualstudio.com/_apis/public/gallery/publishers/${publisher}/vsextensions/${name}/${version}/vspackage"
+        vsix="${RUNNER_TEMP}/marketplace-check.vsix"
+        deadline=$((SECONDS + 600))
+
+        while (( SECONDS < deadline )); do
+          if curl --fail --silent --show-error --location --compressed \
+              --connect-timeout 10 --max-time 20 \
+              "$url" --output "$vsix" &&
+            unzip -tq "$vsix" >/dev/null &&
+            unzip -p "$vsix" extension/package.json |
+              jq -e --arg version "$version" \
+                    --arg publisher "$publisher" \
+                    --arg name "$name" \
+                '.version == $version and
+                 .publisher == $publisher and
+                 .name == $name' >/dev/null; then
+            echo "${publisher}.${name}@${version} is downloadable."
+            exit 0
+          fi
+
+          echo "Version ${version} is not downloadable yet; retrying in 20s."
+          sleep 20
+        done
+
+        echo "::error::Marketplace download availability was not confirmed within 10 minutes."
+        exit 1
