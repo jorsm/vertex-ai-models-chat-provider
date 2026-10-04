@@ -23,9 +23,10 @@ The extension provides an AI-powered commit message generator that integrates di
 
 Key aspects of the generation logic include:
 - **Optional Git Integration**: Activates and uses the `vscode.git` extension, when its API is available in the same extension host, to identify staged changes and retrieve diff data using `diffIndexWithHEAD`.
-- **Contextual Analysis**: Sends the diff to an available Gemini model via the dispatcher, emphasizing the "why" and "what" of the changes rather than just listing line modifications.
+- **Contextual Analysis**: Sends the diff to an authorized model via the dispatcher, emphasizing the "why" and "what" of the changes rather than just listing line modifications.
 - **Strict Formatting**: The default system prompt enforces specific constraints: imperative present tense, no trailing periods, and a 72-character limit for subject lines.
 - **Customizable Prompt**: Users can override the system prompt via the resource-scoped `vertexAiChat.commitMessagePrompt` setting (e.g. to enforce single-line titles or custom team formatting standards). In a multi-root workspace, the Source Control action uses the setting for the selected repository.
+- **Configurable Model**: `vertexAiChat.commitMessageModel` selects an authorized model for each repository. The **Google Agent Platform: Select Commit Message Model** command lists the models returned by the current discovery. When unset, the extension prefers an authorized Gemini Flash model and then falls back to another supported discovered model.
 - **Streaming UI**: The generated message is streamed directly into the SCM input box, providing immediate feedback to the developer.
 - **Token Efficiency**: Aggregates all staged diffs into a single request to minimize model overhead and provides detailed logging of processed file paths.
 

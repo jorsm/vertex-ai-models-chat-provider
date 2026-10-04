@@ -38,6 +38,10 @@
         "icon": "$(wand)"
       },
       {
+        "command": "vertexAiChat.selectCommitMessageModel",
+        "title": "Google Agent Platform: Select Commit Message Model"
+      },
+      {
         "command": "vertexAiChat.setServiceAccountKey",
         "title": "Google Agent Platform: Paste Service Account JSON Key"
       },
@@ -163,6 +167,13 @@
           "scope": "resource",
           "order": 80,
           "description": "Custom system prompt used for AI commit message generation. If empty, the default Conventional Commits prompt is used."
+        },
+        "vertexAiChat.commitMessageModel": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "order": 90,
+          "description": "Model ID used for AI commit-message generation. It must be authorized by the current model discovery. Leave empty for automatic selection, or run 'Google Agent Platform: Select Commit Message Model'."
         }
       }
     }

@@ -323,6 +323,38 @@ test("commit inference resolves the target repository labels and records usage o
   assert.deepEqual(request[7], { "vscode-vertex-ai-project": "repository-b" });
   assert.equal(h.records.length, 1);
 });
+test("commit inference retries discovery after a previous empty error state", async (t) => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  const h = harness([model("local-denied")]);
+  h.dispatcher.clearModels();
+  const requests = fakeDiscovery(t, [model("gemini-3.8-flash")]);
+  await h.dispatcher.inferCommit([], { tools: [] }, { report() {} }, cancellation().token, rootB);
+  assert.equal(requests.length, 1);
+  assert.equal(h.calls.find((call) => call[0] === "infer")[2], "gemini-3.8-flash");
+});
+test("commit inference uses a repository-configured authorized model", async (t) => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  settings.commitMessageModel = "claude-sonnet-5-5-medium";
+  const remote = [model("gemini-3.8-flash"), model("claude-sonnet-5-5-medium", "anthropic")];
+  fakeDiscovery(t, remote);
+  const h = harness(remote);
+  await h.dispatcher.inferCommit([], { tools: [] }, { report() {} }, cancellation().token, rootB);
+  const request = h.calls.find((call) => call[0] === "infer");
+  assert.equal(request[1], "anthropic");
+  assert.equal(request[2], "claude-sonnet-5-5-medium");
+});
+test("commit inference rejects a configured model that discovery did not authorize", async (t) => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  settings.commitMessageModel = "gemini-disabled";
+  const remote = [model("gemini-3.8-flash")];
+  fakeDiscovery(t, remote);
+  const h = harness(remote);
+  await assert.rejects(
+    h.dispatcher.inferCommit([], { tools: [] }, { report() {} }, cancellation().token, rootB),
+    /not available or authorized/,
+  );
+  assert.equal(h.calls.filter((call) => call[0] === "infer").length, 0);
+});
 test("configuration reset aborts in-flight discovery and a late result cannot publish stale models", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
   const originalFetch = global.fetch;

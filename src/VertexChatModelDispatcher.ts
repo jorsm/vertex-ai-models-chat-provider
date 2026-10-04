@@ -514,16 +514,57 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     await this.infer(model.id, messages, options, progress, token, vscode.window.activeTextEditor?.document.uri);
   }
 
+  private getCommitMessageModels(): ModelSpec[] {
+    return this.availableModels.filter((entry) => {
+      if (!this.activeProviders.has(entry.vendor)) {
+        return false;
+      }
+      return !this.getProxyUrl() || ["google", "anthropic"].includes(entry.vendor);
+    });
+  }
+
+  /** Returns the currently authorized commit models, refreshing an empty catalog once. */
+  public async getAvailableCommitMessageModels(): Promise<ModelSpec[]> {
+    if (this.availableModels.length === 0) {
+      await this.discoverModelsAndRegion();
+    } else if (this._discoveryPromise) {
+      await this._discoveryPromise;
+    }
+    return this.getCommitMessageModels();
+  }
+
   public async inferCommit(
     messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions,
     progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, resource: vscode.Uri,
   ): Promise<void> {
     if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
-    if (!this.discoveryDone && !this._discoveryPromise) { void this.discoverModelsAndRegion().catch(() => {}); }
+    // A previous discovery error clears the catalog and marks that attempt as
+    // completed. An explicit commit-generation request gets one fresh attempt
+    // instead of remaining stuck behind the stale empty state.
+    if (!this._discoveryPromise && (!this.discoveryDone || this.availableModels.length === 0)) {
+      void this.discoverModelsAndRegion().catch(() => {});
+    }
     await this.waitForDiscovery(token);
-    const model = this.availableModels.find((entry) => entry.vendor === "google" && entry.id === "gemini-3-flash-preview")
-      ?? this.availableModels.find((entry) => entry.vendor === "google");
-    if (!model) { throw new Error("No allowed Gemini model is available for commit generation. Refresh Models."); }
+    const candidates = this.getCommitMessageModels();
+    const configuredModelId = vscode.workspace.getConfiguration("vertexAiChat", resource)
+      .get<string>("commitMessageModel")?.trim();
+    const configuredModel = configuredModelId
+      ? candidates.find((entry) => entry.id === configuredModelId)
+      : undefined;
+
+    if (configuredModelId && !configuredModel) {
+      throw new Error(`Configured commit-message model '${configuredModelId}' is not available or authorized. Select another model or use automatic selection.`);
+    }
+
+    const model = configuredModel
+      ?? candidates.find((entry) => entry.vendor === "google" && entry.family.toLowerCase() === "gemini"
+        && entry.id.toLowerCase().includes("flash") && !/(?:-high|-max)$/.test(entry.id.toLowerCase()))
+      ?? candidates.find((entry) => entry.vendor === "google" && entry.family.toLowerCase() === "gemini")
+      ?? candidates.find((entry) => entry.vendor === "google")
+      ?? candidates.find((entry) => entry.vendor === "anthropic")
+      ?? candidates[0];
+    if (!model) { throw new Error("No authorized model is available for commit generation. Refresh Models or check the proxy policy."); }
+    this.logger.log(`Commit-message model selected: ${model.id}${configuredModel ? " (configured)" : " (automatic)"}`);
     await this.infer(model.id, messages, options, progress, token, resource);
   }
 

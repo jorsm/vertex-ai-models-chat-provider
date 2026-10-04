@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { AuthConfigurationError, AuthManager } from "./AuthManager";
-import { generateCommitMessage } from "./CommitMessage";
+import { generateCommitMessage, resolveCommitMessageResourceUri } from "./CommitMessage";
 import { CostStatusBar } from "./CostStatusBar";
 import { DashboardWebview } from "./DashboardWebview";
 import { ModelCatalogResolver } from "./ModelCatalogResolver";
@@ -109,6 +109,53 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("vertexAiChat.generateCommitMessage", (commandContext?: vscode.Uri | vscode.SourceControl) =>
       generateCommitMessage(provider, commandContext),
     ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("vertexAiChat.selectCommitMessageModel", async (commandContext?: vscode.Uri | vscode.SourceControl) => {
+      const resource = resolveCommitMessageResourceUri(commandContext)
+        ?? vscode.window.activeTextEditor?.document.uri
+        ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+      try {
+        const models = await provider.getAvailableCommitMessageModels();
+        if (models.length === 0) {
+          vscode.window.showWarningMessage("Google Agent Platform: No authorized model is available for commit-message generation.");
+          return;
+        }
+
+        const config = vscode.workspace.getConfiguration("vertexAiChat", resource);
+        const current = config.get<string>("commitMessageModel")?.trim();
+        const selection = await vscode.window.showQuickPick([
+          {
+            label: "Automatic",
+            description: current ? undefined : "Current",
+            detail: "Prefer an authorized Gemini Flash model, then another supported model",
+            modelId: "",
+          },
+          ...models.map((model) => ({
+            label: model.displayName,
+            description: model.id === current ? `${model.id} · Current` : model.id,
+            detail: `${model.vendor} · ${model.family}`,
+            modelId: model.id,
+          })),
+        ], {
+          title: "Select Commit Message Model",
+          placeHolder: "Choose a model authorized by the current discovery",
+        });
+        if (!selection) { return; }
+
+        const folder = resource ? vscode.workspace.getWorkspaceFolder(resource) : undefined;
+        const target = folder && (vscode.workspace.workspaceFolders?.length ?? 0) > 1
+          ? vscode.ConfigurationTarget.WorkspaceFolder
+          : vscode.ConfigurationTarget.Workspace;
+        await config.update("commitMessageModel", selection.modelId || undefined, target);
+        vscode.window.showInformationMessage(selection.modelId
+          ? `Google Agent Platform: Commit messages will use ${selection.modelId}.`
+          : "Google Agent Platform: Commit-message model selection is automatic.");
+      } catch (error) {
+        vscode.window.showErrorMessage(`Google Agent Platform: Could not select a commit-message model — ${error}`);
+      }
+    }),
   );
 
   // ── Custom model catalog commands ────────────────────────────────────

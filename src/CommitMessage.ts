@@ -156,7 +156,7 @@ export async function generateCommitMessage(provider: VertexChatModelDispatcher,
   }
 
   const combinedDiff = diffParts.join("\n");
-  logger.log(`── Sending ${combinedDiff.length} chars of diff to an available Gemini model…`);
+  logger.log(`── Sending ${combinedDiff.length} chars of diff to the configured or automatically selected model…`);
 
   const config = vscode.workspace.getConfiguration("vertexAiChat", repo.rootUri ?? resourceUri);
   const customPrompt = config.get<string>("commitMessagePrompt")?.trim();
