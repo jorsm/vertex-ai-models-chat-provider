@@ -97,7 +97,11 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     let resolvedIdentity: string | undefined;
     if (enableUser) {
-      resolvedIdentity = await this.authManager.getIdentity();
+      try {
+        resolvedIdentity = await this.authManager.getIdentity();
+      } catch {
+        this.logger.log("Identity is not available yet; enabled user labels will be resolved before inference.");
+      }
     }
     if (connectionRevision !== this.connectionRevision || labelRevision !== this.labelUpdateRevision) {
       return;
@@ -137,18 +141,16 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     return sanitized || undefined;
   }
 
-  private warnMissingLabelValue(label: "user" | "project"): void {
+  private failMissingLabelValue(label: "user" | "project", lookupFailed = false): never {
     const setting = label === "user" ? "vertexAiChat.userLabelValue" : "vertexAiChat.projectLabelValue";
-    const labelKey = `vscode-vertex-ai-${label}`;
-    const fallback = label === "user" ? "a valid custom value or active account identity"
-      : "a valid custom value or workspace name";
-    const message = `${label[0].toUpperCase()}${label.slice(1)} label is enabled, but ${fallback} is not available. Requests will be sent without '${labelKey}'. Set '${setting}' or disable the label.`;
-
+    const reason = lookupFailed ? "automatic value lookup failed" : "no valid value is available";
+    const message = `Local configuration error: 'vscode-vertex-ai-${label}' is enabled but ${reason}. No request was sent. Set '${setting}' or fix the automatic value.`;
+    this.logger.log(message);
     if (!this.missingLabelWarnings.has(label)) {
       this.missingLabelWarnings.add(label);
-      this.logger.log(`⚠️ ${message}`);
-      void vscode.window.showWarningMessage(`Google Agent Platform: ${message}`);
+      void vscode.window.showErrorMessage(`Google Agent Platform: ${message}`);
     }
+    throw vscode.LanguageModelError.Blocked(message);
   }
 
   private clearMissingLabelWarning(label: "user" | "project"): void {
@@ -511,7 +513,23 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
     token: vscode.CancellationToken,
   ): Promise<void> {
-    await this.infer(model.id, messages, options, progress, token, vscode.window.activeTextEditor?.document.uri);
+    try {
+      await this.infer(model.id, messages, options, progress, token, vscode.window.activeTextEditor?.document.uri);
+    } catch (error) {
+      // Generic Error loses the HTTP classification across the VS Code RPC boundary.
+      if (error instanceof GatewayError) {
+        const message = `HTTP ${error.status ?? "unknown"}: ${error.message}`;
+        if (error.status === 401 || error.status === 403) {
+          throw vscode.LanguageModelError.NoPermissions(message);
+        }
+        if (error.status === 404) { throw vscode.LanguageModelError.NotFound(message); }
+        if ((error.status && error.status >= 400 && error.status < 500 && ![408, 429].includes(error.status))
+          || error.policyCode === "UPSTREAM_AUTHENTICATION_FAILED") {
+          throw vscode.LanguageModelError.Blocked(message);
+        }
+      }
+      throw error;
+    }
   }
 
   private getCommitMessageModels(): ModelSpec[] {
@@ -537,6 +555,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions,
     progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, resource: vscode.Uri,
   ): Promise<void> {
+    const requestLabels = await this.resolveRequestLabels(resource, token);
     if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
     // A previous discovery error clears the catalog and marks that attempt as
     // completed. An explicit commit-generation request gets one fresh attempt
@@ -565,31 +584,12 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
       ?? candidates[0];
     if (!model) { throw new Error("No authorized model is available for commit generation. Refresh Models or check the proxy policy."); }
     this.logger.log(`Commit-message model selected: ${model.id}${configuredModel ? " (configured)" : " (automatic)"}`);
-    await this.infer(model.id, messages, options, progress, token, resource);
+    await this.inferWithLabels(model.id, messages, options, progress, token, requestLabels);
   }
 
-  public async infer(
-    modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[],
-    options: vscode.ProvideLanguageModelChatResponseOptions,
-    progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken,
-    resource?: vscode.Uri,
-  ): Promise<void> {
+  private async resolveRequestLabels(resource: vscode.Uri | undefined, token: vscode.CancellationToken): Promise<Record<string, string>> {
     if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
-    if (this.getProxyUrl() && !this.discoveryDone && !this._discoveryPromise) {
-      void this.discoverModelsAndRegion().catch(() => {});
-    }
-    await this.waitForDiscovery(token);
     const revision = this.connectionRevision;
-    if (this._labelsPromise) { await this._labelsPromise; }
-    const catalog = await this.catalogResolver.getEffectiveCatalog();
-    if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
-    if (revision !== this.connectionRevision) { throw new Error("Configuration changed before inference. Refresh Models."); }
-    const spec = (this.getProxyUrl() || this.discoveryDone || this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels).find((m: ModelSpec) => m.id === modelId);
-    if (!spec) { throw new Error(`Model not available: ${modelId}. Refresh Models or select an allowed model.`); }
-    const provider = this.activeProviders.get(spec.vendor);
-    if (!provider || (this.getProxyUrl() && !["google", "anthropic"].includes(spec.vendor))) {
-      throw new Error(`Integration for vendor ${spec.vendor} is not available in this mode.`);
-    }
     // Resolve labels for this specific request (resource-aware)
     const config = vscode.workspace.getConfiguration("vertexAiChat", resource);
     const requestLabels: Record<string, string> = {};
@@ -598,24 +598,25 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
       // 0. Check for a custom user label value in settings
       let userLabelValue = this.getValidLabelValue(config.get<string>("userLabelValue"));
 
-      // A startup/configuration refresh may have completed before gcloud was
-      // ready. Retry once for this request rather than sending an incomplete
-      // label set to either direct Vertex or the proxy.
-      if (!userLabelValue && !this.cachedUserEmail) {
-        await this.updateLabels();
-        if (revision !== this.connectionRevision) { throw new Error("Configuration changed before inference. Refresh Models."); }
-      }
-
       if (!userLabelValue) {
-        // 1. Fallback to cached identity
-        userLabelValue = this.getValidLabelValue(this.cachedUserEmail);
+        // Use the request's scoped checkbox, rather than the startup configuration.
+        let identity: string | undefined;
+        try {
+          identity = await this.authManager.getIdentity();
+        } catch (error) {
+          if (error instanceof vscode.CancellationError || token.isCancellationRequested) { throw new vscode.CancellationError(); }
+          this.failMissingLabelValue("user", true);
+        }
+        if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
+        if (revision !== this.connectionRevision) { throw new Error("Configuration changed before inference. Refresh Models."); }
+        userLabelValue = this.getValidLabelValue(identity);
       }
 
       if (userLabelValue) {
         this.clearMissingLabelWarning("user");
         requestLabels["vscode-vertex-ai-user"] = userLabelValue;
       } else {
-        this.warnMissingLabelValue("user");
+        this.failMissingLabelValue("user");
       }
     } else {
       this.clearMissingLabelWarning("user");
@@ -648,10 +649,45 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         this.clearMissingLabelWarning("project");
         requestLabels["vscode-vertex-ai-project"] = projectLabelValue;
       } else {
-        this.warnMissingLabelValue("project");
+        this.failMissingLabelValue("project");
       }
     } else {
       this.clearMissingLabelWarning("project");
+    }
+
+    return requestLabels;
+  }
+
+  public async infer(
+    modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[],
+    options: vscode.ProvideLanguageModelChatResponseOptions,
+    progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken,
+    resource?: vscode.Uri,
+  ): Promise<void> {
+    const requestLabels = await this.resolveRequestLabels(resource, token);
+    return this.inferWithLabels(modelId, messages, options, progress, token, requestLabels);
+  }
+
+  private async inferWithLabels(
+    modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[],
+    options: vscode.ProvideLanguageModelChatResponseOptions,
+    progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken,
+    requestLabels: Record<string, string>,
+  ): Promise<void> {
+    if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
+    if (this.getProxyUrl() && !this.discoveryDone && !this._discoveryPromise) {
+      void this.discoverModelsAndRegion().catch(() => {});
+    }
+    await this.waitForDiscovery(token);
+    const revision = this.connectionRevision;
+    const catalog = await this.catalogResolver.getEffectiveCatalog();
+    if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
+    if (revision !== this.connectionRevision) { throw new Error("Configuration changed before inference. Refresh Models."); }
+    const spec = (this.getProxyUrl() || this.discoveryDone || this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels).find((m: ModelSpec) => m.id === modelId);
+    if (!spec) { throw new Error(`Model not available: ${modelId}. Refresh Models or select an allowed model.`); }
+    const provider = this.activeProviders.get(spec.vendor);
+    if (!provider || (this.getProxyUrl() && !["google", "anthropic"].includes(spec.vendor))) {
+      throw new Error(`Integration for vendor ${spec.vendor} is not available in this mode.`);
     }
 
     try {

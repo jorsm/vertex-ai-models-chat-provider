@@ -12,13 +12,17 @@ export function normalizeGatewayError(error: any): GatewayError {
   if (error instanceof GatewayError) {
     return error;
   }
-  const status = Number(error?.status ?? error?.code) || undefined;
-  const detail = error?.error?.error ?? error?.error;
+  let payload = error?.error;
+  if (!payload && typeof error?.message === "string") {
+    try { payload = JSON.parse(error.message); } catch { /* SDK message is not JSON. */ }
+  }
+  const detail = payload?.error ?? payload;
+  const status = Number(error?.status ?? error?.code ?? detail?.code) || undefined;
   const code = detail?.reason ?? detail?.status;
   if (status === 401) {
     return new GatewayError("The proxy rejected your Google ID token. Run 'gcloud auth login' with your personal account, then Refresh Models.", status, code);
   }
-  return new GatewayError(error?.message || "Proxy request failed.", status, code);
+  return new GatewayError(detail?.message || error?.message || "Proxy request failed.", status, code);
 }
 
 export function isGatewayRetryable(error: any): boolean {

@@ -231,7 +231,7 @@ Optional inference attribution uses these client label keys:
 
 | Label | Resolution |
 | --- | --- |
-| `vscode-vertex-ai-user` | Enabled by `enableUserLabel`; explicit `userLabelValue`, otherwise the resolved client Google identity. |
+| `vscode-vertex-ai-user` | Enabled by `enableUserLabel`; explicit `userLabelValue`, otherwise the resolved client identity, using the same authentication identity resolver as direct Vertex mode. |
 | `vscode-vertex-ai-project` | Enabled by `enableProjectLabel`; workspace/folder `projectLabelValue`, otherwise the workspace or target repository name. |
 
 Values are sanitized to lowercase letters, digits, underscores, and hyphens, start with a letter, and are truncated to 63 characters. A missing value produces a warning and that label is omitted. Discovery sends neither label. Gemini inference carries labels in the root JSON body; Claude uses `X-Vertex-AI-Labels`, containing base64-encoded UTF-8 JSON. Do not inject root JSON `labels` into Claude requests.
@@ -303,3 +303,20 @@ Other statuses are not automatically retried by the proxy inference policy. Do n
 | Upstream authentication failure | Repair the proxy runtime's credentials and Vertex permissions. |
 
 Use the [compatibility verification guide](proxy-compatibility.md) to validate your implementation. The contract is implemented by [ProxyGateway](../src/ProxyGateway.ts), [AuthManager](../src/AuthManager.ts), [the dispatcher](../src/VertexChatModelDispatcher.ts), and the [Gemini](../src/providers/VertexGoogleProvider.ts) and [Claude](../src/providers/VertexAnthropicProvider.ts) providers.
+
+
+When an attribution checkbox is enabled, inference resolves its value using the
+request's workspace/folder configuration. An absent/empty value or a failed automatic lookup immediately raises a local
+configuration error and displays an error notification. Chat and commit-message
+actions validate labels before starting discovery or inference in both proxy
+and direct Vertex mode: neither backend is contacted when this validation fails. User labels use the same client identity resolver in proxy and direct Vertex
+mode; the proxy ID token is used only for authenticating proxy calls.
+
+Permanent proxy HTTP errors (including missing-label `400`) are not retried by
+the extension or its SDKs. At the VS Code provider boundary they are exposed as
+`LanguageModelError` with the original HTTP status in the message: `Blocked`
+for invalid requests, `NoPermissions` for `401`/`403`, and `NotFound` for `404`.
+`429` and `503` retain the existing bounded retry behavior. Copilot or another
+consumer can implement its own retry policy; some Copilot versions convert all
+external-provider errors to a generic failure regardless of the error code.
+The extension cannot guarantee that those consumers stop retrying.

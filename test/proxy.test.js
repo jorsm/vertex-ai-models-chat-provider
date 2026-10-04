@@ -24,6 +24,12 @@ const vscode = {
     constructor(role, content) { this.role = role; this.content = [new TextPart(content)]; }
     static User(content) { return new this(1, content); }
   },
+  LanguageModelError: class extends Error {
+    constructor(message, code) { super(message); this.name = "LanguageModelError"; this.code = code; }
+    static Blocked(message) { return new this(message, "Blocked"); }
+    static NoPermissions(message) { return new this(message, "NoPermissions"); }
+    static NotFound(message) { return new this(message, "NotFound"); }
+  },
   CancellationError, LanguageModelTextPart: TextPart, LanguageModelToolCallPart: ToolCallPart,
   LanguageModelToolResultPart: ToolResultPart, LanguageModelDataPart: DataPart,
   LanguageModelChatMessageRole: { User: 1, Assistant: 2 }, LanguageModelChatToolMode: { Auto: 1 },
@@ -563,7 +569,7 @@ for (const [vendor, Provider] of [["google", VertexGoogleProvider], ["anthropic"
   test(`${vendor} SDK denies gateway 403 once; 401 remains a gateway error without ADC login classification`, async (t) => {
     const originalFetch = global.fetch;
     t.after(() => { global.fetch = originalFetch; });
-    for (const status of [403, 401, 502]) {
+    for (const status of [400, 403, 401, 502]) {
       let calls = 0;
       global.fetch = async () => { calls++; return Response.json({ error: { code: status, message: "quota service unavailable", status: status === 502 ? "UPSTREAM_AUTHENTICATION_FAILED" : "PERMISSION_DENIED" } }, { status }); };
       const provider = new Provider();
@@ -805,3 +811,138 @@ test("partial Claude stream failure preserves delivered text and does not restar
   assert.equal(parts[0].value, "partial");
   assert.equal(requests, 1);
 });
+
+
+for (const proxy of [false, true]) {
+  test(`user label uses the same client identity resolver in ${proxy ? "proxy" : "direct"} mode`, async () => {
+    if (proxy) inspections.proxyUrl = { globalValue: "https://gateway.test" };
+    settings.enableUserLabel = true;
+    let tokenCalls = 0;
+    const h = harness([model("gemini-test")], {
+      getIdentity: async () => "client@example.com",
+      getProxyIdToken: async () => { tokenCalls++; return jwt({ email: "different@example.com" }); },
+    });
+    const labels = await h.dispatcher.resolveRequestLabels(rootB, cancellation().token);
+    assert.equal(labels["vscode-vertex-ai-user"], "client_example_com");
+    assert.equal(tokenCalls, 0);
+  });
+}
+
+test("a folder-enabled checkbox resolves the user label even when the startup checkbox is off", async (t) => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  fakeDiscovery(t, [model("gemini-test")]);
+  const original = vscode.workspace.getConfiguration;
+  vscode.workspace.getConfiguration = (section, uri) => {
+    const config = original(section, uri);
+    return { ...config, get: (key, fallback) => key === "enableUserLabel" ? uri === rootB : config.get(key, fallback) };
+  };
+  t.after(() => { vscode.workspace.getConfiguration = original; });
+  const h = harness([model("gemini-test")]);
+  await h.dispatcher.discoverModelsAndRegion();
+  await h.dispatcher.infer("gemini-test", userMessage(), {}, { report() {} }, cancellation().token, rootB);
+  assert.equal(h.calls.at(-1)[7]["vscode-vertex-ai-user"], "developer_example_com");
+});
+
+test("an enabled unresolved user label stops before sending an inference request", async (t) => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  settings.enableUserLabel = true;
+  fakeDiscovery(t, [model("gemini-test")]);
+  const h = harness([model("gemini-test")], { getIdentity: async () => undefined });
+  await h.dispatcher.discoverModelsAndRegion();
+  await assert.rejects(h.dispatcher.provideLanguageModelChatResponse({ id: "gemini-test" }, userMessage(), {}, { report() {} }, cancellation().token),
+    (error) => error.code === "Blocked" && /Local configuration error.*vscode-vertex-ai-user/.test(error.message));
+  assert.equal(h.calls.filter((call) => call[0] === "infer").length, 0);
+});
+
+for (const [status, code] of [[400, "Blocked"], [401, "NoPermissions"], [403, "NoPermissions"], [404, "NotFound"], [422, "Blocked"]]) {
+  test(`HTTP ${status} reaches VS Code as ${code}, preserving the original status and message`, async (t) => {
+    inspections.proxyUrl = { globalValue: "https://gateway.test" };
+    fakeDiscovery(t, [model("gemini-test")]);
+    const h = harness([model("gemini-test")]);
+    await h.dispatcher.discoverModelsAndRegion();
+    let attempts = 0;
+    h.dispatcher.activeProviders.get("google").provideLanguageModelChatResponse = async () => {
+      attempts++;
+      throw new GatewayError("Missing required label 'vscode-vertex-ai-user'.", status, "FAILED_PRECONDITION");
+    };
+    await assert.rejects(h.dispatcher.provideLanguageModelChatResponse({ id: "gemini-test" }, userMessage(), {}, { report() {} }, cancellation().token),
+      (error) => error.name === "LanguageModelError" && error.code === code && error.message.startsWith(`HTTP ${status}: Missing required label`));
+    assert.equal(attempts, 1);
+  });
+}
+
+
+test("a custom user label remains usable when automatic identity is unavailable", async (t) => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  settings.enableUserLabel = true;
+  settings.userLabelValue = "jan-custom";
+  fakeDiscovery(t, [model("gemini-test")]);
+  const h = harness([model("gemini-test")], { getIdentity: async () => { throw Error("identity unavailable"); } });
+  await h.dispatcher.discoverModelsAndRegion();
+  await h.dispatcher.infer("gemini-test", userMessage(), {}, { report() {} }, cancellation().token);
+  assert.equal(h.calls.at(-1)[7]["vscode-vertex-ai-user"], "jan-custom");
+});
+
+test("SDK JSON messages preserve proxy policy details and remain non-retryable", () => {
+  const { normalizeGatewayError } = require("../out/ProxyGateway.js");
+  const error = normalizeGatewayError({ status: 400, message: JSON.stringify({ error: {
+    code: 400, message: "Missing required label 'vscode-vertex-ai-user'.", status: "FAILED_PRECONDITION",
+  } }) });
+  assert.equal(error.status, 400);
+  assert.equal(error.policyCode, "FAILED_PRECONDITION");
+  assert.equal(error.message, "Missing required label 'vscode-vertex-ai-user'.");
+  assert.equal(isGatewayRetryable(error), false);
+});
+
+
+for (const proxy of [false, true]) {
+  for (const method of ["infer", "inferCommit"]) {
+    for (const [reason, lookup] of [
+      ["missing", async () => undefined], ["empty", async () => "  "],
+      ["failed", async () => { throw new Error("lookup failed"); }],
+    ]) {
+      test(`${proxy ? "proxy" : "direct"} ${method} blocks a ${reason} enabled user label before discovery`, async (t) => {
+        if (proxy) inspections.proxyUrl = { globalValue: "https://gateway.test" };
+        settings.enableUserLabel = true;
+        const originalFetch = global.fetch;
+        let requests = 0;
+        global.fetch = async () => { requests++; throw Error("no backend may be contacted"); };
+        t.after(() => { global.fetch = originalFetch; });
+        const h = harness([model("gemini-test")], { getIdentity: lookup });
+        const args = [userMessage(), {}, { report() {} }, cancellation().token, rootB];
+        if (method === "infer") args.unshift("gemini-test");
+        await assert.rejects(h.dispatcher[method](...args),
+          (error) => error.code === "Blocked" && /Local configuration error.*vscode-vertex-ai-user.*No request was sent/.test(error.message));
+        assert.equal(requests, 0);
+        assert.equal(h.calls.length, 0);
+        assert.equal(h.records.length, 0);
+      });
+    }
+
+    test(`${proxy ? "proxy" : "direct"} ${method} blocks an enabled project label without a workspace`, async (t) => {
+      if (proxy) inspections.proxyUrl = { globalValue: "https://gateway.test" };
+      settings.enableProjectLabel = true;
+      const originalConfiguration = vscode.workspace.getConfiguration;
+      vscode.workspace.getConfiguration = (section, uri) => {
+        const config = originalConfiguration(section, uri);
+        return { ...config, inspect: (key) => key === "projectLabelValue" ? {} : config.inspect(key) };
+      };
+      t.after(() => { vscode.workspace.getConfiguration = originalConfiguration; });
+      const { name, workspaceFolders, getWorkspaceFolder } = vscode.workspace;
+      Object.assign(vscode.workspace, { name: undefined, workspaceFolders: undefined, getWorkspaceFolder: () => undefined });
+      t.after(() => Object.assign(vscode.workspace, { name, workspaceFolders, getWorkspaceFolder }));
+      const originalFetch = global.fetch;
+      let requests = 0;
+      global.fetch = async () => { requests++; throw Error("no backend may be contacted"); };
+      t.after(() => { global.fetch = originalFetch; });
+      const h = harness([model("gemini-test")]);
+      const args = [userMessage(), {}, { report() {} }, cancellation().token, rootB];
+      if (method === "infer") args.unshift("gemini-test");
+      await assert.rejects(h.dispatcher[method](...args),
+        (error) => error.code === "Blocked" && /Local configuration error.*vscode-vertex-ai-project/.test(error.message));
+      assert.equal(requests, 0);
+      assert.equal(h.calls.length, 0);
+      assert.equal(h.records.length, 0);
+    });
+  }
+}

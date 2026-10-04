@@ -133,7 +133,7 @@
           "type": "boolean",
           "default": false,
           "order": 30,
-          "description": "Include a user identifier as a 'vscode-vertex-ai-user' label in Gemini and Claude calls. Values are sanitized to meet GCP label requirements. A warning is shown if no valid custom or automatic value can be resolved."
+          "description": "Include a user identifier as a 'vscode-vertex-ai-user' label in Gemini and Claude calls. Values are sanitized to meet GCP label requirements. Requests are blocked before inference if no valid custom or automatic value can be resolved."
         },
         "vertexAiChat.userLabelValue": {
           "type": "string",
@@ -146,7 +146,7 @@
           "type": "boolean",
           "default": false,
           "order": 50,
-          "description": "Include the current VS Code project name as a 'vscode-vertex-ai-project' label in Gemini and Claude calls. Values are sanitized to meet GCP label requirements. A warning is shown if no valid custom or automatic value can be resolved."
+          "description": "Include the current VS Code project name as a 'vscode-vertex-ai-project' label in Gemini and Claude calls. Values are sanitized to meet GCP label requirements. Requests are blocked before inference if no valid custom or automatic value can be resolved."
         },
         "vertexAiChat.projectLabelValue": {
           "type": "string",
