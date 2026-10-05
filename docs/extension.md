@@ -16,7 +16,7 @@
 ## Core Concepts
 The extension follows a standard VS Code extension architecture with several specialized components:
 
-*   **Extension Activation**: Uses VS Code's contribution-based activation. The extension initializes its services even when `projectId` is unset, then discovery reports the configuration issue if a project is required.
+*   **Extension Activation**: Uses VS Code's contribution-based activation. The extension initializes its services even when `projectId` is unset, then discovery reports that the required project is missing, with or without a proxy.
 *   **Settings Migration**: Automatically migrates `projectId` and `hideBillingWarning` settings from the legacy `vertexAnthropic` configuration namespace to the current `vertexAiChat` namespace.
 *   **Service Initialization**: Orchestrates the `ModelCatalogResolver`, `UsageTrackerService`, `CostStatusBar`, and `VertexChatModelDispatcher`.
 *   **Provider Registration**: Registers a `LanguageModelChatProvider` for the `google-vertex` vendor, displayed as "Google Agent Platform (Vertex AI)", allowing the models to be used within the native VS Code Chat interface.
@@ -52,7 +52,7 @@ Initializes the extension's internal state and registers its contributions with 
     - `vertexAiChat.openWorkspaceModelsFile`: Creates or opens the workspace `.vscode/models.json` model catalog.
 6.  Registers the chat provider with the `vscode.lm` API.
 7.  Starts an initial background discovery of models.
-8.  Sets up configuration listeners to reset the connection and re-run discovery when `projectId`, `proxyUrl`, or the discovery timeout changes. `proxyUrl` and `projectId` are mutually exclusive; a conflict clears available models.
+8.  Sets up configuration listeners to reset the connection and re-run discovery when `projectId`, `proxyUrl`, or the discovery timeout changes. `projectId` is always required and names the project on which Vertex is invoked; `proxyUrl` is optional and, when set, routes calls client → proxy → Vertex instead of client → Vertex.
 
 ### runDiscovery
 [source](../src/extension.ts)

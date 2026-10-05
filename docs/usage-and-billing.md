@@ -70,7 +70,7 @@ Manages a persistent status bar item that displays today's total estimated cost 
 #### constructor
 [source](../src/CostStatusBar.ts)
 `constructor(usageTracker: UsageTrackerService, authManager: AuthManager, catalogResolver: ModelCatalogResolver)`
-Initializes the status bar item at the right side of the status bar (priority 100) and binds it to the dashboard display command. It subscribes to usage and authentication updates to refresh the UI automatically, presenting a rich Markdown tooltip that includes the current GCP project ID (or proxy status), active authentication method, model catalog source (Bundled, Workspace, User, or Server), and account identity.
+Initializes the status bar item at the right side of the status bar (priority 100) and binds it to the dashboard display command. It subscribes to usage and authentication updates to refresh the UI automatically, presenting a rich Markdown tooltip that includes the current GCP project ID, active authentication method, model catalog source (Bundled, Workspace, User, or Server), and account identity.
 - `usageTracker`: An instance of `UsageTrackerService` used to retrieve daily cost totals.
 - `authManager`: An instance of `AuthManager` used to identify the current user or service account.
 - `catalogResolver`: The resolver used to show the active model catalog source in the status-bar tooltip.

@@ -17,7 +17,7 @@ exports.run = async function () {
     checks.push('actual bundled development extension activated');
     const config = vscode.workspace.getConfiguration('vertexAiChat');
     assert.equal(config.get('proxyUrl'), proxyUrl);
-    assert.equal(config.get('projectId'), '');
+    assert.ok(config.get('projectId'), 'projectId is required even in proxy mode');
     await vscode.commands.executeCommand('vertexAiChat.refreshModels');
     const models = await vscode.lm.selectChatModels({vendor:'google-vertex'});
     details.push({models:models.map(m=>({id:m.id,name:m.name,vendor:m.vendor,family:m.family,maxInputTokens:m.maxInputTokens}))});

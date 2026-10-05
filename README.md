@@ -5,14 +5,14 @@
 
 ## Native Gemini, Claude, and Grok models in VS Code Copilot Chat
 
-Use Google Gemini, Anthropic Claude, and xAI Grok directly in the standard VS Code Chat panel. With direct Vertex access, the extension authenticates with Google Cloud and bills the project you select. Organizations can route Gemini and Claude through an enterprise proxy to centralize metrics, access policies, and business logic.
+Use Google Gemini, Anthropic Claude, and xAI Grok directly in the standard VS Code Chat panel. You always choose the Google Cloud project (`vertexAiChat.projectId`) on which the Vertex APIs are invoked and billed. By default the extension calls Vertex directly; organizations can instead route Gemini and Claude through an enterprise proxy to centralize metrics, access policies, and business logic.
 
 <p align="center">
   <img src="images/demo.gif" alt="Google Agent Platform for Copilot Chat demo" width="800">
 </p>
 
 - **🔒 No API keys** — Authenticate with Google Application Default Credentials or a Service Account stored in VS Code `SecretStorage`.
-- **🏢 Project-aware billing** — Use workspace settings to bill the right Google Cloud project as you switch contexts.
+- **🏢 Project-aware billing** — A required `projectId`, settable per workspace, selects the Google Cloud project to invoke and bill as you switch contexts, directly or through a proxy.
 - **⚡ Native integration** — Select models and use them alongside other providers in Copilot Chat.
 - **📊 Cost visibility** — See local usage estimates and optionally attribute Gemini and Claude PayGo spend with request labels.
 
@@ -35,7 +35,7 @@ Before you start, make sure the target Google Cloud project is ready:
    - **Standard ADC:** run `gcloud auth application-default login` in a terminal.
    - **Service Account:** run **Google Agent Platform: Paste Service Account JSON Key** or **Google Agent Platform: Import Service Account JSON File** from the Command Palette.
 
-3. **Set the billing and discovery project** in VS Code Settings (`Ctrl+,`):
+3. **Set the project** (required) in VS Code Settings (`Ctrl+,`):
 
    ```json
    {
@@ -43,7 +43,9 @@ Before you start, make sure the target Google Cloud project is ready:
    }
    ```
 
-   Set this in workspace settings when different repositories should use different Google Cloud projects.
+   `projectId` is mandatory in every mode: it is the project on which the Vertex APIs are invoked and billed. Set it in workspace settings when different repositories should use different Google Cloud projects. Without it, no models are available.
+
+   Optionally, add `vertexAiChat.proxyUrl` to go through an organization proxy (see [Direct or via proxy](#direct-or-via-proxy)). Leave it empty to call Vertex directly.
 
 4. **Start chatting:** Open VS Code Chat, select a **Google Agent Platform** model, and send a prompt. If the picker is empty, run **Google Agent Platform: Refresh Models**.
 
@@ -59,9 +61,25 @@ In direct mode, model discovery groups effort variants by their model endpoint a
 
 Run **Google Agent Platform: Refresh Models** to apply the new timeout. Discovery runs at most **three endpoints concurrently**, spacing initial starts by 500–1,000 ms. Transient failures receive up to **three retries after the first attempt**, with randomized exponential backoff; `Retry-After` is honored within the endpoint's timeout. Endpoints that return 429 remain available with all their catalog effort variants even if retries are exhausted. Endpoints that never respond are skipped. Queue time can make the entire discovery run longer than the per-endpoint timeout.
 
+## Direct or via proxy
+
+`vertexAiChat.projectId` is always required. `vertexAiChat.proxyUrl` is optional and only changes the route:
+
+| `proxyUrl` | Route | Authentication | Project |
+| :--- | :--- | :--- | :--- |
+| Empty | Extension → Vertex | ADC or Service Account | `projectId` |
+| Set | Extension → proxy → Vertex | Personal `gcloud auth login` identity, verified by the proxy | `projectId`, sent to the proxy, which calls Vertex on it |
+
+```json
+{
+  "vertexAiChat.projectId": "my-gcp-project-id",
+  "vertexAiChat.proxyUrl": "https://ai-proxy.example.com"
+}
+```
+
 ## Enterprise proxy with `proxyUrl`
 
-For organizations that need centralized model access, budgets, telemetry, or routing to different client billing projects, `vertexAiChat.proxyUrl` routes Gemini and Claude calls through your own service. The proxy is where you implement those policies and business logic.
+For organizations that need centralized model access, budgets, telemetry, or conditional access to specific projects, `vertexAiChat.proxyUrl` routes Gemini and Claude calls through your own service. The proxy is where you implement those policies and business logic, such as allowing only cataloged projects and only certain users on each of them. If the proxy cannot call Vertex on your project, the error is shown in VS Code.
 
 See the [enterprise proxy guide](docs/proxy.md) for use cases, configuration, the access model, and the implementation contract.
 

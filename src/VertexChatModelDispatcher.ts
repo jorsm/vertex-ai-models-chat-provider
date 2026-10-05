@@ -204,13 +204,16 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     const proxyUrl = this.getProxyUrl();
     if (revision !== this.connectionRevision) { throw new Error("Configuration changed during discovery."); }
-    if (proxyUrl && this.projectId.trim()) {
-      const message = "Configuration conflict: 'vertexAiChat.proxyUrl' and 'vertexAiChat.projectId' are mutually exclusive. Clear one of them; model discovery will restart automatically.";
-      this.logger.log(`❌ ${message}`);
-      this.catalogResolver.setProxyCatalog?.([]);
+    /*
+     * The project ID is mandatory in every mode: it is the billing/quota project for
+     * direct Vertex calls and is forwarded as-is to the proxy when proxyUrl is set.
+     */
+    const effectiveProjectId = this.projectId.trim();
+    if (!effectiveProjectId) {
+      this.logger.log("❌ No Project ID configured in settings (vertexAiChat.projectId). Discovery aborted.");
+      vscode.window.showErrorMessage("Vertex AI: Please configure a GCP Project ID in your settings to use this extension.");
       this.clearModels();
-      this.discoveryDone = true;
-      throw new GatewayError(message);
+      return { region: "none", availableModels: [] };
     }
     if (proxyUrl) {
       this.gateway?.dispose();
@@ -225,7 +228,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
           throw new GatewayError("Proxy configuration changed. Refresh Models before continuing.");
         }
         for (const vendor of ["google", "anthropic"]) {
-          this.activeProviders.get(vendor)?.initialize("gateway", "global", undefined, gateway);
+          this.activeProviders.get(vendor)?.initialize(effectiveProjectId, "global", undefined, gateway);
         }
         this.region = "proxy";
         this.availableModels = available;
@@ -253,16 +256,6 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
      * If the credentials provided (Service Account or ADC) do not match or have access
      * to this specific project, the extension is designed to fail loudly.
      */
-    const effectiveProjectId = this.projectId;
-
-    if (!effectiveProjectId) {
-      this.logger.log("❌ No Project ID configured in settings (vertexAiChat.projectId). Discovery aborted.");
-      vscode.window.showErrorMessage("Vertex AI: Please configure a GCP Project ID in your settings to use this extension.");
-      this.availableModels = [];
-      this.discoveryDone = true;
-      this._onDidChange.fire();
-      return { region: "none", availableModels: [] };
-    }
 
     /*
      * Validation: If using a Service Account, warn if its home project doesn't match our setting.

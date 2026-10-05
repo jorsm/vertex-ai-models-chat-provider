@@ -246,13 +246,6 @@ export async function activate(context: vscode.ExtensionContext) {
         }
         provider.setProjectId(newProjectId);
 
-        // Surface mutually-exclusive destination settings immediately. Label
-        // resolution can invoke gcloud and must not delay this configuration error.
-        if (proxyUrlChanged && provider.getProxyUrl() && newProjectId.trim()) {
-          await runDiscovery(provider, authManager);
-          return;
-        }
-
         await provider.updateLabels();
         await runDiscovery(provider, authManager);
       }

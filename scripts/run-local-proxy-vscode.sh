@@ -7,7 +7,7 @@ mkdir -p "$proxy_test_root/user-data/User" "$proxy_test_root/extensions" "$proxy
 node - "$proxy_test_root" "$proxy_test_url" <<'JS'
 const fs=require('node:fs');
 const [root,url]=process.argv.slice(2);
-fs.writeFileSync(root+'/user-data/User/settings.json',JSON.stringify({'vertexAiChat.proxyUrl':url,'vertexAiChat.projectId':'','vertexAiChat.enableUserLabel':false,'vertexAiChat.enableProjectLabel':true,'security.workspace.trust.enabled':false,'telemetry.telemetryLevel':'off','extensions.autoUpdate':false,'window.dialogStyle':'custom'}));
+fs.writeFileSync(root+'/user-data/User/settings.json',JSON.stringify({'vertexAiChat.proxyUrl':url,'vertexAiChat.projectId':process.env.VERTEX_PROJECT_ID||'local-proxy-project','vertexAiChat.enableUserLabel':false,'vertexAiChat.enableProjectLabel':true,'security.workspace.trust.enabled':false,'telemetry.telemetryLevel':'off','extensions.autoUpdate':false,'window.dialogStyle':'custom'}));
 fs.writeFileSync(root+'/workspace/.vscode/settings.json',JSON.stringify({'vertexAiChat.projectLabelValue':'local-proxy-vscode-test'}));
 JS
 git -C "$proxy_test_root/workspace" init -q

@@ -287,7 +287,7 @@ function harness(models, authOverrides = {}) {
     setProxyCatalog(value) { proxyCatalog = value === undefined ? undefined : { candidateModels: value, regionPriority: [] }; },
     getEffectiveCatalog: async () => proxyCatalog ?? { candidateModels: models, regionPriority: ["forbidden-client-region"] },
   };
-  const dispatcher = new Dispatcher("", { recordUsage: async (...args) => records.push(args) }, auth, resolver);
+  const dispatcher = new Dispatcher("user-project", { recordUsage: async (...args) => records.push(args) }, auth, resolver);
   for (const vendor of ["google", "anthropic", "grok"]) {
     dispatcher.activeProviders.set(vendor, {
       vendor, initialize(...args) { calls.push(["initialize", vendor, ...args]); }, setLabels() {},
@@ -317,7 +317,7 @@ test("proxy dispatcher uses the server catalog and sends only an explicit custom
   h.resolver.getEffectiveCatalog = async () => ({ candidateModels: remote, regionPriority: [] });
   assert.equal(requests.length, 1);
   assert.equal(h.calls.filter((c) => c[0] === "initialize").length, 2);
-  assert.ok(h.calls.every((c) => c[2] === "gateway" && c[3] === "global"));
+  assert.ok(h.calls.every((c) => c[2] === "user-project" && c[3] === "global"));
   await h.dispatcher.infer("gemini-test", userMessage(), { tools: [] }, { report() {} }, cancellation().token);
   assert.deepEqual(h.calls.at(-1)[7], { "vscode-vertex-ai-user": "custom_user_example_com" });
   assert.equal(h.records.length, 1);
@@ -372,16 +372,25 @@ test("a stale label refresh cannot overwrite a newer resolved client identity", 
   assert.equal(dispatcher.cachedUserEmail, "new@example.com");
   assert.deepEqual(applied.at(-1), { "vscode-vertex-ai-user": "new_example_com" });
 });
-test("proxyUrl and projectId fail closed when both are configured", async () => {
+test("projectId is mandatory even when proxyUrl is configured", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  const requests = fakeDiscovery(t, [model("gemini-test")]);
   const h = harness([model("denied")]);
-  h.dispatcher.setProjectId("direct-project");
-  await assert.rejects(
-    h.dispatcher.discoverModelsAndRegion(),
-    (error) => error instanceof GatewayError && /mutually exclusive/.test(error.message),
-  );
+  h.dispatcher.setProjectId("");
+  const result = await h.dispatcher.discoverModelsAndRegion();
+  assert.deepEqual(result, { region: "none", availableModels: [] });
   assert.deepEqual(await h.dispatcher.provideLanguageModelChatInformation(), []);
+  assert.equal(requests.length, 0);
   assert.equal(h.calls.length, 0);
+});
+test("proxyUrl and projectId are used together: the proxy receives the configured project", async (t) => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  fakeDiscovery(t, [{ id: "gemini-test", vendor: "google" }]);
+  const h = harness([model("gemini-test")]);
+  h.dispatcher.setProjectId("direct-project");
+  const result = await h.dispatcher.discoverModelsAndRegion();
+  assert.equal(result.region, "proxy");
+  assert.ok(h.calls.filter((c) => c[0] === "initialize").every((c) => c[2] === "direct-project" && c[5] !== undefined));
 });
 test("failed or empty server discovery never exposes the unfiltered local catalog", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
@@ -679,12 +688,12 @@ test("late direct credentials cannot reinitialize providers after switching to t
   const old = h.dispatcher.discoverModelsAndRegion();
   await entered.promise;
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
-  h.dispatcher.setProjectId("");
+  h.dispatcher.setProjectId("proxy-project");
   fakeDiscovery(t, [{ id: "gemini-test", vendor: "google" }]);
   await h.dispatcher.discoverModelsAndRegion();
   credentials.resolve(undefined);
   await assert.rejects(old, /Configuration changed/);
-  assert.ok(h.calls.every((c) => c[0] !== "initialize" || c[2] === "gateway"));
+  assert.ok(h.calls.every((c) => c[0] !== "initialize" || c[2] === "proxy-project"));
   assert.equal((await h.dispatcher.provideLanguageModelChatInformation())[0].id, "gemini-test");
 });
 for (const method of ["infer", "inferCommit"]) {
@@ -765,7 +774,7 @@ test("proxy status bar describes server catalog and personal login without resol
   await bar.updateStatusBar();
   assert.match(item.text, /\$1.50/);
   assert.match(item.tooltip.value, /Server Catalog/);
-  assert.match(item.tooltip.value, /Managed by the proxy/);
+  assert.match(item.tooltip.value, /\*\*Project:\*\*/);
   assert.match(item.tooltip.value, /personal gcloud login/);
   bar.dispose();
 });

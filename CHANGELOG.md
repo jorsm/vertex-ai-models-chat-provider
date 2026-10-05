@@ -4,7 +4,7 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.7.3] — 2026-10-05
 
 ### Added
 
@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
+- `vertexAiChat.projectId` is required with or without `vertexAiChat.proxyUrl` and is now listed first in the settings; `proxyUrl` is optional. The two are no longer mutually exclusive: the project is sent to the proxy in the request path instead of the `gateway` placeholder.
 - Probe each distinct model endpoint once per region during discovery, sharing availability across its effort variants and omitting effort parameters from discovery requests.
 - Stagger endpoint discovery starts, limit concurrency to three, and retry transient failures up to three times with randomized backoff within the configured timeout. Keep all catalog effort variants available after a 429 response even when retries are exhausted.
 

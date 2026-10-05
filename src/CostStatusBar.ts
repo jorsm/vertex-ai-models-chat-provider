@@ -104,7 +104,7 @@ export class CostStatusBar implements vscode.Disposable {
       tooltip.appendMarkdown(`### Vertex AI Usage\n\n`);
       tooltip.appendMarkdown(`**Today's Cost:** ${formattedCost}\n\n`);
       tooltip.appendMarkdown(`---\n\n`);
-      tooltip.appendMarkdown(proxy ? "**Project:** Managed by the proxy\n\n" : `**Project:** \`${projectId || "(Unset)"}\`\n*Source: ${projectSource}*\n\n`);
+      tooltip.appendMarkdown(`**Project:** \`${projectId || "(Unset)"}\`\n*Source: ${projectSource}*\n\n`);
       tooltip.appendMarkdown(`**Auth Method:** ${methodDesc}\n\n`);
       tooltip.appendMarkdown(`**Model Catalog:** ${catalogDesc}\n\n`);
       tooltip.appendMarkdown(`${identityText}\n\n`);
