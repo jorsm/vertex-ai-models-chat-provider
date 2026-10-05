@@ -81,6 +81,8 @@ Run **Google Agent Platform: Refresh Models** to apply the new timeout. Discover
 
 For organizations that need centralized model access, budgets, telemetry, or conditional access to specific projects, `vertexAiChat.proxyUrl` routes Gemini and Claude calls through your own service. The proxy is where you implement those policies and business logic, such as allowing only cataloged projects and only certain users on each of them. If the proxy cannot call Vertex on your project, the error is shown in VS Code.
 
+`proxyUrl` is a user-level setting; workspace settings cannot change it. To use no proxy for one repository and different proxies for others, create one VS Code profile per route and tie each folder to its profile. `projectId` can still be set per repository in `.vscode/settings.json`. See [using different proxies per workspace](docs/proxy.md#use-no-proxy-proxy-1-or-proxy-2-for-different-workspaces).
+
 See the [enterprise proxy guide](docs/proxy.md) for use cases, configuration, the access model, and the implementation contract.
 
 ## ✨ Key features

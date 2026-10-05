@@ -139,7 +139,7 @@ Run **Google Agent Platform: Refresh Models**. In Remote SSH, Dev Containers, an
 
 | Setting or behavior | Proxy mode |
 | --- | --- |
-| `proxyUrl` | Machine-scoped; only the user setting selects the endpoint. Workspace overrides are ignored. |
+| `proxyUrl` | Machine-scoped; only the user setting selects the endpoint. Workspace overrides are ignored. To use different proxies (or none) per workspace, use [VS Code profiles](#use-no-proxy-proxy-1-or-proxy-2-for-different-workspaces). |
 | URL format | Absolute HTTPS URL, optionally with a base path. HTTP is accepted only on `localhost`, `127.0.0.1`, or `[::1]`. Credentials, query strings, and fragments are rejected. |
 | `projectId` | Always required. With a nonempty `proxyUrl`, it is sent to the proxy in the request path (`/v1/projects/{projectId}/...`). An empty value exposes no models. |
 | Client authentication | Personal `gcloud auth login` identity, separate from ADC or stored Service Accounts used for direct mode. |
@@ -149,6 +149,31 @@ Run **Google Agent Platform: Refresh Models**. In Remote SSH, Dev Containers, an
 | Failure | An empty or failed discovery exposes no models. Requests never fall back to direct Vertex. |
 
 Leave `proxyUrl` empty to use direct mode: the extension calls Vertex itself on `projectId` using ADC or Service Account credentials. Refresh Models after changing the active CLI account or the server catalog. The extension does not install or deploy a proxy for you.
+
+### Use no proxy, proxy 1 or proxy 2 for different workspaces
+
+`projectId` can be set in User, Workspace or Folder settings, so each repository's `.vscode/settings.json` can name its own project. `proxyUrl` cannot: it is machine-scoped and only the user value is read, so a repository cannot redirect your Google ID token to another server. A `proxyUrl` in `.vscode/settings.json` is ignored.
+
+To use a different route per project, give each route its own [VS Code profile](https://code.visualstudio.com/docs/configure/profiles). Each profile has separate user settings, and a folder or workspace can be tied to one profile.
+
+| Profile | User settings | Use for |
+| --- | --- | --- |
+| `Personal` | `vertexAiChat.proxyUrl` empty or unset | Direct to Vertex on your own project |
+| `Company A` | `vertexAiChat.proxyUrl` set to proxy 1 | Repositories governed by proxy 1 |
+| `Company B` | `vertexAiChat.proxyUrl` set to proxy 2 | Repositories governed by proxy 2 |
+
+1. Create the profiles: **Manage** (gear icon) → **Profiles** → **Create Profile**, one per route.
+2. In each profile's **User Settings**, set `vertexAiChat.proxyUrl` as in the table. Leave it out of the `Personal` profile.
+3. Set `vertexAiChat.projectId` either in the profile's user settings (one project for everything in that profile) or in each repository's `.vscode/settings.json` (a project per repository). Workspace and folder values override the profile's.
+4. Open each repository and run **Profiles: Switch Profile**, or choose **Use this Profile for Current Workspace** in the Profiles editor. VS Code remembers the association and applies the profile whenever that folder or workspace is opened. You can also start it from a terminal with `code --profile "Company A" path/to/repo`.
+
+The association is stored by VS Code in your user data, not in the repository, so it is not shared with teammates. Each teammate creates the same profile names once.
+
+When a profile changes the effective `proxyUrl` or `projectId`, the extension shows a notification and restarts the model refresh. Proxies are never mixed in one window: each window uses the settings of its profile, and requests never fall back to another proxy or to direct Vertex.
+
+The token sent to the proxy comes from the active `gcloud` account. If each proxy expects a different Google account, make the right account active (`gcloud auth login`, or `gcloud config set account`) before using that profile, then run **Google Agent Platform: Refresh Models**.
+
+To keep a project in one proxy's registry and another elsewhere, also set each proxy's allowed projects (see [Allow only cataloged projects](#allow-only-cataloged-projects-and-only-for-authorized-users)): a project that is not allowed on that proxy is rejected with `403`.
 
 ## Implement a compatible proxy
 
@@ -315,6 +340,7 @@ Other statuses are not automatically retried by the proxy inference policy. Do n
 | Symptom | Check |
 | --- | --- |
 | No models and a missing project message | Set `vertexAiChat.projectId`; it is required with or without `proxyUrl`. |
+| Proxy setting in `.vscode/settings.json` has no effect | `proxyUrl` is user-scoped by design. Set it in User Settings, using a [VS Code profile](#use-no-proxy-proxy-1-or-proxy-2-for-different-workspaces) per proxy. |
 | Request denied for a project | The proxy rejected the `projectId` (not cataloged or not allowed for you), or its runtime identity lacks Vertex access there. Check the `projectId` setting and the proxy's project policy and IAM. |
 | Empty picker | Verify authenticated `/discovery`, approved models, metadata validity, and the complete envelope. Local catalogs cannot restore missing server models. |
 | Token acquisition failure | Check the active personal CLI account and ensure impersonation is unset in the extension-host environment; run `gcloud auth login` when credentials need renewal. |
