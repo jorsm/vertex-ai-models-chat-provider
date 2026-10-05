@@ -233,6 +233,10 @@ export async function activate(context: vscode.ExtensionContext) {
   // If projectId is present, run discovery in the background on activation
   runDiscovery(provider, authManager);
 
+  // Last effective values, to tell set/changed/cleared apart and ignore no-op events.
+  let lastProjectId = projectId.trim();
+  let lastProxyUrl = provider.getProxyUrl();
+
   // Re-run discovery whenever either connection destination setting changes.
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(async (e) => {
@@ -240,9 +244,21 @@ export async function activate(context: vscode.ExtensionContext) {
       const proxyUrlChanged = e.affectsConfiguration("vertexAiChat.proxyUrl");
       if (projectIdChanged || proxyUrlChanged) {
         const newConfig = vscode.workspace.getConfiguration("vertexAiChat");
-        const newProjectId = newConfig.get<string>("projectId") || "";
-        if (projectIdChanged && newProjectId) {
-          vscode.window.showInformationMessage(`Google Agent Platform: Project changed to "${newProjectId}". Re-discovering models…`);
+        const newProjectId = (newConfig.get<string>("projectId") || "").trim();
+        const newProxyUrl = provider.getProxyUrl();
+
+        const changes: string[] = [];
+        if (newProjectId !== lastProjectId) {
+          changes.push(describeSettingChange("Project", lastProjectId, newProjectId));
+        }
+        if (newProxyUrl !== lastProxyUrl) {
+          changes.push(describeSettingChange("Proxy", lastProxyUrl, newProxyUrl, "requests now go directly to Vertex"));
+        }
+        lastProjectId = newProjectId;
+        lastProxyUrl = newProxyUrl;
+        if (changes.length > 0) {
+          const suffix = newProjectId ? "Model refresh restarted." : "Model refresh restarted, but no models are available until a project is set.";
+          vscode.window.showInformationMessage(`Google Agent Platform: ${changes.join(" ")} ${suffix}`);
         }
         provider.setProjectId(newProjectId);
 
@@ -254,6 +270,13 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }),
   );
+}
+
+function describeSettingChange(label: string, previous: string, next: string, clearedNote?: string): string {
+  if (!next) {
+    return `${label} cleared${clearedNote ? ` (${clearedNote})` : ""}.`;
+  }
+  return previous ? `${label} changed to "${next}".` : `${label} set to "${next}".`;
 }
 
 /**
