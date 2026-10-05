@@ -71,7 +71,7 @@
                 },
                 "version": {
                     "type": "string",
-                    "description": "The specific API version/model name sent to Vertex AI. For Grok this is the xAI model path (for example, \"xai/grok-4.6\")."
+                    "description": "The specific API version/model name sent to Vertex AI. For Grok this is the xAI model path (for example, \"xai/grok-4.7\" or \"xai/grok-4.6\")."
                 },
                 "maxInputTokens": {
                     "type": "integer",

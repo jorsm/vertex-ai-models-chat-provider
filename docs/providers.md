@@ -36,7 +36,7 @@ The provider architecture uses a unified `VertexModelProvider` interface to supp
 
 - **Google Gemini Integration**: Managed by `VertexGoogleProvider`, supporting Gemini 3 Flash Preview, Gemini 3.7 and 3.8 Flash, and Gemini 3.1 Pro Preview.
 - **Anthropic Claude Integration**: Managed by `VertexAnthropicProvider`, supporting Claude Opus, Fable, Sonnet, and Haiku variants from the active model catalog.
-- **xAI Grok Integration**: Managed by `VertexGrokProvider`, providing access to Grok 4.6 at High (Default), Low, and Medium effort through Vertex AI's OpenAI-compatible endpoint.
+- **xAI Grok Integration**: Managed by `VertexGrokProvider`, providing access to Grok 4.7 and 4.6 at High (Default), Low, and Medium effort through Vertex AI's OpenAI-compatible endpoint.
 - **Thinking Models**: Gemini `-high` aliases select high thinking. Claude effort aliases (`-low`, `-medium`, `-high`, `-xhigh`, and `-max`) enable adaptive thinking and set `output_config.effort`; the bundled catalog includes only generation-5 `-max` aliases.
 - **Thought Signatures**: Provider-specific mechanisms maintain reasoning continuity across tool calls by caching and re-injecting Gemini signatures or Claude signed thinking/redacted-thinking blocks.
 - **Parallel Tool Execution**: Implementation of tool call buffering and message merging to satisfy Gemini's requirements for grouped function responses.
@@ -147,7 +147,7 @@ Main entry point for chat inference. This method:
 
 ### VertexGrokProvider
 [source](../src/providers/VertexGrokProvider.ts)
-The `VertexGrokProvider` class implements the `VertexModelProvider` interface specifically for xAI Grok 4.6 on Vertex AI. It uses Vertex AI's OpenAI-compatible endpoint and does not provide generic routing for other partner models.
+The `VertexGrokProvider` class implements the `VertexModelProvider` interface specifically for xAI Grok (Grok 4.7 and 4.6) on Vertex AI. It uses Vertex AI's OpenAI-compatible endpoint and does not provide generic routing for other partner models.
 
 #### initialize
 [source](../src/providers/VertexGrokProvider.ts)
@@ -165,7 +165,7 @@ Updates internal labels for request logging only. The Grok OpenAI-compatible req
 [source](../src/providers/VertexGrokProvider.ts)
 `pingModel(modelVersion: string): Promise<boolean>`
 
-Verifies the availability of the model path (e.g., `xai/grok-4.6`) by sending a minimal OpenAI-format chat completion request. It rejects unsupported model paths and non-global regions before making requests. It handles 429 rate-limiting responses as confirmation of availability.
+Verifies the availability of the model path (e.g., `xai/grok-4.7` or `xai/grok-4.6`) by sending a minimal OpenAI-format chat completion request. It rejects unsupported model paths and non-global regions before making requests. It handles 429 rate-limiting responses as confirmation of availability.
 
 #### provideTokenCount
 [source](../src/providers/VertexGrokProvider.ts)
@@ -177,10 +177,10 @@ Estimates token usage using a 4-characters-per-token heuristic.
 [source](../src/providers/VertexGrokProvider.ts)
 `provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>): Promise<ChatInferenceResult>`
 
-Handles Grok 4.6 chat inference using an OpenAI client. This method:
+Handles Grok chat inference using an OpenAI client. This method:
 1. Maps VS Code messages to OpenAI chat completion parameters. It supports `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart` (transformed into discrete `tool` role messages), and `LanguageModelDataPart` (including base64 image conversion or UTF-8 decoding for other data types).
 2. Looks up the output budget from the effective model catalog and requests streaming usage.
-3. Resolves Low, Medium, and High aliases to the base Grok 4.6 path and sends `reasoning_effort`; other model families are rejected.
+3. Resolves Low, Medium, and High aliases to the base Grok path and sends `reasoning_effort`; other model families are rejected.
 4. Preserves a leading system prompt and inserts a placeholder user turn only if the first conversation turn is missing or is not a user turn.
 5. Executes requests using a retry mechanism to handle transient failures.
 6. Streams final text and accumulates incremental tool call deltas until `finish_reason` is received.

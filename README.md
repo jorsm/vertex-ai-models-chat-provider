@@ -67,7 +67,7 @@ Models are discovered for your project and region, so only models your project c
 | :-------- | :------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------- |
 | Google    | Gemini 3 Flash Preview; Gemini 3.7 and 3.8 Flash; Gemini 3.1 Pro                | [Gemini model documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini)                   |
 | Anthropic | Claude Fable 5.1 and 5; Opus 5.5, 5, and 4.8; Sonnet 5.5, 5, and 4.6; Haiku 4.5 | [Claude on Google Cloud](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude)        |
-| Grok      | Grok 4.6                                                                        | [Grok 4.6 documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/grok/grok-4-6) |
+| Grok      | Grok 4.7 and 4.6                                                                | [Grok 4.7 documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/grok/grok-4-7) |
 
 Claude Fable 5 and 5.1 require Model Garden access and are subject to Google's [Advanced AI Safety Addendum](https://cloud.google.com/terms/advanced-ai-safety-addendum). Review the [Fable 5.1 documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/fable-5-1) before enabling it.
 

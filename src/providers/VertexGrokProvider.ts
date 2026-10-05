@@ -33,13 +33,21 @@ export class VertexGrokProvider implements VertexModelProvider {
       modelPath: "xai/grok-4.6",
       extraBody: { stream_options: { include_usage: true } },
     },
+    "grok-4.7": {
+      modelPath: "xai/grok-4.7",
+      extraBody: { stream_options: { include_usage: true } },
+    },
   };
 
   // Live Vertex checks accept low/medium/high but reject xAI's xhigh.
-  // Keep suffix resolution limited to supported Grok 4.6 variants.
-  private static resolveGrok46(modelId: string): { actualId: string; effort?: "low" | "medium" | "high" } {
-    const match = modelId.match(/^(?:xai\/)?grok-4\.6-(low|medium|high)$/);
+  // Keep suffix resolution limited to supported Grok variants.
+  private static resolveGrok(modelId: string): { actualId: string; effort?: "low" | "medium" | "high" } {
+    const match = modelId.match(/^(?:xai\/)?grok-4\.[67]-(low|medium|high)$/);
     return match ? { actualId: modelId.replace(/-(low|medium|high)$/, ""), effort: match[1] as "low" | "medium" | "high" } : { actualId: modelId };
+  }
+
+  private static resolveGrok46(modelId: string) {
+    return VertexGrokProvider.resolveGrok(modelId);
   }
 
   // ── Initialization ────────────────────────────────────────────────────
@@ -148,8 +156,8 @@ export class VertexGrokProvider implements VertexModelProvider {
   // ── Discovery ping ────────────────────────────────────────────────────
 
   async pingModel(modelVersion: string, options?: DiscoveryProbeOptions): Promise<boolean> {
-    const resolved = VertexGrokProvider.resolveGrok46(modelVersion);
-    if (resolved.actualId !== "xai/grok-4.6" || this.region !== "global") {
+    const resolved = VertexGrokProvider.resolveGrok(modelVersion);
+    if (!["xai/grok-4.6", "xai/grok-4.7"].includes(resolved.actualId) || this.region !== "global") {
       return false;
     }
     // modelVersion from models.json is the Vertex Grok path, optionally with effort.
@@ -201,13 +209,14 @@ export class VertexGrokProvider implements VertexModelProvider {
     labels?: Record<string, string>,
     spec?: ModelSpec,
   ): Promise<ChatInferenceResult> {
-    const resolved = VertexGrokProvider.resolveGrok46(modelId);
+    const resolved = VertexGrokProvider.resolveGrok(modelId);
     const config = VertexGrokProvider.MODEL_CONFIG[resolved.actualId];
     if (!config) {
       throw new Error(`Unknown Grok model: ${modelId}. Available: ${Object.keys(VertexGrokProvider.MODEL_CONFIG).join(", ")}`);
     }
-    if (config.modelPath === "xai/grok-4.6" && this.region !== "global") {
-      throw new Error("Grok 4.6 is available only at the global Vertex AI endpoint.");
+    if (["xai/grok-4.6", "xai/grok-4.7"].includes(config.modelPath) && this.region !== "global") {
+      const displayName = resolved.actualId === "grok-4.7" ? "Grok 4.7" : "Grok 4.6";
+      throw new Error(`${displayName} is available only at the global Vertex AI endpoint.`);
     }
 
     // Use passed spec if available, otherwise resolve from catalog
@@ -255,7 +264,7 @@ export class VertexGrokProvider implements VertexModelProvider {
 
       // Report token usage to VS Code (MIME type 'usage') for Copilot Chat indicator
       if (typeof vscode.LanguageModelDataPart !== "undefined") {
-        const promptTokens = usage.input + (config.modelPath === "xai/grok-4.6" ? usage.cache_read : 0);
+        const promptTokens = usage.input + (["xai/grok-4.6", "xai/grok-4.7"].includes(config.modelPath) ? usage.cache_read : 0);
         const usagePayload = {
           prompt_tokens: promptTokens,
           completion_tokens: usage.output,
@@ -438,7 +447,7 @@ export class VertexGrokProvider implements VertexModelProvider {
     const input = usage.prompt_tokens ?? 0;
     const output = usage.completion_tokens ?? 0;
     const cached = usage.prompt_tokens_details?.cached_tokens ?? 0;
-    if (config.modelPath === "xai/grok-4.6") {
+    if (["xai/grok-4.6", "xai/grok-4.7"].includes(config.modelPath)) {
       // Google's Grok API reports reasoning separately from completion_tokens.
       // Prefer total - prompt to also handle servers that include it in completion.
       const reasoning = usage.completion_tokens_details?.reasoning_tokens ?? 0;

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- Support for xAI Grok 4.7 preview (`grok-4.7`, `grok-4.7-low`, `grok-4.7-medium`) with vision, tool calling, 524,288-token context window, and reasoning effort controls via Vertex AI's global endpoint.
+
 ## [0.6.8] — 2026-10-01
 
 ### Fixed

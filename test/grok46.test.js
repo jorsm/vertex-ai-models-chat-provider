@@ -28,6 +28,7 @@ try {
 }
 const catalog = require("../src/models.json");
 const spec = catalog.candidateModels.find((model) => model.id === "grok-4.6");
+const spec47 = catalog.candidateModels.find((model) => model.id === "grok-4.7");
 const token = { isCancellationRequested: false };
 const user = (content) => ({ role: 1, content });
 
@@ -55,6 +56,14 @@ test("Grok 4.6 catalog uses the Vertex path, vision and tools", () => {
   assert.equal(catalog.regionPriority[0], "global");
 });
 
+test("Grok 4.7 catalog uses the Vertex path, vision and tools", () => {
+  assert.equal(spec47.version, "xai/grok-4.7");
+  assert.equal(spec47.vendor, "grok");
+  assert.equal(spec47.maxInputTokens, 524288);
+  assert.equal(spec47.maxOutputTokens, 524288);
+  assert.deepEqual(spec47.capabilities, { imageInput: true, toolCalling: true });
+});
+
 test("Grok 4.6 request sends image parts and asks for streaming usage", async () => {
   const h = harness([chunk({ content: "A red square." }, "stop"), {
     choices: [], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120,
@@ -74,6 +83,30 @@ test("Grok 4.6 request sends image parts and asks for streaming usage", async ()
     { type: "image_url", image_url: { url: "data:image/png;base64,AQID" } },
   ]);
   assert.equal(h.parts[0].value, "A red square.");
+  assert.equal(result.usage.cache_read, 40);
+  assert.equal(result.usage.output, 20);
+  assert.equal(h.parts.at(-1).mimeType, "usage");
+});
+
+test("Grok 4.7 request sends image parts and asks for streaming usage", async () => {
+  const h = harness([chunk({ content: "A blue circle." }, "stop"), {
+    choices: [], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120,
+      prompt_tokens_details: { cached_tokens: 40 } },
+  }]);
+  const result = await h.provider.provideLanguageModelChatResponse(spec47.id,
+    [user([new TextPart("Describe this"), new DataPart(Uint8Array.from([1, 2, 3]), "image/png")])],
+    {}, h.progress, token, undefined, spec47);
+  const request = h.requests[0];
+  assert.equal(request.model, "xai/grok-4.7");
+  assert.equal(request.max_tokens, spec47.maxOutputTokens);
+  assert.equal(request.stream, true);
+  assert.deepEqual(request.stream_options, { include_usage: true });
+  assert.equal(Object.hasOwn(request, "reasoning_effort"), false);
+  assert.deepEqual(request.messages[0].content, [
+    { type: "text", text: "Describe this" },
+    { type: "image_url", image_url: { url: "data:image/png;base64,AQID" } },
+  ]);
+  assert.equal(h.parts[0].value, "A blue circle.");
   assert.equal(result.usage.cache_read, 40);
   assert.equal(result.usage.output, 20);
   assert.equal(h.parts.at(-1).mimeType, "usage");
@@ -122,10 +155,22 @@ test("Grok discovery uses the API model path and skips regional endpoints", asyn
   assert.equal(h.requests.length, 1);
 });
 
+test("Grok 4.7 discovery uses the API model path and skips regional endpoints", async () => {
+  const h = harness();
+  assert.equal(await h.provider.pingModel(spec47.version), true);
+  assert.equal(h.requests[0].model, "xai/grok-4.7");
+  assert.equal(h.requests[0].max_tokens, 1);
+  h.provider.initialize("test-project", "us-east5");
+  assert.equal(await h.provider.pingModel(spec47.version), false);
+  await assert.rejects(h.provider.provideLanguageModelChatResponse(spec47.id,
+    [user([new TextPart("hi")])], {}, h.progress, token, undefined, spec47), /global/);
+  assert.equal(h.requests.length, 1);
+});
+
 test("removed non-Grok models are absent and cannot be discovered or invoked", async () => {
   const h = harness();
   assert.deepEqual(catalog.candidateModels.filter((model) => model.vendor === "grok").map((model) => model.id),
-    ["grok-4.6", "grok-4.6-low", "grok-4.6-medium"]);
+    ["grok-4.7", "grok-4.7-low", "grok-4.7-medium", "grok-4.6", "grok-4.6-low", "grok-4.6-medium"]);
   for (const [id, version] of [
     ["qwen3-coder-480b", "qwen/qwen3-coder-480b-a35b-instruct-maas"],
     ["deepseek-v3.2", "deepseek-ai/deepseek-v3.2-maas"],
@@ -154,9 +199,25 @@ test("Grok 4.6 efforts reach both inference and discovery without leaking suffix
   }
 });
 
+test("Grok 4.7 efforts reach both inference and discovery without leaking suffixes", async () => {
+  for (const effort of ["low", "medium", "high"]) {
+    const h = harness();
+    const alias = { ...spec47, id: `${spec47.id}-${effort}`, version: `${spec47.version}-${effort}` };
+    await h.provider.provideLanguageModelChatResponse(alias.id, [user([new TextPart("hi")])], {}, h.progress, token, undefined, alias);
+    assert.equal(h.requests[0].model, "xai/grok-4.7");
+    assert.equal(h.requests[0].reasoning_effort, effort);
+    assert.equal(await h.provider.pingModel(alias.version), true);
+    assert.equal(h.requests[1].model, "xai/grok-4.7");
+    assert.equal(h.requests[1].reasoning_effort, effort);
+    h.provider.initialize("test-project", "europe-west1");
+    assert.equal(await h.provider.pingModel(alias.version), false);
+    assert.equal(h.requests.length, 2);
+  }
+});
+
 test("unsupported effort aliases fail before making an inference request", async () => {
   const h = harness();
-  for (const id of ["grok-4.6-xhigh", "grok-4.6-max", "grok-4.6-none", "grok-4.2-reasoning-high", "deepseek-v3.2-high"]) {
+  for (const id of ["grok-4.6-xhigh", "grok-4.6-max", "grok-4.6-none", "grok-4.7-xhigh", "grok-4.7-max", "grok-4.7-none", "grok-4.2-reasoning-high", "deepseek-v3.2-high"]) {
     await assert.rejects(h.provider.provideLanguageModelChatResponse(id, [], {}, h.progress, token, undefined, spec), /Unknown Grok model/);
   }
   assert.equal(h.requests.length, 0);
@@ -180,6 +241,22 @@ test("Grok usage includes separately billed reasoning and avoids double-counting
   ]) {
     const h = harness([{ choices: [], usage: { ...usage, prompt_tokens_details: { cached_tokens: 40 } } }]);
     const result = await h.provider.provideLanguageModelChatResponse(spec.id, [user([new TextPart("hi")])], {}, h.progress, token, undefined, spec);
+    assert.deepEqual(result.usage, { input: 60, output: 70, cache_read: 40, cache_create: 0 });
+    const reported = JSON.parse(new TextDecoder().decode(h.parts.at(-1).data));
+    assert.equal(reported.prompt_tokens, 100);
+    assert.equal(reported.completion_tokens, 70);
+    assert.equal(reported.total_tokens, 170);
+  }
+});
+
+test("Grok 4.7 usage includes separately billed reasoning and avoids double-counting cache hits", async () => {
+  for (const usage of [
+    { prompt_tokens: 100, completion_tokens: 20, total_tokens: 170, completion_tokens_details: { reasoning_tokens: 50 } },
+    { prompt_tokens: 100, completion_tokens: 70, total_tokens: 170, completion_tokens_details: { reasoning_tokens: 50 } },
+    { prompt_tokens: 100, completion_tokens: 20, completion_tokens_details: { reasoning_tokens: 50 } },
+  ]) {
+    const h = harness([{ choices: [], usage: { ...usage, prompt_tokens_details: { cached_tokens: 40 } } }]);
+    const result = await h.provider.provideLanguageModelChatResponse(spec47.id, [user([new TextPart("hi")])], {}, h.progress, token, undefined, spec47);
     assert.deepEqual(result.usage, { input: 60, output: 70, cache_read: 40, cache_create: 0 });
     const reported = JSON.parse(new TextDecoder().decode(h.parts.at(-1).data));
     assert.equal(reported.prompt_tokens, 100);
