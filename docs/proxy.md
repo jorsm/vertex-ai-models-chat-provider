@@ -126,6 +126,8 @@ Sign in with your personal Google account in the environment where the workspace
 gcloud auth login
 ```
 
+This is the standard `gcloud` login, not `gcloud auth application-default login`. With a proxy the extension runs `gcloud auth print-identity-token` for the **active** account and sends the resulting ID token to the proxy. Direct mode instead uses Application Default Credentials, because the Vertex SDKs look them up themselves. The two stores are independent, so user A can be the active `gcloud` account while user B holds the ADC: proxy calls are then authenticated as A and direct calls are made as B. See [Which Google identity makes the call](../README.md#which-google-identity-makes-the-call) to check and align them.
+
 Set the required `vertexAiChat.projectId` and, in **User Settings**, the optional proxy base URL:
 
 ```json
@@ -142,7 +144,7 @@ Run **Google Agent Platform: Refresh Models**. In Remote SSH, Dev Containers, an
 | `proxyUrl` | Machine-scoped; only the user setting selects the endpoint. Workspace overrides are ignored. To use different proxies (or none) per workspace, use [VS Code profiles](#use-no-proxy-proxy-1-or-proxy-2-for-different-workspaces). |
 | URL format | Absolute HTTPS URL, optionally with a base path. HTTP is accepted only on `localhost`, `127.0.0.1`, or `[::1]`. Credentials, query strings, and fragments are rejected. |
 | `projectId` | Always required. With a nonempty `proxyUrl`, it is sent to the proxy in the request path (`/v1/projects/{projectId}/...`). An empty value exposes no models. |
-| Client authentication | Personal `gcloud auth login` identity, separate from ADC or stored Service Accounts used for direct mode. |
+| Client authentication | The active account of the standard `gcloud auth login`, from which an ID token is obtained for each proxy request. Separate from the ADC and stored Service Accounts used for direct mode, which can belong to a different user. |
 | Model catalog | Supplied exclusively by the proxy. Bundled, user, and workspace catalogs are ignored. |
 | Providers | Google Gemini and Anthropic Claude. Grok is supported in direct mode only. |
 | Discovery | One authenticated `GET /discovery`; no inference probes or attribution labels. |
@@ -171,7 +173,7 @@ The association is stored by VS Code in your user data, not in the repository, s
 
 When a profile changes the effective `proxyUrl` or `projectId`, the extension shows a notification and restarts the model refresh. Proxies are never mixed in one window: each window uses the settings of its profile, and requests never fall back to another proxy or to direct Vertex.
 
-The token sent to the proxy comes from the active `gcloud` account. If each proxy expects a different Google account, make the right account active (`gcloud auth login`, or `gcloud config set account`) before using that profile, then run **Google Agent Platform: Refresh Models**.
+The token sent to the proxy comes from the active `gcloud` account (`gcloud auth list`), never from ADC. If each proxy expects a different Google account, make the right account active (`gcloud auth login`, or `gcloud config set account`) before using that profile, then run **Google Agent Platform: Refresh Models**. The active account is global to the machine, so it applies to every open window.
 
 To keep a project in one proxy's registry and another elsewhere, also set each proxy's allowed projects (see [Allow only cataloged projects](#allow-only-cataloged-projects-and-only-for-authorized-users)): a project that is not allowed on that proxy is rejected with `403`.
 

@@ -32,7 +32,7 @@ Before you start, make sure the target Google Cloud project is ready:
 1. **Install** **Google Agent Platform for Copilot Chat** from the VS Code Marketplace.
 2. **Authenticate** in the environment where the extension runs:
 
-   - **Standard ADC:** run `gcloud auth application-default login` in a terminal.
+   - **Standard ADC:** run `gcloud auth application-default login` in a terminal. This is for direct calls to Vertex; a proxy uses `gcloud auth login` instead (see [Which Google identity makes the call](#which-google-identity-makes-the-call)).
    - **Service Account:** run **Google Agent Platform: Paste Service Account JSON Key** or **Google Agent Platform: Import Service Account JSON File** from the Command Palette.
 
 3. **Set the project** (required) in VS Code Settings (`Ctrl+,`):
@@ -76,6 +76,28 @@ Run **Google Agent Platform: Refresh Models** to apply the new timeout. Discover
   "vertexAiChat.proxyUrl": "https://ai-proxy.example.com"
 }
 ```
+
+### Which Google identity makes the call
+
+Google Cloud keeps two independent credential stores, and the extension uses a different one in each mode:
+
+| | Direct (`proxyUrl` empty) | Via proxy (`proxyUrl` set) |
+| :--- | :--- | :--- |
+| Credential store | **Application Default Credentials (ADC)** | **Standard `gcloud` accounts** |
+| Created with | `gcloud auth application-default login` | `gcloud auth login` |
+| Why | The Vertex SDKs (Gemini, Claude, Grok) look up the default credentials themselves | The extension runs `gcloud auth print-identity-token` and sends that token to the proxy |
+| Which account | The single ADC identity, or a stored Service Account | The **active** account in `gcloud auth list` |
+
+The two stores do not follow each other. If `gcloud auth list` shows user A as active but `gcloud auth application-default login` was run as user B, direct calls to Vertex are made as **B** and calls through the proxy are authenticated as **A**. Switching `proxyUrl` on or off therefore changes the identity, and so the IAM permissions, quota and audit trail that apply. A Service Account selected in the extension is used only in direct mode and is never accepted by the proxy.
+
+The `vscode-vertex-ai-user` label and the usage dashboard account come from the active `gcloud` account (or the Service Account's email), not from ADC, so in direct mode they can name a different person than the one Vertex bills and authorizes.
+
+To check each identity:
+
+- Standard accounts: `gcloud auth list`; the active account is marked with `*`. Change it with `gcloud config set account <email>`.
+- ADC: they are stored in `~/.config/gcloud/application_default_credentials.json` (`%APPDATA%\gcloud\application_default_credentials.json` on Windows) and are not listed by `gcloud auth list`. To change them, run `gcloud auth application-default login` again as the intended user.
+
+When both modes are used, log in to both with the same account, or keep the identities deliberately different and know which one applies. Refresh Models after changing either.
 
 ## Enterprise proxy with `proxyUrl`
 
