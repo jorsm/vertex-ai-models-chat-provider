@@ -341,7 +341,7 @@ Other statuses are not automatically retried by the proxy inference policy. Do n
 
 | Symptom | Check |
 | --- | --- |
-| No models and a missing project message | Set `vertexAiChat.projectId`; it is required with or without `proxyUrl`. |
+| Error that `vertexAiChat.projectId` is required | Set it; it is required with or without `proxyUrl`. Without it the extension stops before requesting a token or contacting the proxy, and the notification offers **Open Settings**. |
 | Proxy setting in `.vscode/settings.json` has no effect | `proxyUrl` is user-scoped by design. Set it in User Settings, using a [VS Code profile](#use-no-proxy-proxy-1-or-proxy-2-for-different-workspaces) per proxy. |
 | Request denied for a project | The proxy rejected the `projectId` (not cataloged or not allowed for you), or its runtime identity lacks Vertex access there. Check the `projectId` setting and the proxy's project policy and IAM. |
 | Empty picker | Verify authenticated `/discovery`, approved models, metadata validity, and the complete envelope. Local catalogs cannot restore missing server models. |

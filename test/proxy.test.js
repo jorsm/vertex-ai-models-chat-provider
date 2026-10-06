@@ -50,7 +50,7 @@ let commandResult;
 let credentialCommandCount = 0;
 const originalLoad = Module._load;
 let AuthManager, ProxyGateway, GatewayError, validateProxyUrl, parseProxyCatalog, isGatewayRetryable, ModelCatalogResolver, UsageTrackerService;
-let VertexChatModelDispatcher, VertexGoogleProvider, VertexAnthropicProvider, CostStatusBar;
+let VertexChatModelDispatcher, MissingProjectIdError, VertexGoogleProvider, VertexAnthropicProvider, CostStatusBar;
 let generateCommitMessage;
 try {
   Module._load = function(request, parent, main) {
@@ -84,7 +84,7 @@ try {
   ({ ModelCatalogResolver } = require("../out/ModelCatalogResolver.js"));
   ({ UsageTrackerService } = require("../out/UsageTrackerService.js"));
   ({ CostStatusBar } = require("../out/CostStatusBar.js"));
-  ({ VertexChatModelDispatcher } = require("../out/VertexChatModelDispatcher.js"));
+  ({ VertexChatModelDispatcher, MissingProjectIdError } = require("../out/VertexChatModelDispatcher.js"));
   ({ VertexGoogleProvider } = require("../out/providers/VertexGoogleProvider.js"));
   ({ VertexAnthropicProvider } = require("../out/providers/VertexAnthropicProvider.js"));
   ({ generateCommitMessage } = require("../out/CommitMessage.js"));
@@ -372,16 +372,44 @@ test("a stale label refresh cannot overwrite a newer resolved client identity", 
   assert.equal(dispatcher.cachedUserEmail, "new@example.com");
   assert.deepEqual(applied.at(-1), { "vscode-vertex-ai-user": "new_example_com" });
 });
-test("projectId is mandatory even when proxyUrl is configured", async (t) => {
+test("proxyUrl without projectId fails before any token request, connection or provider setup", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
   const requests = fakeDiscovery(t, [model("gemini-test")]);
   const h = harness([model("denied")]);
-  h.dispatcher.setProjectId("");
-  const result = await h.dispatcher.discoverModelsAndRegion();
-  assert.deepEqual(result, { region: "none", availableModels: [] });
+  let tokenRequests = 0;
+  h.auth.getProxyIdToken = async () => { tokenRequests++; return "token"; };
+  for (const projectId of ["", "   "]) {
+    h.dispatcher.setProjectId(projectId);
+    await assert.rejects(
+      h.dispatcher.discoverModelsAndRegion(),
+      (error) => error instanceof MissingProjectIdError && error.viaProxy === true && /proxy was not contacted/.test(error.message),
+    );
+  }
   assert.deepEqual(await h.dispatcher.provideLanguageModelChatInformation(), []);
   assert.equal(requests.length, 0);
+  assert.equal(tokenRequests, 0);
   assert.equal(h.calls.length, 0);
+});
+test("direct mode without projectId also fails before touching credentials", async () => {
+  const h = harness([model("gemini-test")]);
+  let credentialLookups = 0;
+  h.auth.getResolvedAuthOptions = async () => { credentialLookups++; return undefined; };
+  h.dispatcher.setProjectId("");
+  await assert.rejects(
+    h.dispatcher.discoverModelsAndRegion(),
+    (error) => error instanceof MissingProjectIdError && error.viaProxy === false,
+  );
+  assert.equal(credentialLookups, 0);
+  assert.equal(h.calls.length, 0);
+});
+test("inference without projectId never reaches the proxy", async (t) => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  const requests = fakeDiscovery(t, [model("gemini-test")]);
+  const h = harness([model("gemini-test")]);
+  h.dispatcher.setProjectId("");
+  await assert.rejects(h.dispatcher.infer("gemini-test", userMessage(), { tools: [] }, { report() {} }, cancellation().token), /MissingProjectIdError|projectId|Model not available/);
+  assert.equal(requests.length, 0);
+  assert.equal(h.calls.filter((c) => c[0] === "infer").length, 0);
 });
 test("proxyUrl and projectId are used together: the proxy receives the configured project", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };

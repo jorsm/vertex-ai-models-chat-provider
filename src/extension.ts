@@ -5,7 +5,7 @@ import { CostStatusBar } from "./CostStatusBar";
 import { DashboardWebview } from "./DashboardWebview";
 import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { UsageTrackerService } from "./UsageTrackerService";
-import { VertexChatModelDispatcher } from "./VertexChatModelDispatcher";
+import { VertexChatModelDispatcher, MissingProjectIdError } from "./VertexChatModelDispatcher";
 import { Logger } from "./utils/Logger";
 import { VertexAuthenticationError } from "./utils/retry";
 import { GatewayError } from "./ProxyGateway";
@@ -306,7 +306,13 @@ async function runDiscovery(provider: VertexChatModelDispatcher, authManager: Au
     // Clear any stale model list to prevent "silent fallbacks" in the chat UI
     provider.clearModels();
 
-    if (e instanceof GatewayError) {
+    if (e instanceof MissingProjectIdError) {
+      const openSettings = "Open Settings";
+      const selection = await vscode.window.showErrorMessage(`Google Agent Platform: ${e.message}`, openSettings);
+      if (selection === openSettings) {
+        await vscode.commands.executeCommand("workbench.action.openSettings", "vertexAiChat.projectId");
+      }
+    } else if (e instanceof GatewayError) {
       vscode.window.showErrorMessage(`Vertex AI proxy: ${e.message}`);
     } else if (e instanceof AuthConfigurationError) {
       const selectAction = "Select Authentication Method";

@@ -18,6 +18,16 @@ const execAsync = util.promisify(childProcess.exec);
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+/** Raised before any network or credential access when `vertexAiChat.projectId` is unset. */
+export class MissingProjectIdError extends Error {
+  constructor(public readonly viaProxy: boolean) {
+    super(viaProxy
+      ? "'vertexAiChat.projectId' is required, also when a proxy is configured. The proxy was not contacted."
+      : "'vertexAiChat.projectId' is required to call Vertex AI.");
+    this.name = "MissingProjectIdError";
+  }
+}
+
 export interface DiscoveryResult {
   region: string;
   availableModels: ModelSpec[];
@@ -210,10 +220,9 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
      */
     const effectiveProjectId = this.projectId.trim();
     if (!effectiveProjectId) {
-      this.logger.log("❌ No Project ID configured in settings (vertexAiChat.projectId). Discovery aborted.");
-      vscode.window.showErrorMessage("Vertex AI: Please configure a GCP Project ID in your settings to use this extension.");
+      this.logger.log(`❌ No Project ID configured (vertexAiChat.projectId). Discovery aborted${proxyUrl ? " before contacting the proxy" : ""}.`);
       this.clearModels();
-      return { region: "none", availableModels: [] };
+      throw new MissingProjectIdError(Boolean(proxyUrl));
     }
     if (proxyUrl) {
       this.gateway?.dispose();
