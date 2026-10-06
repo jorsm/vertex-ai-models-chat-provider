@@ -25,6 +25,7 @@
         - [provideLanguageModelChatResponse](#providelanguagemodelchatresponse-1)
     - [VertexGrokProvider](#vertexgrokprovider)
         - [initialize](#initialize-2)
+        - [getDiscoveryModelId](#getdiscoverymodelid-2)
         - [setCatalogResolver](#setcatalogresolver)
         - [setLabels](#setlabels-2)
         - [pingModel](#pingmodel-2)
@@ -173,6 +174,12 @@ The `VertexGrokProvider` class implements the `VertexModelProvider` interface sp
 
 Sets the GCP Project ID and regional endpoint. It configures the OpenAI SDK to use the Vertex AI OpenAI-compatible `baseURL`. It supports standard Application Default Credentials and Service Account credentials imported into VS Code `SecretStorage`; legacy workspace configurations that link a key file remain readable. The provider dynamically respects the project ID from active VS Code settings to support workspace-specific billing. A supplied gateway marks proxy mode; discovery probes, inference, and direct-client creation then fail with an explicit unsupported-transport error. Reinitializing without a gateway restores direct mode.
 
+#### getDiscoveryModelId
+[source](../src/providers/VertexGrokProvider.ts)
+`getDiscoveryModelId(modelVersion: string): string`
+
+Resolves a catalog model version string (which may include effort suffixes like `-low`, `-medium`, or `-high`) to its actual backend model ID (`xai/grok-4.6`). This ensures discovery pings target the correct endpoint.
+
 #### setCatalogResolver
 [source](../src/providers/VertexGrokProvider.ts)
 `setCatalogResolver(resolver: ModelCatalogResolver): void`
@@ -207,7 +214,7 @@ Handles Grok 4.6 chat inference using an OpenAI client. This method:
 3. Resolves Low, Medium, and High aliases to the base Grok 4.6 path and sends `reasoning_effort`; other model families are rejected.
 4. Preserves a leading system prompt and inserts a placeholder user turn only if the first conversation turn is missing or is not a user turn.
 5. Executes requests using a retry mechanism to handle transient failures.
-6. Streams final text and accumulates incremental tool call deltas until `finish_reason` is received.
+6. Streams final text and accumulates incremental tool call deltas until `finish_reason` is received. It implements a custom stream transformer to filter out malformed `data: : keepalive` heartbeat events occasionally sent by the Vertex Grok endpoint, which are not valid JSON and would otherwise cause the OpenAI SDK parser to fail.
 7. Reports token usage back to VS Code via `LanguageModelDataPart` (MIME `usage`), including separately reported reasoning tokens, and separates cache hits from uncached input for cost estimates.
 
 ## Examples
