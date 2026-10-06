@@ -138,13 +138,13 @@ test("one timed-out endpoint excludes every variant even if it succeeds late", a
 
 test("grouped endpoints are re-probed in each region after shared failure", async () => {
   const variants = ["low", "medium", "high"].map((effort) => ({ ...model(effort), version: `claude-custom-${effort}` }));
-  const h = harness(variants, ["global", "europe-west1"]);
+  const h = harness(variants, ["asia-northeast1", "europe-west8"]);
   const requests = [];
-  h.add("anthropic", async function (id) { requests.push([this.region, id]); return this.region === "europe-west1"; }, undefined, discoveryResolver(VertexAnthropicProvider));
+  h.add("anthropic", async function (id) { requests.push([this.region, id]); return this.region === "europe-west8"; }, undefined, discoveryResolver(VertexAnthropicProvider));
   const result = await h.dispatcher.discoverModelsAndRegion();
-  assert.equal(result.region, "europe-west1");
+  assert.equal(result.region, "europe-west8");
   assert.deepEqual(result.availableModels, variants);
-  assert.deepEqual(requests, [["global", "claude-custom"], ["europe-west1", "claude-custom"]]);
+  assert.deepEqual(requests, [["asia-northeast1", "claude-custom"], ["europe-west8", "claude-custom"]]);
 });
 
 test("endpoint resolution strips only the supported trailing alias once", async () => {
@@ -247,7 +247,7 @@ test("timed-out regions advance and late probe success cannot change the chosen 
 test("completed empty discovery and cleared models do not fall back to the catalog", async () => {
   const h = harness([model("unavailable")]);
   h.add("anthropic", async () => false);
-  assert.equal((await h.dispatcher.provideLanguageModelChatInformation()).length, 1);
+  assert.deepEqual(await h.dispatcher.provideLanguageModelChatInformation(), []);
   assert.deepEqual((await h.dispatcher.discoverModelsAndRegion()).availableModels, []);
   assert.deepEqual(await h.dispatcher.provideLanguageModelChatInformation(), []);
   await assert.rejects(h.dispatcher.provideLanguageModelChatResponse({ id: "unavailable" }, [], {}, {}, cancellation().token), /Model not available/);

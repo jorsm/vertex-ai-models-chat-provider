@@ -29,7 +29,7 @@ export class MissingProjectIdError extends Error {
 }
 
 export interface DiscoveryResult {
-  region: string;
+  region: string | undefined;
   availableModels: ModelSpec[];
 }
 
@@ -43,7 +43,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   private connectionRevision = 0;
   public getConnectionRevision(): number { return this.connectionRevision; }
   public dispose(): void { this.resetConnection(); this.authSubscription?.dispose(); this._onDidChange.dispose(); }
-  private region = "global";
+  private region?: string;
   private availableModels: ModelSpec[] = [];
   private readonly activeProviders: Map<string, VertexModelProvider> = new Map();
   private discoveryDone = false;
@@ -67,7 +67,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     this.usageTracker = usageTracker;
     this.authManager = authManager;
     this.catalogResolver = catalogResolver;
-    this.catalogResolver.setProxyCatalog?.(this.getProxyUrl() ? [] : undefined);
+    this.catalogResolver.setProxyCatalog?.(this.getProxyUrl() ? { candidateModels: [], regionPriority: [] } : undefined);
     this.registerProviders();
     this._labelsPromise = this.updateLabels();
 
@@ -191,7 +191,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     this.directDiscoveryController = undefined;
     this.authManager.clearProxyToken?.();
     this._discoveryPromise = null;
-    this.catalogResolver.setProxyCatalog?.(this.getProxyUrl() ? [] : undefined);
+    this.catalogResolver.setProxyCatalog?.(this.getProxyUrl() ? { candidateModels: [], regionPriority: [] } : undefined);
     this.clearModels();
     this.discoveryDone = false;
   }
@@ -232,19 +232,22 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
       this.discoveryDone = false;
       this._onDidChange.fire();
       try {
-        const available = await gateway.discover(probeTimeoutMs, gateway.signal);
+        const catalog = await gateway.discover(probeTimeoutMs, gateway.signal);
         if (revision !== this.connectionRevision || gateway.signal.aborted) {
           throw new GatewayError("Proxy configuration changed. Refresh Models before continuing.");
         }
-        for (const vendor of ["google", "anthropic"]) {
-          this.activeProviders.get(vendor)?.initialize(effectiveProjectId, "global", undefined, gateway);
+        const region = catalog.regionPriority[0];
+        if (region) {
+          for (const provider of this.activeProviders.values()) {
+            provider.initialize(effectiveProjectId, region, undefined, gateway);
+          }
         }
-        this.region = "proxy";
-        this.availableModels = available;
-        this.catalogResolver.setProxyCatalog?.(available);
+        this.region = region;
+        this.availableModels = catalog.candidateModels;
+        this.catalogResolver.setProxyCatalog?.(catalog);
         this.discoveryDone = true;
         this._onDidChange.fire();
-        return { region: "proxy", availableModels: available };
+        return { region, availableModels: catalog.candidateModels };
       } catch (error) {
         if (revision === this.connectionRevision) { this.clearModels(); }
         throw error;
@@ -367,11 +370,12 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     }
 
     this.logger.log("❌ No models available in any region.");
+    this.region = undefined;
     this.availableModels = [];
     this.discoveryDone = true;
     this._onDidChange.fire();
 
-    return { region: "none", availableModels: [] };
+    return { region: undefined, availableModels: [] };
   }
 
   // ── Re-discovery (project changed) ────────────────────────────────────
@@ -386,8 +390,9 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
    * Useful when authentication fails to prevent stale models from being used.
    */
   public clearModels(): void {
+    this.region = undefined;
     this.availableModels = [];
-    if (this.getProxyUrl()) { this.catalogResolver.setProxyCatalog?.([]); }
+    if (this.getProxyUrl()) { this.catalogResolver.setProxyCatalog?.({ candidateModels: [], regionPriority: [] }); }
     this.discoveryDone = true;
     this._onDidChange.fire();
     this.logger.log("🚫 Available models cleared due to error.");
@@ -396,18 +401,15 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   // ── Chat provider interface ───────────────────────────────────────────
 
   async provideLanguageModelChatInformation(_options: vscode.PrepareLanguageModelChatModelOptions, _token: vscode.CancellationToken): Promise<vscode.LanguageModelChatInformation[]> {
-    return await this.mapModels();
+    return this.mapModels();
   }
 
-  private async mapModels(): Promise<vscode.LanguageModelChatInformation[]> {
-    const catalog = await this.catalogResolver.getEffectiveCatalog();
-    const models = this.getProxyUrl() || this.discoveryDone || this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels;
-
+  private mapModels(): vscode.LanguageModelChatInformation[] {
     // Check if we are running in VS Code 1.120 or higher
     const versionParts = vscode.version.split(".");
     const isV120OrHigher = Number.parseInt(versionParts[0]) > 1 || (Number.parseInt(versionParts[0]) === 1 && Number.parseInt(versionParts[1]) >= 120);
 
-    return models.map((m: ModelSpec) => {
+    return this.availableModels.map((m) => {
       const pricing = this.formatPricingDisplay(m.pricing);
       const info: any = {
         id: m.id,
@@ -535,12 +537,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   }
 
   private getCommitMessageModels(): ModelSpec[] {
-    return this.availableModels.filter((entry) => {
-      if (!this.activeProviders.has(entry.vendor)) {
-        return false;
-      }
-      return !this.getProxyUrl() || ["google", "anthropic"].includes(entry.vendor);
-    });
+    return this.availableModels;
   }
 
   /** Returns the currently authorized commit models, refreshing an empty catalog once. */
@@ -677,19 +674,19 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     requestLabels: Record<string, string>,
   ): Promise<void> {
     if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
-    if (this.getProxyUrl() && !this.discoveryDone && !this._discoveryPromise) {
+    const revision = this.connectionRevision;
+    // All features share discovery and retry one empty/error state per request.
+    if (!this._discoveryPromise && (!this.discoveryDone || this.availableModels.length === 0)) {
       void this.discoverModelsAndRegion().catch(() => {});
     }
     await this.waitForDiscovery(token);
-    const revision = this.connectionRevision;
-    const catalog = await this.catalogResolver.getEffectiveCatalog();
     if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
     if (revision !== this.connectionRevision) { throw new Error("Configuration changed before inference. Refresh Models."); }
-    const spec = (this.getProxyUrl() || this.discoveryDone || this.availableModels.length > 0 ? this.availableModels : catalog.candidateModels).find((m: ModelSpec) => m.id === modelId);
+    const spec = this.availableModels.find((m: ModelSpec) => m.id === modelId);
     if (!spec) { throw new Error(`Model not available: ${modelId}. Refresh Models or select an allowed model.`); }
     const provider = this.activeProviders.get(spec.vendor);
-    if (!provider || (this.getProxyUrl() && !["google", "anthropic"].includes(spec.vendor))) {
-      throw new Error(`Integration for vendor ${spec.vendor} is not available in this mode.`);
+    if (!provider) {
+      throw new Error(`No provider is registered for vendor '${spec.vendor}' (model '${modelId}').`);
     }
 
     try {

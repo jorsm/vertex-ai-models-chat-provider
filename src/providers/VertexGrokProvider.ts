@@ -8,6 +8,7 @@ import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryabl
 import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
 import type { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
+import type { ProxyGateway } from "../ProxyGateway";
 import { ModelSpec } from "./VertexModelProvider";
 
 // ─── Model configuration types ──────────────────────────────────────────────
@@ -24,6 +25,7 @@ export class VertexGrokProvider implements VertexModelProvider {
   private projectId!: string;
   private region!: string;
   private authOptions?: any;
+  private gateway?: ProxyGateway;
   private labels: Record<string, string> = {};
   private catalogResolver?: ModelCatalogResolver;
   private readonly logger = new Logger("VertexGrokProvider");
@@ -44,10 +46,17 @@ export class VertexGrokProvider implements VertexModelProvider {
 
   // ── Initialization ────────────────────────────────────────────────────
 
-  initialize(projectId: string, region: string, authOptions?: any): void {
+  initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void {
     this.projectId = projectId;
     this.region = region;
     this.authOptions = authOptions;
+    this.gateway = gateway;
+  }
+
+  private assertTransportSupported(): void {
+    if (this.gateway) {
+      throw new Error("Grok proxy transport is not supported yet. No request was sent.");
+    }
   }
 
   /** Injects the catalog resolver so model specs are read from the effective (custom or bundled) catalog. */
@@ -62,9 +71,11 @@ export class VertexGrokProvider implements VertexModelProvider {
   // ── Client factory (fresh token each call) ────────────────────────────
 
   private async getClient(): Promise<OpenAI> {
+    this.assertTransportSupported();
     // Read project ID live from VS Code settings — user may change it anytime
     const projectId = vscode.workspace.getConfiguration("vertexAiChat").get<string>("projectId") || this.projectId;
-    const baseURL = this.region === "global" ? `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/global/endpoints/openapi` : `https://${this.region}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${this.region}/endpoints/openapi`;
+    const host = this.region === "global" ? "aiplatform.googleapis.com" : `${this.region}-aiplatform.googleapis.com`;
+    const baseURL = `https://${host}/v1/projects/${projectId}/locations/${this.region}/endpoints/openapi`;
 
     let googleAuth: GoogleAuth;
     if (this.authOptions?.credentials) {
@@ -152,8 +163,9 @@ export class VertexGrokProvider implements VertexModelProvider {
   }
 
   async pingModel(modelVersion: string, options?: DiscoveryProbeOptions): Promise<boolean> {
+    this.assertTransportSupported();
     const modelPath = modelVersion;
-    if (modelPath !== "xai/grok-4.6" || this.region !== "global") {
+    if (modelPath !== "xai/grok-4.6") {
       return false;
     }
     // Discovery receives the backend path, already resolved from catalog aliases.
@@ -203,15 +215,12 @@ export class VertexGrokProvider implements VertexModelProvider {
     labels?: Record<string, string>,
     spec?: ModelSpec,
   ): Promise<ChatInferenceResult> {
+    this.assertTransportSupported();
     const resolved = VertexGrokProvider.resolveGrok46(modelId);
     const config = VertexGrokProvider.MODEL_CONFIG[resolved.actualId];
     if (!config) {
       throw new Error(`Unknown Grok model: ${modelId}. Available: ${Object.keys(VertexGrokProvider.MODEL_CONFIG).join(", ")}`);
     }
-    if (config.modelPath === "xai/grok-4.6" && this.region !== "global") {
-      throw new Error("Grok 4.6 is available only at the global Vertex AI endpoint.");
-    }
-
     // Use passed spec if available, otherwise resolve from catalog
     let modelSpec = spec;
     if (!modelSpec) {

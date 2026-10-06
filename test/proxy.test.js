@@ -222,16 +222,25 @@ test("client identity and proxy token gcloud commands are serialized", async () 
 });
 test("server catalog supplies complete metadata and validates IDs, prices, limits, capabilities and duplicates", () => {
   const entry = model("server-only-high", "google", "backend-high");
-  assert.deepEqual(parseProxyCatalog({ models: [entry] }), [entry]);
-  assert.deepEqual(parseProxyCatalog({ candidateModels: [entry], regionPriority: ["global"] }), [entry]);
-  assert.deepEqual(parseProxyCatalog({ candidateModels: [], regionPriority: [] }), []);
-  for (const invalid of [model("https://evil.test"), model("grok", "grok"), { ...entry, version: "projects/elsewhere" },
+  const catalog = { candidateModels: [entry], regionPriority: ["europe-west8", "us-east5"] };
+  assert.deepEqual(parseProxyCatalog({ models: [entry], regionPriority: catalog.regionPriority }), catalog);
+  assert.deepEqual(parseProxyCatalog(catalog), catalog);
+  assert.deepEqual(parseProxyCatalog({ candidateModels: [], regionPriority: [] }), { candidateModels: [], regionPriority: [] });
+  const namespaced = model("grok", "grok", "xai/grok-4.6");
+  const custom = model("future-model", "future-provider", "organization/model");
+  const mixed = { candidateModels: [entry, namespaced, custom], regionPriority: catalog.regionPriority };
+  assert.deepEqual(parseProxyCatalog(mixed), mixed);
+  for (const invalid of [model("https://evil.test"), model("model", ""), { ...entry, version: "https://elsewhere" },
+    { ...entry, version: "/v1/projects/elsewhere" }, { ...entry, version: "xai/../model" },
     { ...entry, pricing: { input: -1, output: 1 } }, { ...entry, pricing: { input: 1, output: Infinity } },
     { ...entry, maxOutputTokens: 0 }, { ...entry, capabilities: {} }, { id: "incomplete", vendor: "google" },
     { ...entry, pricing: { input: 1, output: 2, longContext: { input: 3, output: 4, inputThresholdTokens: -1 } } }]) {
-    assert.throws(() => parseProxyCatalog({ models: [invalid] }), GatewayError);
+    assert.throws(() => parseProxyCatalog({ models: [invalid], regionPriority: catalog.regionPriority }), GatewayError);
   }
-  for (const payload of [{}, { models: null }, { models: [entry, entry] }, { candidateModels: [entry] },
+  for (const payload of [{}, { models: null }, { models: [entry, entry], regionPriority: catalog.regionPriority }, { candidateModels: [entry] },
+    { models: [entry] }, { candidateModels: [entry], regionPriority: [] },
+    { models: [entry], regionPriority: [] }, { models: [entry], regionPriority: ["https://elsewhere"] },
+    { candidateModels: [entry], regionPriority: ["europe-west8", 42] },
     { candidateModels: [entry], regionPriority: ["https://elsewhere"] },
     { candidateModels: [entry], regionPriority: [], models: [] },
     { candidateModels: [{ id: "incomplete" }], regionPriority: ["global"] }]) assert.throws(() => parseProxyCatalog(payload), GatewayError);
@@ -241,7 +250,7 @@ test("authenticated discovery sends only an ID token and bounds a stalled creden
   const gateway = new ProxyGateway("https://gateway.test/base", async () => "personal-token", async (url, init) => {
     calls.push([url, init]); return Response.json({ candidateModels: [], regionPriority: ["global"] });
   });
-  assert.deepEqual(await gateway.discover(100), []);
+  assert.deepEqual(await gateway.discover(100), { candidateModels: [], regionPriority: ["global"] });
   assert.equal(calls[0][0], "https://gateway.test/base/discovery");
   assert.equal(new Headers(calls[0][1].headers).get("Authorization"), "Bearer personal-token");
   assert.equal(calls[0][1].body, undefined);
@@ -284,7 +293,7 @@ function harness(models, authOverrides = {}) {
   const auth = { onAuthUpdated() {}, getProxyIdToken: async () => "personal-token", getResolvedAuthOptions: async () => { throw Error("must not resolve Vertex credentials"); }, getIdentity: async () => "developer@example.com", ...authOverrides };
   let proxyCatalog;
   const resolver = {
-    setProxyCatalog(value) { proxyCatalog = value === undefined ? undefined : { candidateModels: value, regionPriority: [] }; },
+    setProxyCatalog(value) { proxyCatalog = value; },
     getEffectiveCatalog: async () => proxyCatalog ?? { candidateModels: models, regionPriority: ["forbidden-client-region"] },
   };
   const dispatcher = new Dispatcher("user-project", { recordUsage: async (...args) => records.push(args) }, auth, resolver);
@@ -297,10 +306,12 @@ function harness(models, authOverrides = {}) {
   }
   return { dispatcher, calls, records, auth, resolver };
 }
-function fakeDiscovery(t, allowed, status = 200) {
+function fakeDiscovery(t, allowed, status = 200, regionPriority = ["europe-west8", "us-east5"]) {
   const originalFetch = global.fetch;
   const calls = [];
-  global.fetch = async (url, init) => { calls.push([url, init]); return Response.json({ models: allowed.map((entry) => ({ ...model(entry.id, entry.vendor), ...entry })) }, { status }); };
+  global.fetch = async (url, init) => { calls.push([url, init]); return Response.json({
+    candidateModels: allowed.map((entry) => ({ ...model(entry.id, entry.vendor), ...entry })), regionPriority,
+  }, { status }); };
   t.after(() => { global.fetch = originalFetch; });
   return calls;
 }
@@ -314,16 +325,18 @@ test("proxy dispatcher uses the server catalog and sends only an explicit custom
   h.resolver.getEffectiveCatalog = async () => { throw new Error("must not read local catalog during proxy discovery"); };
   const result = await h.dispatcher.discoverModelsAndRegion();
   assert.deepEqual(result.availableModels, remote);
+  assert.equal(result.region, "europe-west8");
   h.resolver.getEffectiveCatalog = async () => ({ candidateModels: remote, regionPriority: [] });
   assert.equal(requests.length, 1);
-  assert.equal(h.calls.filter((c) => c[0] === "initialize").length, 2);
-  assert.ok(h.calls.every((c) => c[2] === "user-project" && c[3] === "global"));
+  assert.equal(h.calls.filter((c) => c[0] === "initialize").length, 3);
+  assert.ok(h.calls.every((c) => c[2] === "user-project" && c[3] === "europe-west8"));
   await h.dispatcher.infer("gemini-test", userMessage(), { tools: [] }, { report() {} }, cancellation().token);
   assert.deepEqual(h.calls.at(-1)[7], { "vscode-vertex-ai-user": "custom_user_example_com" });
   assert.equal(h.records.length, 1);
   assert.deepEqual(h.records[0][2], remote[0].pricing);
   const info = await h.dispatcher.provideLanguageModelChatInformation();
   assert.equal(info[1].name, "Remote effort");
+  assert.match(info[1].detail, /europe-west8/);
   assert.match(info[1].detail, /\$10 in/);
 });
 test("proxy user label falls back to the client Google identity when no custom value is set", async (t) => {
@@ -417,7 +430,7 @@ test("proxyUrl and projectId are used together: the proxy receives the configure
   const h = harness([model("gemini-test")]);
   h.dispatcher.setProjectId("direct-project");
   const result = await h.dispatcher.discoverModelsAndRegion();
-  assert.equal(result.region, "proxy");
+  assert.equal(result.region, "europe-west8");
   assert.ok(h.calls.filter((c) => c[0] === "initialize").every((c) => c[2] === "direct-project" && c[5] !== undefined));
 });
 test("failed or empty server discovery never exposes the unfiltered local catalog", async (t) => {
@@ -427,50 +440,81 @@ test("failed or empty server discovery never exposes the unfiltered local catalo
   fakeDiscovery(t, [], 403);
   await assert.rejects(h.dispatcher.discoverModelsAndRegion(), (e) => e.status === 403);
   assert.deepEqual(await h.dispatcher.provideLanguageModelChatInformation(), []);
-  await assert.rejects(h.dispatcher.infer("denied", [], {}, {}, cancellation().token), /Model not available/);
+  await assert.rejects(h.dispatcher.infer("denied", [], {}, {}, cancellation().token), (error) => error.status === 403);
   assert.equal(h.calls.length, 0);
 });
-test("commit inference resolves the target repository labels and records usage only once", async (t) => {
+test("shared inference resolves the target repository labels and records usage only once", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
   settings.enableProjectLabel = true;
   fakeDiscovery(t, [{ id: "gemini-test", vendor: "google" }]);
   const h = harness([model("gemini-test")]);
-  await h.dispatcher.inferCommit([], { tools: [] }, { report() {} }, cancellation().token, rootB);
+  await h.dispatcher.infer("gemini-test", [], { tools: [] }, { report() {} }, cancellation().token, rootB);
   const request = h.calls.find((c) => c[0] === "infer");
   assert.deepEqual(request[7], { "vscode-vertex-ai-project": "repository-b" });
   assert.equal(h.records.length, 1);
 });
-test("commit inference retries discovery after a previous empty error state", async (t) => {
+test("proxy discovery rejects models without a configured region before initializing adapters", async (t) => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  fakeDiscovery(t, [model("gemini-test")], 200, []);
+  const h = harness([model("local-only")]);
+  await assert.rejects(h.dispatcher.discoverModelsAndRegion(), /regionPriority/);
+  assert.deepEqual(await h.dispatcher.provideLanguageModelChatInformation(), []);
+  assert.equal(h.dispatcher.region, undefined);
+  assert.deepEqual(await h.resolver.getEffectiveCatalog(), { candidateModels: [], regionPriority: [] });
+  assert.equal(h.calls.length, 0);
+});
+test("an empty proxy catalog needs no region and clears the previous selection", async (t) => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  fakeDiscovery(t, [], 200, []);
+  const h = harness([model("local-only")]);
+  h.dispatcher.region = "previous-region";
+  const result = await h.dispatcher.discoverModelsAndRegion();
+  assert.deepEqual(result, { region: undefined, availableModels: [] });
+  assert.equal(h.dispatcher.region, undefined);
+  assert.deepEqual(await h.resolver.getEffectiveCatalog(), { candidateModels: [], regionPriority: [] });
+  assert.equal(h.calls.length, 0);
+});
+test("shared inference retries discovery after a previous empty error state", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
   const h = harness([model("local-denied")]);
   h.dispatcher.clearModels();
   const requests = fakeDiscovery(t, [model("gemini-3.8-flash")]);
-  await h.dispatcher.inferCommit([], { tools: [] }, { report() {} }, cancellation().token, rootB);
+  await h.dispatcher.infer("gemini-3.8-flash", [], { tools: [] }, { report() {} }, cancellation().token, rootB);
   assert.equal(requests.length, 1);
   assert.equal(h.calls.find((call) => call[0] === "infer")[2], "gemini-3.8-flash");
 });
-test("commit inference uses a repository-configured authorized model", async (t) => {
+test("shared inference executes exactly the requested authorized model", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
-  settings.commitMessageModel = "claude-sonnet-5-5-medium";
   const remote = [model("gemini-3.8-flash"), model("claude-sonnet-5-5-medium", "anthropic")];
   fakeDiscovery(t, remote);
   const h = harness(remote);
-  await h.dispatcher.inferCommit([], { tools: [] }, { report() {} }, cancellation().token, rootB);
+  await h.dispatcher.infer("claude-sonnet-5-5-medium", [], { tools: [] }, { report() {} }, cancellation().token, rootB);
   const request = h.calls.find((call) => call[0] === "infer");
   assert.equal(request[1], "anthropic");
   assert.equal(request[2], "claude-sonnet-5-5-medium");
 });
-test("commit inference rejects a configured model that discovery did not authorize", async (t) => {
+test("shared inference rejects an unavailable model without substituting another", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
-  settings.commitMessageModel = "gemini-disabled";
   const remote = [model("gemini-3.8-flash")];
   fakeDiscovery(t, remote);
   const h = harness(remote);
   await assert.rejects(
-    h.dispatcher.inferCommit([], { tools: [] }, { report() {} }, cancellation().token, rootB),
-    /not available or authorized/,
+    h.dispatcher.infer("gemini-disabled", [], { tools: [] }, { report() {} }, cancellation().token, rootB),
+    /Model not available: gemini-disabled/,
   );
   assert.equal(h.calls.filter((call) => call[0] === "infer").length, 0);
+});
+test("proxy discovery retains every advertised vendor and initializes registered adapters without a vendor allowlist", async (t) => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  const remote = [model("gemini-test"), model("grok-4.6", "grok", "xai/grok-4.6"), model("future-model", "future-provider")];
+  fakeDiscovery(t, remote);
+  const h = harness([model("local-only")]);
+  assert.deepEqual((await h.dispatcher.discoverModelsAndRegion()).availableModels, remote);
+  assert.deepEqual((await h.dispatcher.provideLanguageModelChatInformation()).map(m => m.id), remote.map(m => m.id));
+  assert.deepEqual(h.calls.filter(c => c[0] === "initialize").map(c => c[1]), ["google", "anthropic", "grok"]);
+  await h.dispatcher.infer("grok-4.6", userMessage(), {}, { report() {} }, cancellation().token);
+  assert.equal(h.calls.find(c => c[0] === "infer")[1], "grok");
+  await assert.rejects(h.dispatcher.infer("future-model", userMessage(), {}, { report() {} }, cancellation().token), /No provider is registered.*future-provider/);
 });
 test("configuration reset aborts in-flight discovery and a late result cannot publish stale models", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
@@ -482,7 +526,7 @@ test("configuration reset aborts in-flight discovery and a late result cannot pu
   const old = h.dispatcher.discoverModelsAndRegion();
   await flush();
   h.dispatcher.resetConnection();
-  pending.resolve(Response.json({ models: [model("gemini-test")] }));
+  pending.resolve(Response.json({ candidateModels: [model("gemini-test")], regionPriority: ["europe-west8"] }));
   await assert.rejects(old);
   assert.deepEqual(await h.dispatcher.provideLanguageModelChatInformation(), []);
 });
@@ -521,13 +565,13 @@ test("pinned Gemini SDK sends ID-token Vertex wire format and delivers output be
     geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: "last" }] } }], usageMetadata: { promptTokenCount: 7, candidatesTokenCount: 2, cachedContentTokenCount: 3 } }),
   ], gate);
   const provider = new VertexGoogleProvider();
-  provider.initialize("gateway", "global", undefined, new ProxyGateway("https://gateway.test/base", async () => "personal-id-token"));
+  provider.initialize("gateway", "europe-west8", undefined, new ProxyGateway("https://gateway.test/base", async () => "personal-id-token"));
   const first = deferred(), parts = [];
   const resultPromise = provider.provideLanguageModelChatResponse("gemini-test", userMessage(), { tools: [] }, { report(p) { parts.push(p); if (p instanceof TextPart) first.resolve(); } }, cancellation().token, { "vscode-vertex-ai-project": "test-project" }, model("gemini-test"));
   await first.promise;
   assert.equal(parts[0].value, "first ");
   assert.equal(requests.length, 1);
-  assert.match(requests[0].url, /^https:\/\/gateway.test\/base\/v1\/projects\/gateway\/locations\/global\/publishers\/google\/models\/gemini-test:streamGenerateContent\?alt=sse$/);
+  assert.match(requests[0].url, /^https:\/\/gateway.test\/base\/v1\/projects\/gateway\/locations\/europe-west8\/publishers\/google\/models\/gemini-test:streamGenerateContent\?alt=sse$/);
   assert.equal(new Headers(requests[0].init.headers).get("authorization"), "Bearer personal-id-token");
   assert.deepEqual(requests[0].body.labels, { "vscode-vertex-ai-project": "test-project" });
   gate.resolve();
@@ -546,11 +590,11 @@ test("pinned Claude SDK uses gateway token, native SSE and label header, preserv
     claudeEvent({ type: "message_stop" }),
   ]);
   const provider = new VertexAnthropicProvider();
-  provider.initialize("gateway", "global", undefined, new ProxyGateway("https://gateway.test/base", async () => "personal-id-token"));
+  provider.initialize("gateway", "europe-west8", undefined, new ProxyGateway("https://gateway.test/base", async () => "personal-id-token"));
   const parts = [];
   const run = (messages) => provider.provideLanguageModelChatResponse("claude-test", messages, { tools: [] }, { report(p) { parts.push(p); } }, cancellation().token, { "vscode-vertex-ai-project": "project" }, model("claude-test", "anthropic"));
   assert.equal((await run(userMessage())).usage.input, 5);
-  assert.match(requests[0].url, /\/base\/v1\/projects\/gateway\/locations\/global\/publishers\/anthropic\/models\/claude-test:streamRawPredict$/);
+  assert.match(requests[0].url, /\/base\/v1\/projects\/gateway\/locations\/europe-west8\/publishers\/anthropic\/models\/claude-test:streamRawPredict$/);
   const headers = new Headers(requests[0].init.headers);
   assert.equal(headers.get("authorization"), "Bearer personal-id-token");
   assert.deepEqual(JSON.parse(Buffer.from(headers.get("X-Vertex-AI-Labels"), "base64")), { "vscode-vertex-ai-project": "project" });
@@ -776,13 +820,14 @@ test("proxy catalog takes precedence for all consumers and an empty response nev
   const resolver = Object.create(ModelCatalogResolver.prototype);
   resolver.cached = { catalog: { candidateModels: [model("local")], regionPriority: ["global"] }, source: "bundled" };
   const remote = [{ ...model("server-only"), pricing: { input: 3, output: 9, cache_read: 1 } }];
-  resolver.setProxyCatalog(remote);
+  const catalog = { candidateModels: remote, regionPriority: ["europe-west8", "us-east5"] };
+  resolver.setProxyCatalog(catalog);
   assert.equal(await resolver.getActiveSource(), "proxy");
-  assert.deepEqual((await resolver.getEffectiveCatalog()).candidateModels, remote);
+  assert.deepEqual(await resolver.getEffectiveCatalog(), catalog);
   const tracker = new UsageTrackerService({ globalStorageUri: { fsPath: "/tmp" } }, resolver);
   const tokens = { input: 1_000_000, output: 1_000_000, cache_read: 1_000_000, cache_create: 0, characters: {} };
   assert.equal(await tracker.calculateCost("server-only", tokens), 13);
-  resolver.setProxyCatalog([]);
+  resolver.setProxyCatalog({ candidateModels: [], regionPriority: [] });
   assert.deepEqual((await resolver.getEffectiveCatalog()).candidateModels, []);
   assert.equal(await tracker.calculateCost("server-only", tokens, remote[0].pricing), 13);
   resolver.setProxyCatalog(undefined);

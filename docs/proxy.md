@@ -1,6 +1,6 @@
 # Enterprise proxy
 
-`vertexAiChat.proxyUrl` routes Gemini and Claude discovery and inference through an organization-managed HTTP service. Use it when you need centralized metrics, model access rules, quotas, cost allocation, auditing, or other business logic around model calls. Chat, tool continuations, and AI commit-message generation all use this transport.
+`vertexAiChat.proxyUrl` routes discovery and inference through an organization-managed HTTP service. Use it when you need centralized metrics, model access rules, quotas, cost allocation, auditing, or other business logic around model calls. Chat, tool continuations, and AI commit-message generation all use this transport. The server controls the advertised catalog; the client does not impose a vendor allowlist. Gemini and Claude currently implement proxy inference. Grok entries are accepted, but the Grok adapter reports that its proxy transport is not supported yet, without acquiring direct credentials or sending a request.
 
 The extension handles the VS Code integration and native model protocols. The `vertexAiChat.projectId` setting is always required: it names the Google Cloud project on which the Vertex APIs are invoked, with or without a proxy. Your proxy authenticates callers, publishes the approved catalog, applies your policies to the requested project, region and model, and forwards responses. You can implement it with Cloud Run, a Cloud Run function, or another HTTP service that meets the authentication and protocol contract below; Python is not a requirement.
 
@@ -186,8 +186,8 @@ All paths below are appended to `proxyUrl`. If the setting is `https://ai-proxy.
 | Method | Path relative to `proxyUrl` | Response |
 | --- | --- | --- |
 | `GET` | `/discovery` | Complete authorized model catalog as JSON. |
-| `POST` | `/v1/projects/{projectId}/locations/global/publishers/google/models/{model}:streamGenerateContent?alt=sse` | Gemini Vertex JSON request and native Server-Sent Events response. |
-| `POST` | `/v1/projects/{projectId}/locations/global/publishers/anthropic/models/{model}:streamRawPredict` | Claude Vertex JSON request and native Server-Sent Events response. |
+| `POST` | `/v1/projects/{projectId}/locations/{region}/publishers/google/models/{model}:streamGenerateContent?alt=sse` | Gemini Vertex JSON request and native Server-Sent Events response. |
+| `POST` | `/v1/projects/{projectId}/locations/{region}/publishers/anthropic/models/{model}:streamRawPredict` | Claude Vertex JSON request and native Server-Sent Events response. |
 
 Implement each inference route for the vendors you advertise. `/health`, `/openapi.json`, and `/v1/models` are optional operational endpoints; the extension does not call them. There is no fallback discovery route and no extension-specific `/predict` endpoint. A standard HTTP forwarding proxy or an OpenAI `/chat/completions` endpoint alone does not implement this contract.
 
@@ -246,24 +246,24 @@ These entries illustrate the schema. Populate versions, limits, capabilities, an
 | Field | Contract |
 | --- | --- |
 | `id` | Unique UI identifier, 1–256 characters matching `[a-zA-Z0-9_.@-]`. It may differ from the backend model. |
-| `vendor` | Exactly `google` or `anthropic`. |
-| `version` | Backend model identifier or provider-supported effort/thinking alias, with the same character constraints as `id`. Routes and URLs are invalid. |
+| `vendor` | Provider identifier, with the same character constraints as `id`; there is no vendor allowlist. An unregistered adapter produces an inference error rather than invalidating discovery. |
+| `version` | Backend model identifier or provider-supported effort/thinking alias, up to 256 characters. Slash-separated namespaces such as `xai/grok-4.6` are accepted; each segment uses the characters permitted for `id`. Empty segments, `.`/`..` segments, absolute paths, and URLs are invalid. |
 | `displayName`, `family` | Nonempty text, at most 256 characters. Use the appropriate family, such as `gemini` or `claude`. |
 | `maxInputTokens`, `maxOutputTokens` | Positive safe integers. The advertised output limit is used in generation requests. |
 | `capabilities` | Required boolean `imageInput` and `toolCalling` fields. Advertise capabilities your proxy preserves. |
 | `pricing` | Required finite, non-negative `input` and `output` rates in USD per million tokens. Optional `cache_read` and `cache_create` use the same units. |
 | `pricing.longContext` | Optional replacement rate card with a positive integer `inputThresholdTokens`, required `input`/`output`, and optional cache rates. Applies to the whole request when total input, including cached tokens, exceeds the threshold. |
-| `regionPriority` | Required array in the canonical envelope; each string matches `[a-z][a-z0-9-]*`. Informational in proxy mode: the extension currently sends `global`, so enforce your approved regions on inference. An empty array is accepted. |
+| `regionPriority` | Required ordered array; each string matches `[a-z][a-z0-9-]*`. The extension initializes adapters with the first advertised region and includes it in inference paths, without client-side region probing. At least one region is required when models are advertised; an empty catalog may have an empty array. |
 
-The legacy `{ "models": [...] }` envelope is also accepted at `/discovery`, but do not return both `models` and `candidateModels`. Prefer the canonical format for new implementations.
+The legacy `models` field is also accepted instead of `candidateModels` at `/discovery`, with the same model and `regionPriority` validation. A models-only response must add `regionPriority`; the client does not supply a default region. Do not return both `models` and `candidateModels`. Prefer the canonical format for new implementations.
 
 Filter discovery using the authenticated caller's permissions. Return an empty `candidateModels` array when the caller has no available models. Reject unauthorized inference independently of discovery: clients can issue requests outside the picker. Use exact model authorization after resolving supported aliases; broad prefix matching can authorize unintended models.
 
-The extension publishes only the variants explicitly returned. It does not synthesize variants or supplement an empty catalog. Duplicate IDs, unsupported vendors, invalid metadata, malformed JSON, or a response larger than 1 MiB invalidate the whole response. Discovery uses `vertexAiChat.modelDiscoveryTimeoutSeconds` (45 seconds by default), including token acquisition and response reading. The server's prices drive model information and local usage estimates, with each request retaining its selected rate card.
+The extension publishes only the variants explicitly returned. It does not synthesize variants or supplement an empty catalog. Duplicate IDs, malformed vendor identifiers, invalid metadata, malformed JSON, or a response larger than 1 MiB invalidate the whole response. Discovery initializes all registered adapters with the configured gateway; individual adapters report unsupported transports during inference. Discovery uses `vertexAiChat.modelDiscoveryTimeoutSeconds` (45 seconds by default), including token acquisition and response reading. The server's prices drive model information and local usage estimates, with each request retaining its selected rate card.
 
 ### Route rewriting and request bodies
 
-The incoming path carries the user's configured `projectId` and the location (`global`), which the proxy forwards upstream. Check the location against your approved regions and the model against your allowlist, authorize the caller for the requested project, and never let a client path select an arbitrary hostname or upstream URL. If the proxy's runtime identity cannot call Vertex in that project, the upstream error is returned and shown in VS Code.
+The incoming path carries the user's configured `projectId` and the first region from the server's `regionPriority`, which the proxy forwards upstream. Check the location against your approved regions and the model against your allowlist, authorize the caller for the requested project, and never let a client path select an arbitrary hostname or upstream URL. If the proxy's runtime identity cannot call Vertex in that project, the upstream error is returned and shown in VS Code.
 
 The `{model}` path component comes from the catalog's `version`, after the provider resolves supported aliases. For example, a Claude entry ending in `-medium` is sent to the base model with the effort in the JSON request. Your allowlist must authorize that base model and any effort restrictions you enforce. The UI `id` is not an upstream route.
 

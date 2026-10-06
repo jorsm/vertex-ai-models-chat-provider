@@ -112,7 +112,7 @@
           "default": "",
           "scope": "machine",
           "order": 5,
-          "description": "Optional. Enterprise proxy base URL for centralized metrics, policies and business logic (HTTPS; loopback HTTP for local testing). Uses your personal gcloud auth login identity and a server-controlled Gemini/Claude catalog. When set, requests go to the proxy with no direct fallback; when empty, requests go directly to Vertex. Configure in user settings, not workspace settings."
+          "description": "Optional. Enterprise proxy base URL for centralized metrics, policies and business logic (HTTPS; loopback HTTP for local testing). Uses your personal gcloud auth login identity and a server-controlled model catalog. When set, requests go to the proxy with no direct fallback; when empty, requests go directly to Vertex. Configure in user settings, not workspace settings."
         },
         "vertexAiChat.modelDiscoveryTimeoutSeconds": {
           "type": "integer",

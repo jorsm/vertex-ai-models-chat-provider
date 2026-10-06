@@ -54,12 +54,8 @@
                 },
                 "vendor": {
                     "type": "string",
-                    "enum": [
-                        "google",
-                        "anthropic",
-                        "grok"
-                    ],
-                    "description": "The vendor name. Determines which internal provider handles the model: \"google\" (Gemini), \"anthropic\" (Claude), or \"grok\" (xAI Grok through Vertex AI's OpenAI-compatible endpoint)."
+                    "minLength": 1,
+                    "description": "Provider identifier used to dispatch inference to a registered adapter (for example, \"google\", \"anthropic\", or \"grok\"). An unregistered provider produces an inference error."
                 },
                 "displayName": {
                     "type": "string",

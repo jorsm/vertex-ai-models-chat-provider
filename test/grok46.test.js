@@ -55,6 +55,19 @@ test("Grok 4.6 catalog uses the Vertex path, vision and tools", () => {
   assert.equal(catalog.regionPriority[0], "global");
 });
 
+test("Grok blocks proxy inference and discovery inside its adapter before creating a direct client", async () => {
+  const h = harness();
+  h.provider.initialize("test-project", "global", undefined, {});
+  await assert.rejects(h.provider.provideLanguageModelChatResponse(spec.id, [], {}, h.progress, token, undefined, spec), /Grok proxy transport is not supported yet/);
+  await assert.rejects(h.provider.pingModel(spec.version), /Grok proxy transport is not supported yet/);
+  await assert.rejects(VertexGrokProvider.prototype.getClient.call(h.provider), /Grok proxy transport is not supported yet/);
+  assert.equal(h.requests.length, 0);
+
+  h.provider.initialize("test-project", "global");
+  await h.provider.provideLanguageModelChatResponse(spec.id, [user([new TextPart("hi")])], {}, h.progress, token, undefined, spec);
+  assert.equal(h.requests.length, 1);
+});
+
 test("Grok 4.6 request sends image parts and asks for streaming usage", async () => {
   const h = harness([chunk({ content: "A red square." }, "stop"), {
     choices: [], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120,
@@ -110,16 +123,17 @@ test("Grok streams parallel tool calls and maps results for the next turn", asyn
   assert.equal(h.requests[1].messages[1].tool_calls[0].function.arguments, '{"id":1}');
 });
 
-test("Grok discovery uses the API model path and skips regional endpoints", async () => {
+test("Grok discovery and inference use the catalog-selected region without a regional allowlist", async () => {
   const h = harness();
   assert.equal(await h.provider.pingModel(spec.version), true);
   assert.equal(h.requests[0].model, "xai/grok-4.6");
   assert.equal(h.requests[0].max_tokens, 1);
   h.provider.initialize("test-project", "us-east5");
-  assert.equal(await h.provider.pingModel(spec.version), false);
-  await assert.rejects(h.provider.provideLanguageModelChatResponse(spec.id,
-    [user([new TextPart("hi")])], {}, h.progress, token, undefined, spec), /global/);
-  assert.equal(h.requests.length, 1);
+  assert.equal(await h.provider.pingModel(spec.version), true);
+  await h.provider.provideLanguageModelChatResponse(spec.id,
+    [user([new TextPart("hi")])], {}, h.progress, token, undefined, spec);
+  assert.equal(h.requests.length, 3);
+  assert.ok(h.requests.every((request) => request.model === spec.version));
 });
 
 test("removed non-Grok models are absent and cannot be discovered or invoked", async () => {
@@ -149,8 +163,9 @@ test("Grok 4.6 inference uses effort while discovery probes only the endpoint", 
     assert.equal(h.requests[1].model, "xai/grok-4.6");
     assert.equal(Object.hasOwn(h.requests[1], "reasoning_effort"), false);
     h.provider.initialize("test-project", "europe-west1");
-    assert.equal(await h.provider.pingModel(h.provider.getDiscoveryModelId(alias.version)), false);
-    assert.equal(h.requests.length, 2);
+    assert.equal(await h.provider.pingModel(h.provider.getDiscoveryModelId(alias.version)), true);
+    assert.equal(h.requests.length, 3);
+    assert.equal(Object.hasOwn(h.requests[2], "reasoning_effort"), false);
   }
 });
 

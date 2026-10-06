@@ -47,7 +47,7 @@ Each provider implements `getDiscoveryModelId(modelVersion)` using its inference
 - **Parallel Tool Execution**: Implementation of tool call buffering and message merging to satisfy Gemini's requirements for grouped function responses.
 - **Prompt Caching (Ephemeral)**: Automated caching strategy for Anthropic models to reduce latency and costs for long conversations by marking system prompts, tools, and long conversation histories for ephemeral caching.
 - **Billing labels**: Gemini requests use the `labels` generation configuration and Anthropic requests use the documented base64 JSON `X-Vertex-AI-Labels` header. These labels are forwarded to Cloud Billing only for PayGo usage. Grok currently logs resolved labels but does not attach them to its OpenAI-compatible request.
-- **Enterprise Proxy Mode**: Gemini and Claude support the [enterprise proxy contract](proxy.md), using personal Google ID-token authentication. The configured `projectId` is sent in the request path and the proxy decides whether to forward it to Vertex. A `ProxyGateway` routes inference through the configured URL while preserving native Vertex JSON and SSE, tools, signatures, and usage. The dispatcher fetches the complete catalog without provider pings. Temporary pre-stream 429/503 failures receive at most two retries; partial streams are never restarted. Grok remains direct-only.
+- **Enterprise Proxy Mode**: Gemini and Claude support the [enterprise proxy contract](proxy.md), using personal Google ID-token authentication. The configured `projectId` is sent in the request path and the proxy decides whether to forward it to Vertex. A `ProxyGateway` routes inference through the configured URL while preserving native Vertex JSON and SSE, tools, signatures, and usage. The dispatcher fetches the complete catalog without provider pings or vendor filtering. Temporary pre-stream 429/503 failures receive at most two retries; partial streams are never restarted. Grok currently supports direct inference only; its adapter accepts gateway initialization and reports an explicit unsupported-transport error before any direct credential lookup or request when invoked in proxy mode.
 
 ## API Reference
 
@@ -169,9 +169,9 @@ The `VertexGrokProvider` class implements the `VertexModelProvider` interface sp
 
 #### initialize
 [source](../src/providers/VertexGrokProvider.ts)
-`initialize(projectId: string, region: string, authOptions?: any): void`
+`initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void`
 
-Sets the GCP Project ID and regional endpoint. It configures the OpenAI SDK to use the Vertex AI OpenAI-compatible `baseURL`. It supports standard Application Default Credentials and Service Account credentials imported into VS Code `SecretStorage`; legacy workspace configurations that link a key file remain readable. The provider dynamically respects the project ID from active VS Code settings to support workspace-specific billing.
+Sets the GCP Project ID and regional endpoint. It configures the OpenAI SDK to use the Vertex AI OpenAI-compatible `baseURL`. It supports standard Application Default Credentials and Service Account credentials imported into VS Code `SecretStorage`; legacy workspace configurations that link a key file remain readable. The provider dynamically respects the project ID from active VS Code settings to support workspace-specific billing. A supplied gateway marks proxy mode; discovery probes, inference, and direct-client creation then fail with an explicit unsupported-transport error. Reinitializing without a gateway restores direct mode.
 
 #### setCatalogResolver
 [source](../src/providers/VertexGrokProvider.ts)
@@ -189,7 +189,7 @@ Updates internal labels for request logging only. The Grok OpenAI-compatible req
 [source](../src/providers/VertexGrokProvider.ts)
 `pingModel(modelVersion: string, options?: DiscoveryProbeOptions): Promise<boolean>`
 
-Verifies the availability of the model path (e.g., `xai/grok-4.6`) by sending a minimal OpenAI-format chat completion request using the provided `DiscoveryProbeOptions`. It rejects unsupported model paths and non-global regions before making requests. It surfaces transient failures as `DiscoveryRetryableError`; 429 responses carry evidence of reachability for the shared retry policy.
+Verifies the availability of the model path (e.g., `xai/grok-4.6`) in the catalog-selected region by sending a minimal OpenAI-format chat completion request using the provided `DiscoveryProbeOptions`. It rejects unsupported model paths before making requests; regional availability is determined by the probe response. It surfaces transient failures as `DiscoveryRetryableError`; 429 responses carry evidence of reachability for the shared retry policy.
 
 #### provideTokenCount
 [source](../src/providers/VertexGrokProvider.ts)

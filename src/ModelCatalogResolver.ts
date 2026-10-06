@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import bundledCatalog from "./models.json";
-import { ModelCatalog, ModelSpec } from "./providers/VertexModelProvider";
+import { ModelCatalog } from "./providers/VertexModelProvider";
 import { Logger } from "./utils/Logger";
 
 /**
@@ -23,8 +23,8 @@ export class ModelCatalogResolver implements vscode.Disposable {
   private proxyCatalog?: ModelCatalog;
 
   /** In proxy mode even an empty catalog is authoritative; never use a local fallback. */
-  setProxyCatalog(models: ModelSpec[] | undefined): void {
-    this.proxyCatalog = models === undefined ? undefined : { candidateModels: models, regionPriority: [] };
+  setProxyCatalog(catalog: ModelCatalog | undefined): void {
+    this.proxyCatalog = catalog;
   }
 
   /** Suppresses repeated error popups for the same broken file until it changes. */
