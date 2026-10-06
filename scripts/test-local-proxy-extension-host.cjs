@@ -102,6 +102,7 @@ exports.run = async function () {
     const logsDir=path.join(userData,'User','globalStorage','jorsm.vertex-ai-models-chat-provider','usage_logs');
     const readUsage=async()=> (await Promise.all((await fs.readdir(logsDir)).filter(f=>f.endsWith('.jsonl')).map(async f=>(await fs.readFile(path.join(logsDir,f),'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse)))).flat();
     const before=(await readUsage()).length;
+    await vscode.workspace.getConfiguration('vertexAiChat',resource).update('commitMessageModel',models.find(m=>m.family==='gemini').id,vscode.ConfigurationTarget.Workspace);
     await vscode.commands.executeCommand('vertexAiChat.generateCommitMessage',resource);
     assert.ok(repo.inputBox.value.trim() && !repo.inputBox.value.includes('Generating'));
     const usage=await readUsage();

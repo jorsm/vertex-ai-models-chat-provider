@@ -105,7 +105,7 @@ export function resolveCommitMessageResourceUri(context?: CommitMessageCommandCo
  * Collects staged diffs, sends them to the LLM, and writes the generated
  * commit message into the SCM input box.
  */
-export async function generateCommitMessage(provider: VertexChatModelDispatcher, context?: CommitMessageCommandContext): Promise<void> {
+export async function generateCommitMessage(provider: Pick<VertexChatModelDispatcher, "infer">, context?: CommitMessageCommandContext): Promise<void> {
   const git = await getGitAPI();
   if (!git) {
     const remoteContext = vscode.env.remoteName ? ` in this ${vscode.env.remoteName} remote window` : " in this extension host";
@@ -123,6 +123,13 @@ export async function generateCommitMessage(provider: VertexChatModelDispatcher,
   const stagedChanges: any[] = repo.state.indexChanges;
   if (stagedChanges.length === 0) {
     vscode.window.showInformationMessage("Vertex AI Models Chat Provider: No staged changes found. Please stage files before generating a commit message.");
+    return;
+  }
+
+  const config = vscode.workspace.getConfiguration("vertexAiChat", repo.rootUri ?? resourceUri);
+  const modelId = config.get<string>("commitMessageModel")?.trim();
+  if (!modelId) {
+    vscode.window.showErrorMessage("Vertex AI Models Chat Provider: Set 'vertexAiChat.commitMessageModel' in user, workspace, or folder settings before generating a commit message.");
     return;
   }
 
@@ -156,9 +163,8 @@ export async function generateCommitMessage(provider: VertexChatModelDispatcher,
   }
 
   const combinedDiff = diffParts.join("\n");
-  logger.log(`── Sending ${combinedDiff.length} chars of diff to the configured or automatically selected model…`);
+  logger.log(`── Sending ${combinedDiff.length} chars of diff to configured model '${modelId}'…`);
 
-  const config = vscode.workspace.getConfiguration("vertexAiChat", repo.rootUri ?? resourceUri);
   const customPrompt = config.get<string>("commitMessagePrompt")?.trim();
   const systemPrompt = customPrompt || DEFAULT_SYSTEM_PROMPT;
 
@@ -193,7 +199,7 @@ export async function generateCommitMessage(provider: VertexChatModelDispatcher,
       const subscription = progressToken.onCancellationRequested(() => cancellation.cancel());
       try {
         if (progressToken.isCancellationRequested) { cancellation.cancel(); }
-        await provider.inferCommit(messages, options, progress, token, repo.rootUri);
+        await provider.infer(modelId, messages, options, progress, token, repo.rootUri);
       } finally { subscription.dispose(); }
     });
     commitMessage = commitMessage.trim();

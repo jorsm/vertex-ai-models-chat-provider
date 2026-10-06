@@ -40,7 +40,7 @@ Configure a test proxy and use the normal VS Code model picker to verify:
 2. Gemini and Claude stream text before completion.
 3. Each model can call a tool and accept the following tool-result turn, preserving signed metadata.
 4. Stop works before the first output and during an active stream.
-5. AI commit generation uses an authorized model and labels from the target repository, and records successful usage once.
+5. Use **Google Agent Platform: Select Commit Message Model** or set `vertexAiChat.commitMessageModel` to an exact advertised model ID (the default is `gemini-3-flash-preview`). AI commit generation uses that model and labels from the target repository, and records successful usage once. An empty or unavailable selection, including an unavailable default, shows an error without switching models.
 6. Local estimates use server prices, including cache rates; failed/cancelled requests do not create successful usage entries.
 7. An empty catalog, failed discovery, policy denial, or configuration conflict exposes no direct fallback.
 8. Refresh Models after an account/catalog change and reopen VS Code to verify startup acquisition and recovery in the target environment.

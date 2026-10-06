@@ -111,7 +111,7 @@ See the [enterprise proxy guide](docs/proxy.md) for use cases, configuration, th
 
 - **🏷️ Cost attribution labels:** Gemini and Claude PayGo calls can carry user and workspace labels. An enabled label that cannot be resolved produces a clear VS Code and output-channel warning.
 - **📈 Usage dashboard and status bar:** Track local daily token usage and estimated cost in real time, then open the dashboard from the status bar for trends and detailed breakdowns.
-- **🪄 AI commit messages:** Generate a Conventional Commit-style message from staged Git changes (supports custom prompt for workspace or user).
+- **🪄 AI commit messages:** Generate a Conventional Commit-style message from staged Git changes using your own system prompt. Defaults to Gemini 3 Flash (`gemini-3-flash-preview`). Use **Google Agent Platform: Select Commit Message Model** to choose from the current catalog, or edit `vertexAiChat.commitMessageModel` in user, workspace, or folder settings. An empty or unavailable selection shows an error without switching models.
 - **🧠 Gemini thinking and tools:** Supports Gemini thinking modes, thought-signature continuity, vision, and parallel tool calling where available.
 - **⚡ Claude thinking and tools:** Supports signed thinking-trace continuity across tool calls, effort aliases, vision, up to 128K output tokens, and ephemeral prompt caching.
 - **🔍 Smart discovery:** Probes the available Google Cloud regions and registers only the models that your selected project can access.

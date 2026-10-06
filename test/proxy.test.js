@@ -768,26 +768,26 @@ test("late direct credentials cannot reinitialize providers after switching to t
   assert.ok(h.calls.every((c) => c[0] !== "initialize" || c[2] === "proxy-project"));
   assert.equal((await h.dispatcher.provideLanguageModelChatInformation())[0].id, "gemini-test");
 });
-for (const method of ["infer", "inferCommit"]) {
-  test(`${method} cancellation while initial discovery is pending returns without waiting for its timeout`, async () => {
-    inspections.proxyUrl = { globalValue: "https://gateway.test" };
-    const h = harness([model("gemini-test")]);
-    const entered = deferred(), credentials = deferred();
-    h.auth.getProxyIdToken = async () => { entered.resolve(); return credentials.promise; };
-    const cancel = cancellation();
-    const args = [[], { tools: [] }, { report() {} }, cancel.token, rootB];
-    const promise = method === "infer" ? h.dispatcher.infer("gemini-test", ...args) : h.dispatcher.inferCommit(...args);
-    await entered.promise;
-    cancel.cancel();
-    await assert.rejects(promise, CancellationError);
-    assert.equal(cancel.listeners.size, 0);
-    assert.equal(h.calls.length, 0);
-    h.dispatcher.dispose();
-    credentials.resolve("token");
-    await flush();
-  });
-}
+test("inference cancellation while initial discovery is pending returns without waiting for its timeout", async () => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  const h = harness([model("gemini-test")]);
+  const entered = deferred(), credentials = deferred();
+  h.auth.getProxyIdToken = async () => { entered.resolve(); return credentials.promise; };
+  const cancel = cancellation();
+  const args = [[], { tools: [] }, { report() {} }, cancel.token, rootB];
+  const promise = h.dispatcher.infer("gemini-test", ...args);
+  await entered.promise;
+  cancel.cancel();
+  await assert.rejects(promise, CancellationError);
+  assert.equal(cancel.listeners.size, 0);
+  assert.equal(h.calls.length, 0);
+  h.dispatcher.dispose();
+  credentials.resolve("token");
+  await flush();
+});
+
 test("SCM command uses shared inference, target repository and cancellable progress", async (t) => {
+  settings.commitMessageModel = "gemini-test-high";
   const originalWindow = { ...vscode.window };
   const originalGetExtension = vscode.extensions.getExtension;
   t.after(() => { Object.assign(vscode.window, originalWindow); vscode.extensions.getExtension = originalGetExtension; });
@@ -800,20 +800,53 @@ test("SCM command uses shared inference, target repository and cancellable progr
   let progressOptions;
   vscode.window.withProgress = async (options, callback) => { progressOptions = options; return callback({}, progressCancel.token); };
   let count = 0;
-  await generateCommitMessage({ async inferCommit(_messages, _options, progress, _token, resource) {
-    count++; assert.equal(resource, rootB); progress.report(new TextPart("feat: change"));
+  await generateCommitMessage({ async infer(modelId, _messages, _options, progress, _token, resource) {
+    count++; assert.equal(modelId, "gemini-test-high"); assert.equal(resource, rootB); progress.report(new TextPart("feat: change"));
   } }, rootB);
   assert.equal(repo.inputBox.value, "feat: change");
   assert.equal(count, 1);
   assert.equal(progressOptions.cancellable, true);
   assert.equal(progressCancel.listeners.size, 0);
   assert.equal(sourceDisposed, true);
-  await generateCommitMessage({ async inferCommit(_messages, _options, _progress, token) {
+  await generateCommitMessage({ async infer(_modelId, _messages, _options, _progress, token) {
     progressCancel.cancel(); assert.equal(token.isCancellationRequested, true); throw new CancellationError();
   } }, rootB);
   assert.equal(repo.inputBox.value, "");
   assert.equal(errors, 0);
   assert.equal(progressCancel.listeners.size, 0);
+});
+
+test("SCM reports a saved model removed from the proxy catalog without executing another model", async (t) => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  settings.commitMessageModel = "previously-available-model";
+  let remote = [model("previously-available-model"), model("gemini-test-high")];
+  const originalFetch = global.fetch;
+  global.fetch = async () => Response.json({ candidateModels: remote, regionPriority: ["global"] });
+  const originalWindow = { ...vscode.window };
+  const originalGetExtension = vscode.extensions.getExtension;
+  t.after(() => {
+    global.fetch = originalFetch;
+    Object.assign(vscode.window, originalWindow);
+    vscode.extensions.getExtension = originalGetExtension;
+  });
+  const h = harness([model("local-only")]);
+  await h.dispatcher.discoverModelsAndRegion();
+  remote = [model("gemini-test-high")];
+  h.dispatcher.clearModels();
+  const repo = {
+    rootUri: rootB, state: { indexChanges: [{ uri: { fsPath: "/b/file.ts" } }] },
+    inputBox: { value: "" }, diffIndexWithHEAD: async () => "+code",
+  };
+  vscode.extensions.getExtension = () => ({ isActive: true, exports: { getAPI: () => ({ getRepository: () => repo }) } });
+  const errors = [];
+  vscode.window.showErrorMessage = message => errors.push(message);
+  vscode.window.withProgress = async (_options, callback) => callback({}, cancellation().token);
+  await generateCommitMessage(h.dispatcher, rootB);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /Model not available: previously-available-model/);
+  assert.equal(h.calls.filter(call => call[0] === "infer").length, 0);
+  assert.equal(h.records.length, 0);
+  assert.equal(settings.commitMessageModel, "previously-available-model");
 });
 
 test("proxy catalog takes precedence for all consumers and an empty response never restores local models", async () => {
@@ -978,55 +1011,51 @@ test("SDK JSON messages preserve proxy policy details and remain non-retryable",
 
 
 for (const proxy of [false, true]) {
-  for (const method of ["infer", "inferCommit"]) {
-    for (const [reason, lookup] of [
-      ["missing", async () => undefined], ["empty", async () => "  "],
-      ["failed", async () => { throw new Error("lookup failed"); }],
-    ]) {
-      test(`${proxy ? "proxy" : "direct"} ${method} blocks a ${reason} enabled user label before discovery`, async (t) => {
-        if (proxy) inspections.proxyUrl = { globalValue: "https://gateway.test" };
-        settings.enableUserLabel = true;
-        const originalFetch = global.fetch;
-        let requests = 0;
-        global.fetch = async () => { requests++; throw Error("no backend may be contacted"); };
-        t.after(() => { global.fetch = originalFetch; });
-        const h = harness([model("gemini-test")], { getIdentity: lookup });
-        const args = [userMessage(), {}, { report() {} }, cancellation().token, rootB];
-        if (method === "infer") args.unshift("gemini-test");
-        await assert.rejects(h.dispatcher[method](...args),
-          (error) => error.code === "Blocked" && /Local configuration error.*vscode-vertex-ai-user.*No request was sent/.test(error.message));
-        assert.equal(requests, 0);
-        assert.equal(h.calls.length, 0);
-        assert.equal(h.records.length, 0);
-      });
-    }
-
-    test(`${proxy ? "proxy" : "direct"} ${method} blocks an enabled project label without a workspace`, async (t) => {
+  for (const [reason, lookup] of [
+    ["missing", async () => undefined], ["empty", async () => "  "],
+    ["failed", async () => { throw new Error("lookup failed"); }],
+  ]) {
+    test(`${proxy ? "proxy" : "direct"} inference blocks a ${reason} enabled user label before discovery`, async (t) => {
       if (proxy) inspections.proxyUrl = { globalValue: "https://gateway.test" };
-      settings.enableProjectLabel = true;
-      const originalConfiguration = vscode.workspace.getConfiguration;
-      vscode.workspace.getConfiguration = (section, uri) => {
-        const config = originalConfiguration(section, uri);
-        return { ...config, inspect: (key) => key === "projectLabelValue" ? {} : config.inspect(key) };
-      };
-      t.after(() => { vscode.workspace.getConfiguration = originalConfiguration; });
-      const { name, workspaceFolders, getWorkspaceFolder } = vscode.workspace;
-      Object.assign(vscode.workspace, { name: undefined, workspaceFolders: undefined, getWorkspaceFolder: () => undefined });
-      t.after(() => Object.assign(vscode.workspace, { name, workspaceFolders, getWorkspaceFolder }));
+      settings.enableUserLabel = true;
       const originalFetch = global.fetch;
       let requests = 0;
       global.fetch = async () => { requests++; throw Error("no backend may be contacted"); };
       t.after(() => { global.fetch = originalFetch; });
-      const h = harness([model("gemini-test")]);
-      const args = [userMessage(), {}, { report() {} }, cancellation().token, rootB];
-      if (method === "infer") args.unshift("gemini-test");
-      await assert.rejects(h.dispatcher[method](...args),
-        (error) => error.code === "Blocked" && /Local configuration error.*vscode-vertex-ai-project/.test(error.message));
+      const h = harness([model("gemini-test")], { getIdentity: lookup });
+      const args = ["gemini-test", userMessage(), {}, { report() {} }, cancellation().token, rootB];
+      await assert.rejects(h.dispatcher.infer(...args),
+        (error) => error.code === "Blocked" && /Local configuration error.*vscode-vertex-ai-user.*No request was sent/.test(error.message));
       assert.equal(requests, 0);
       assert.equal(h.calls.length, 0);
       assert.equal(h.records.length, 0);
     });
   }
+
+  test(`${proxy ? "proxy" : "direct"} inference blocks an enabled project label without a workspace`, async (t) => {
+    if (proxy) inspections.proxyUrl = { globalValue: "https://gateway.test" };
+    settings.enableProjectLabel = true;
+    const originalConfiguration = vscode.workspace.getConfiguration;
+    vscode.workspace.getConfiguration = (section, uri) => {
+      const config = originalConfiguration(section, uri);
+      return { ...config, inspect: (key) => key === "projectLabelValue" ? {} : config.inspect(key) };
+    };
+    t.after(() => { vscode.workspace.getConfiguration = originalConfiguration; });
+    const { name, workspaceFolders, getWorkspaceFolder } = vscode.workspace;
+    Object.assign(vscode.workspace, { name: undefined, workspaceFolders: undefined, getWorkspaceFolder: () => undefined });
+    t.after(() => Object.assign(vscode.workspace, { name, workspaceFolders, getWorkspaceFolder }));
+    const originalFetch = global.fetch;
+    let requests = 0;
+    global.fetch = async () => { requests++; throw Error("no backend may be contacted"); };
+    t.after(() => { global.fetch = originalFetch; });
+    const h = harness([model("gemini-test")]);
+    const args = ["gemini-test", userMessage(), {}, { report() {} }, cancellation().token, rootB];
+    await assert.rejects(h.dispatcher.infer(...args),
+      (error) => error.code === "Blocked" && /Local configuration error.*vscode-vertex-ai-project/.test(error.message));
+    assert.equal(requests, 0);
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.records.length, 0);
+  });
 }
 
 

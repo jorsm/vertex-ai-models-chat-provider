@@ -170,10 +170,10 @@
         },
         "vertexAiChat.commitMessageModel": {
           "type": "string",
-          "default": "",
+          "default": "gemini-3-flash-preview",
           "scope": "resource",
           "order": 90,
-          "description": "Model ID used for AI commit-message generation. It must be authorized by the current model discovery. Leave empty for automatic selection, or run 'Google Agent Platform: Select Commit Message Model'."
+          "description": "Model ID used for AI commit-message generation. Defaults to Gemini 3 Flash. Configure it in user, workspace, or folder settings, or use Select Commit Message Model. The model must be available in the current catalog when generating; an empty or unavailable selection produces an error without choosing another model."
         }
       }
     }
