@@ -33,7 +33,7 @@ Key aspects of the generation logic include:
 ## API Reference
 
 ### generateCommitMessage
-[source](../src/CommitMessage.ts)
+[source](../src/commitMessage/CommitMessage.ts)
 This function acts as the command handler for `vertexAiChat.generateCommitMessage`. It facilitates the end-to-end workflow of converting staged code changes into a structured commit message.
 
 **Workflow:**

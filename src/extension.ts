@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { AuthConfigurationError, AuthManager } from "./AuthManager";
-import { generateCommitMessage, resolveCommitMessageResourceUri } from "./CommitMessage";
+import { generateCommitMessage, resolveCommitMessageResourceUri } from "./commitMessage/CommitMessage";
 import { CostStatusBar } from "./CostStatusBar";
 import { DashboardWebview } from "./DashboardWebview";
 import { ModelCatalogResolver } from "./ModelCatalogResolver";

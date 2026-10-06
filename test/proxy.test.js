@@ -87,7 +87,7 @@ try {
   ({ VertexChatModelDispatcher, MissingProjectIdError } = require("../out/VertexChatModelDispatcher.js"));
   ({ VertexGoogleProvider } = require("../out/providers/VertexGoogleProvider.js"));
   ({ VertexAnthropicProvider } = require("../out/providers/VertexAnthropicProvider.js"));
-  ({ generateCommitMessage } = require("../out/CommitMessage.js"));
+  ({ generateCommitMessage } = require("../out/commitMessage/CommitMessage.js"));
 } finally { Module._load = originalLoad; }
 const { withRetry } = require("../out/utils/retry.js");
 const catalog = require("../src/models.json");

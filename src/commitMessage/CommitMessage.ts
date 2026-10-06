@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import type { VertexChatModelDispatcher } from "./VertexChatModelDispatcher";
-import { Logger } from "./utils/Logger";
+import type { VertexChatModelDispatcher } from "../VertexChatModelDispatcher";
+import { Logger } from "../utils/Logger";
 
 export const DEFAULT_SYSTEM_PROMPT = `You are an expert Principal Software Engineer and a strict adherent to clean Git history. Your task is to analyze \`git diff\` outputs and generate professional, highly accurate commit messages following the Conventional Commits specification.
 

@@ -27,7 +27,7 @@ Module._load = function (request, parent, isMain) {
 let DEFAULT_SYSTEM_PROMPT;
 let resolveCommitMessageResourceUri;
 try {
-  ({ DEFAULT_SYSTEM_PROMPT, resolveCommitMessageResourceUri } = require("../out/CommitMessage.js"));
+  ({ DEFAULT_SYSTEM_PROMPT, resolveCommitMessageResourceUri } = require("../out/commitMessage/CommitMessage.js"));
 } finally {
   Module._load = originalLoad;
 }
