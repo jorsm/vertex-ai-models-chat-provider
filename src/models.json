@@ -324,6 +324,84 @@
       }
     },
     {
+      "id": "claude-haiku-5-5-medium",
+      "vendor": "anthropic",
+      "displayName": "Claude Haiku 5.5",
+      "family": "claude",
+      "version": "claude-haiku-5-5-medium",
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 0.1,
+        "output": 0.5,
+        "cache_read": 0.01,
+        "cache_create": 0.125,
+        "longContext": {
+          "inputThresholdTokens": 100000,
+          "input": 0.5,
+          "output": 2.5,
+          "cache_read": 0.05,
+          "cache_create": 0.625
+        }
+      }
+    },
+    {
+      "id": "claude-haiku-5-5-high",
+      "vendor": "anthropic",
+      "displayName": "Claude Haiku 5.5 (High)",
+      "family": "claude",
+      "version": "claude-haiku-5-5-high",
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 0.1,
+        "output": 0.5,
+        "cache_read": 0.01,
+        "cache_create": 0.125,
+        "longContext": {
+          "inputThresholdTokens": 100000,
+          "input": 0.5,
+          "output": 2.5,
+          "cache_read": 0.05,
+          "cache_create": 0.625
+        }
+      }
+    },
+    {
+      "id": "claude-haiku-5-5-max",
+      "vendor": "anthropic",
+      "displayName": "Claude Haiku 5.5 (Max)",
+      "family": "claude",
+      "version": "claude-haiku-5-5-max",
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 0.1,
+        "output": 0.5,
+        "cache_read": 0.01,
+        "cache_create": 0.125,
+        "longContext": {
+          "inputThresholdTokens": 100000,
+          "input": 0.5,
+          "output": 2.5,
+          "cache_read": 0.05,
+          "cache_create": 0.625
+        }
+      }
+    },
+    {
       "id": "claude-haiku-4-5",
       "vendor": "anthropic",
       "displayName": "Claude Haiku 4.5",
