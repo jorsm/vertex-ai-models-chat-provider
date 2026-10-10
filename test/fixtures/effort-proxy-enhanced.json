@@ -22,20 +22,11 @@
         "cache_create": 0.0
       },
       "effort": {
-        "kind": "gemini-thinking-level",
         "values": [
           "high"
         ],
         "default": "high"
-      },
-      "legacyEffortAliases": [
-        {
-          "id": "server-gemini-high",
-          "displayName": "Gemini 3.8 Flash (High)",
-          "version": "gemini-3.8-flash-high",
-          "effort": "high"
-        }
-      ]
+      }
     },
     {
       "id": "server-claude",
@@ -56,27 +47,12 @@
         "cache_create": 5.0
       },
       "effort": {
-        "kind": "anthropic-adaptive",
         "values": [
           "high",
           "max"
         ],
-        "default": "provider-default"
-      },
-      "legacyEffortAliases": [
-        {
-          "id": "server-claude-high",
-          "displayName": "Claude Opus 5.5 (High)",
-          "version": "claude-opus-5-5-high",
-          "effort": "high"
-        },
-        {
-          "id": "server-claude-max",
-          "displayName": "Claude Opus 5.5 (Max)",
-          "version": "claude-opus-5-5-max",
-          "effort": "max"
-        }
-      ]
+        "default": "high"
+      }
     }
   ],
   "regionPriority": [

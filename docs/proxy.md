@@ -226,10 +226,10 @@ Return HTTP 200 with `Content-Type: application/json` and this canonical envelop
       "pricing": { "input": 0.3, "output": 2.5, "cache_read": 0.03 }
     },
     {
-      "id": "company-claude-medium",
+      "id": "company-claude",
       "vendor": "anthropic",
-      "version": "claude-sonnet-5-5-medium",
-      "displayName": "Company Claude Medium",
+      "version": "claude-sonnet-5-5",
+      "displayName": "Company Claude",
       "family": "claude",
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
@@ -247,7 +247,7 @@ These entries illustrate the schema. Populate versions, limits, capabilities, an
 | --- | --- |
 | `id` | Unique UI identifier, 1–256 characters matching `[a-zA-Z0-9_.@-]`. It may differ from the backend model. |
 | `vendor` | Provider identifier, with the same character constraints as `id`; there is no vendor allowlist. An unregistered adapter produces an inference error rather than invalidating discovery. |
-| `version` | Backend model identifier or provider-supported effort/thinking alias, up to 256 characters. Slash-separated namespaces such as `xai/grok-4.6` are accepted; each segment uses the characters permitted for `id`. Empty segments, `.`/`..` segments, absolute paths, and URLs are invalid. |
+| `version` | Literal backend model identifier, up to 256 characters. Slash-separated namespaces such as `xai/grok-4.6` are accepted; each segment uses the characters permitted for `id`. Empty segments, `.`/`..` segments, absolute paths, and URLs are invalid. |
 | `displayName`, `family` | Nonempty text, at most 256 characters. Use the appropriate family, such as `gemini` or `claude`. |
 | `maxInputTokens`, `maxOutputTokens` | Positive safe integers. The advertised output limit is used in generation requests. |
 | `capabilities` | Required boolean `imageInput` and `toolCalling` fields. Advertise capabilities your proxy preserves. |
@@ -257,7 +257,7 @@ These entries illustrate the schema. Populate versions, limits, capabilities, an
 
 The legacy `models` field is also accepted instead of `candidateModels` at `/discovery`, with the same model and `regionPriority` validation. A models-only response must add `regionPriority`; the client does not supply a default region. Do not return both `models` and `candidateModels`. Prefer the canonical format for new implementations.
 
-Filter discovery using the authenticated caller's permissions. Return an empty `candidateModels` array when the caller has no available models. Reject unauthorized inference independently of discovery: clients can issue requests outside the picker. Use exact model authorization after resolving supported aliases; broad prefix matching can authorize unintended models.
+Filter discovery using the authenticated caller's permissions. Return an empty `candidateModels` array when the caller has no available models. Reject unauthorized inference independently of discovery: clients can issue requests outside the picker. Use exact authorization for the literal backend model; broad prefix matching can authorize unintended models.
 
 The extension publishes only the variants explicitly returned. It does not synthesize variants or supplement an empty catalog. Duplicate IDs, malformed vendor identifiers, invalid metadata, malformed JSON, or a response larger than 1 MiB invalidate the whole response. Discovery initializes all registered adapters with the configured gateway; individual adapters report unsupported transports during inference. Discovery uses `vertexAiChat.modelDiscoveryTimeoutSeconds` (45 seconds by default), including token acquisition and response reading. The server's prices drive model information and local usage estimates, with each request retaining its selected rate card.
 
@@ -265,7 +265,7 @@ The extension publishes only the variants explicitly returned. It does not synth
 
 The incoming path carries the user's configured `projectId` and the first region from the server's `regionPriority`, which the proxy forwards upstream. Check the location against your approved regions and the model against your allowlist, authorize the caller for the requested project, and never let a client path select an arbitrary hostname or upstream URL. If the proxy's runtime identity cannot call Vertex in that project, the upstream error is returned and shown in VS Code.
 
-The `{model}` path component comes from the catalog's `version`, after the provider resolves supported aliases. For example, a Claude entry ending in `-medium` is sent to the base model with the effort in the JSON request. Your allowlist must authorize that base model and any effort restrictions you enforce. The UI `id` is not an upstream route.
+The `{model}` path component is the catalog's literal `version`. Effort is an independent JSON request field. Authorize that backend model and the effort choices you enforce. The UI `id` is independent of the upstream route.
 
 Preserve SDK-native requests:
 
@@ -374,12 +374,10 @@ The extension cannot guarantee that those consumers stop retrying.
 
 ## Independent thinking effort (`effort-v1`)
 
-The client sends `X-Vertex-AI-Catalog-Capabilities: effort-v1` on authenticated **GET /discovery only**. It adds no user, project, workspace or billing attribution to discovery. A legacy server may ignore the header and return its existing expanded catalog; the client keeps those entries and their suffix behavior.
+The client sends `X-Vertex-AI-Catalog-Capabilities: effort-v1` on authenticated **GET /discovery only**, with no billing attribution. A server advertising effort metadata acknowledges with top-level `"catalogCapabilities": ["effort-v1"]`. See the [effort fixture](../test/fixtures/effort-proxy-enhanced.json) and [basic fixture](../test/fixtures/effort-proxy-basic.json). This acknowledgement is a wire-envelope field, not a field in local `models.json`. Unknown capabilities, unacknowledged effort metadata, malformed configuration, redirects or duplicate IDs fail the response without local fallback.
 
-An enhanced server acknowledges with top-level `"catalogCapabilities": ["effort-v1"]` and can return canonical model definitions containing `effort` and `legacyEffortAliases`. See the [enhanced fixture](../test/fixtures/effort-proxy-enhanced.json) and [legacy fixture](../test/fixtures/effort-proxy-legacy.json). The acknowledgement is a wire-envelope field, not a field in local `models.json`. Unknown capability versions, unacknowledged effort metadata, invalid policies, redirects or identity collisions fail the entire response, without local fallback.
+Models use literal backend `version` names. Optional `effort` contains named `values` and a `default` from that list. Every request for a model with effort metadata sends its resolved named level, including when no preference is saved. A model without effort metadata sends no override. Saved preferences cannot widen server choices or populate an empty catalog. Grok proxy transport remains unsupported.
 
-`effort` declares the backend mode (`anthropic-adaptive` or `gemini-thinking-level` in proxy mode), permitted named `values`, and either a named `default` from that list or `provider-default`. The latter authorizes omission of the override, preserving the adapter's unsuffixed behavior; it does not disable thinking. `legacyEffortAliases` explicitly authorize fixed-effort historical IDs on the same backend, inheriting limits, capabilities and prices. A saved preference cannot widen this policy or populate an empty catalog. Grok proxy transport remains unsupported.
+The server must enforce backend, project, region and effort on inference; UI validation is not authorization. Preserve native Claude `output_config.effort` and adaptive thinking, Gemini `generationConfig.thinkingConfig.thinkingLevel`, signed history, labels, authentication, SSE and cancellation. Backend APIs validate model support.
 
-On every inference request the server must enforce backend/model, project, region and named **or omitted** effort. UI validation is not authorization. Use a named default if provider-default omission would violate policy. Keep native Claude `output_config.effort` and adaptive thinking, and Gemini `generationConfig.thinkingConfig.thinkingLevel`, together with existing signed history, labels, authentication, SSE and cancellation behavior.
-
-Clients that do not advertise `effort-v1` must continue receiving the previous expanded catalog with its IDs, versions, defaults, limits and prices. Deploying this contract on a production proxy is a separate server action. The client implementation and local wire fixtures establish neither server deployment nor live authorization; see [verification](thinking-effort-verification.md).
+Deploying this contract on a production proxy is a separate server action. Client fixtures do not establish server deployment or live authorization; see [verification](thinking-effort-verification.md).

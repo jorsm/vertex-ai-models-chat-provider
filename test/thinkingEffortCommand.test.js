@@ -36,19 +36,20 @@ test('explicit model step uses discovered policy, remembers last configured and 
  assert(!p.items.some(item=>/Active Chat/.test(item.detail)));
  await p.accept(p.items.find(item=>item.modelId==='claude-opus-5-5'));
  assert.match(p.title,/User/);assert.equal(p.activeItems[0].value,'high');
- assert.deepEqual(p.items.filter(i=>i.value).map(i=>i.value),['catalog-default','high','max']);
+ assert.deepEqual(p.items.filter(i=>i.value).map(i=>i.value),['medium','high','max']);
  await p.accept(p.items.find(i=>i.value==='max'));await running;
  assert.deepEqual(user,{'claude-opus-5-5':'max'});assert.deepEqual(workspace,{other:'low'});
  assert.equal(states[0].value,'claude-opus-5-5');assert(p.disposed);assert.equal(h.ensured,1);
  assert.equal(p.acceptEvent.listeners.size,0);assert.equal(p.buttonEvent.listeners.size,0);
 });
-test('existing Workspace key sets scope; explicit default suppresses User and removal reveals it',async()=>{
+test('existing Workspace key sets scope; default choice saves its actual named level',async()=>{
  user={'claude-opus-5-5':'max'};workspace={'claude-opus-5-5':'high',other:'low'};
- const h=harness(models.slice(0,1));let{running,p}=await open(h);
- assert.match(p.title,/Workspace/);await p.accept(p.items.find(i=>i.value==='catalog-default'));await running;
- assert.equal(workspace['claude-opus-5-5'],'catalog-default');assert.equal(workspace.other,'low');
- ({running,p}=await open(h));await p.accept(p.items.find(i=>i.remove));await running;
- assert.deepEqual(workspace,{other:'low'});assert.equal(user['claude-opus-5-5'],'max');
+ const h=harness(models.slice(0,1));const{running,p}=await open(h);
+ assert.match(p.title,/Workspace/);
+ assert.deepEqual(p.items.map(i=>[i.label,i.description]),[['Medium','Default'],['High',undefined],['Max',undefined]]);
+ await p.accept(p.items.find(i=>i.value==='medium'));await running;
+ assert.equal(workspace['claude-opus-5-5'],'medium');assert.equal(workspace.other,'low');
+ assert.equal(user['claude-opus-5-5'],'max');
 });
 test('switch scope changes only chosen target; no workspace offers only Back',async()=>{
  const h=harness(models.slice(0,1));let{running,p}=await open(h);
@@ -66,7 +67,7 @@ test('cancel each step and Back never writes; repeated invocation disposes old p
 });
 test('stale policy refresh prevents persistence and removes no longer permitted choices',async()=>{
  const h=harness(models.slice(0,1));const{running,p}=await open(h);
- const changed=structuredClone(models[0]);changed.effort.values=['high'];
+ const changed=structuredClone(models[0]);changed.effort={values:['high'],default:'high'};
  h.change([changed]);await p.accept(p.items.find(i=>i.value==='max'));
  assert.equal(writes.length,0);assert.match(errors[0],/changed/);assert(!p.items.some(i=>i.value==='max'));assert(p.visible);
  await p.accept(p.items.find(i=>i.value==='high'));await running;assert.equal(user['claude-opus-5-5'],'high');
@@ -80,11 +81,11 @@ test('setting failure keeps picker open and effective state unchanged',async()=>
 test('invalid saved value stays visible and can be reset rather than silently substituted',async()=>{
  const h=harness(models.slice(0,1));user={'claude-opus-5-5':'low'};const{running,p}=await open(h);
  assert.match(p.placeholder,/Invalid.*not permitted/);assert.equal(p.activeItems.length,0);
- await p.accept(p.items.find(i=>i.value==='catalog-default'));await running;
- assert.equal(user['claude-opus-5-5'],'catalog-default');
+ await p.accept(p.items.find(i=>i.value==='medium'));await running;
+ assert.equal(user['claude-opus-5-5'],'medium');
 });
-test('legacy and empty authoritative catalogs offer no fabricated effort choices',async()=>{
- for(const selection of [[],require('./fixtures/thinking-effort-original-catalog.json').candidateModels]){
+test('empty catalogs and models without effort offer no fabricated choices',async()=>{
+ for(const selection of [[],models.filter(m=>!m.effort)]){
   const h=harness(selection);await h.command.run();assert.equal(pickers.length,0);
  }
  assert.equal(errors.length,2);assert.equal(writes.length,0);
@@ -105,10 +106,10 @@ test('named default is one choice, highlights an existing value and saves the de
  const model=models.find(m=>m.id==='claude-haiku-5-5');
  user={[model.id]:'max'};workspace={[model.id]:'medium'};
  const h=harness([model]);const{running,p}=await open(h);
- assert.deepEqual(p.items.filter(i=>i.value).map(i=>[i.label,i.value]),[['Medium (Model Default)','catalog-default'],['High','high'],['Max','max']]);
- assert.equal(p.activeItems[0].label,'Medium (Model Default)');assert.equal(p.activeItems[0].description,'Current effective choice');
+ assert.deepEqual(p.items.filter(i=>i.value).map(i=>[i.label,i.value]),[['Medium','medium'],['High','high'],['Max','max']]);
+ assert.equal(p.activeItems[0].label,'Medium');assert.equal(p.activeItems[0].description,'Default');
  await p.accept(p.activeItems[0]);await running;
- assert.equal(workspace[model.id],'catalog-default');assert.equal(user[model.id],'max');
+ assert.equal(workspace[model.id],'medium');assert.equal(user[model.id],'max');
 });
 test('malformed Workspace object in model step is reported without an unhandled event rejection',async()=>{
  const h=harness();workspace=[];const{running,p}=await open(h);await p.accept(p.items[0]);

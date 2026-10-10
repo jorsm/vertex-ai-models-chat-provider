@@ -119,7 +119,7 @@ export function parseProxyCatalog(payload: unknown): ModelCatalog {
       throw new GatewayError("Invalid proxy catalog: models require unique IDs, vendor identifiers, versions, names, token limits, capabilities and non-negative prices.");
     }
     ids.add(entry.id);
-    if ((entry.effort !== undefined || entry.legacyEffortAliases !== undefined) && !enhanced) {
+    if (entry.effort !== undefined && !enhanced) {
       throw new GatewayError("Proxy effort metadata requires catalogCapabilities: ['effort-v1'].");
     }
     return { id: entry.id, vendor: entry.vendor, version: entry.version, displayName: entry.displayName,
@@ -129,10 +129,9 @@ export function parseProxyCatalog(payload: unknown): ModelCatalog {
         longContext: { ...copyRates(entry.pricing.longContext), inputThresholdTokens: entry.pricing.longContext.inputThresholdTokens },
       } : {}) },
       ...(entry.effort !== undefined ? { effort: snapshot(entry.effort) } : {}),
-      ...(entry.legacyEffortAliases !== undefined ? { legacyEffortAliases: snapshot(entry.legacyEffortAliases) } : {}),
     };
   });
-  try { new EffortCatalog(candidateModels, "proxy"); } catch (error) { throw new GatewayError(`Invalid proxy catalog: ${error}`); }
+  try { new EffortCatalog(candidateModels); } catch (error) { throw new GatewayError(`Invalid proxy catalog: ${error}`); }
   return { candidateModels, regionPriority: [...regions] };
 }
 

@@ -2,10 +2,10 @@ import * as vscode from "vscode";
 import type { VertexChatModelDispatcher } from "../VertexChatModelDispatcher";
 import { EffortCatalog } from "./EffortCatalog";
 import { captureEffortPreferences, defaultEffortTarget, hasWorkspace, writeEffortPreference } from "./EffortConfiguration";
-import { EffortError, EffortPreference } from "./EffortTypes";
+import { EffortError } from "./EffortTypes";
 import { resolveEffort } from "./ResolveEffort";
 
-interface Item extends vscode.QuickPickItem { modelId?: string; value?: EffortPreference; remove?: boolean }
+interface Item extends vscode.QuickPickItem { modelId?: string; value?: string }
 const LAST = "thinkingEffort.lastConfiguredModelId";
 
 /** One owned picker/session; invoking the command again cancels the previous session. */
@@ -29,7 +29,7 @@ export class ConfigureThinkingEffort implements vscode.Disposable {
       let state = this.provider.getEffortModelSnapshot();
       let catalog = new EffortCatalog(state.models);
       if (!state.models.some((model) => model.effort)) {
-        void vscode.window.showInformationMessage("Google Agent Platform: The discovered catalog has no configurable thinking effort. Legacy proxy servers require effort-v1 support.");
+        void vscode.window.showInformationMessage("Google Agent Platform: The discovered catalog has no configurable thinking effort.");
         return;
       }
       picker = vscode.window.createQuickPick<Item>();
@@ -39,13 +39,12 @@ export class ConfigureThinkingEffort implements vscode.Disposable {
       const scopeButton = { iconPath: new vscode.ThemeIcon("settings-gear"), tooltip: "Switch User/Workspace scope" };
       let modelId: string | undefined;
       let target = vscode.ConfigurationTarget.Global;
-      const effortLabel = (value: string): string => value === "provider-default" ? "Default"
-        : value === "xhigh" ? "Extra high" : value[0].toUpperCase() + value.slice(1);
+      const effortLabel = (value: string): string => value === "xhigh" ? "Extra high" : value.charAt(0).toUpperCase() + value.slice(1);
       const description = (id: string, compact = false): string => {
         try {
           const preferences = captureEffortPreferences();
           const request = resolveEffort(catalog, id, preferences);
-          const label = effortLabel(request.effort?.value ?? "provider-default");
+          const label = effortLabel(request.effort?.value ?? "");
           return label;
         } catch (error) { return compact ? "Invalid setting" : `Invalid: ${error instanceof Error ? error.message : error}`; }
       };
@@ -60,23 +59,21 @@ export class ConfigureThinkingEffort implements vscode.Disposable {
         pick.activeItems = pick.items.filter((item) => item.modelId === last);
       };
       const efforts = () => {
-        const model = catalog.get(modelId!)?.canonical;
+        const model = catalog.get(modelId!);
         if (!model?.effort) { models(); return; }
         const scope = target === vscode.ConfigurationTarget.Workspace ? "Workspace" : "User";
         scopeButton.tooltip = hasWorkspace() ? `Scope: ${scope}. Switch to ${scope === "User" ? "Workspace" : "User"}` : "Scope: User. Workspace unavailable until a workspace is open";
         pick.title = `Thinking Effort — ${model.displayName} — ${scope}`;
         pick.placeholder = `Current: ${description(model.id)}. Applies to your next request.`;
         pick.buttons = hasWorkspace() ? [vscode.QuickInputButtons.Back, scopeButton] : [vscode.QuickInputButtons.Back];
-        let saved: unknown;
-        try { saved = captureEffortPreferences().preferences[model.id]; } catch { /* Keep reset choices visible. */ }
-        const current = saved === undefined || saved === model.effort.default ? "catalog-default" : saved;
-        const choices: Item[] = [
-          ...(model.effort.default === "provider-default" ? [{ label: "Model Default", value: "catalog-default" as const }] : []),
-          ...model.effort.values.map((value) => value === model.effort!.default
-            ? { label: `${effortLabel(value)} (Model Default)`, value: "catalog-default" as const }
-            : { label: effortLabel(value), value }),
-          { label: "Remove override at this scope", detail: `Remove only this model's ${scope} key; a lower-scope preference may become effective.`, remove: true }];
-        pick.items = choices.map((item) => ({ ...item, description: item.value === current ? "Current effective choice" : undefined }));
+        let current: unknown;
+        try { current = resolveEffort(catalog, model.id, captureEffortPreferences()).effort?.value; }
+        catch { /* Keep choices available so an invalid setting can be replaced. */ }
+        pick.items = model.effort.values.map((value) => ({
+          label: effortLabel(value),
+          description: value === model.effort!.default ? "Default" : undefined,
+          value,
+        }));
         pick.activeItems = pick.items.filter((item) => item.value === current);
       };
       models();
@@ -106,12 +103,12 @@ export class ConfigureThinkingEffort implements vscode.Disposable {
               state = latest; catalog = new EffortCatalog(state.models);
               throw new EffortError("stale", "The connection or catalog changed. Choices have been refreshed; select again.");
             }
-            if (!item.remove) { resolveEffort(catalog, selectedId, { preferences: { [selectedId]: item.value }, sourceByModel: {} }); }
+            resolveEffort(catalog, selectedId, { preferences: { [selectedId]: item.value }, sourceByModel: {} });
           };
           pick.busy = true;
           pick.enabled = false;
           try {
-            await writeEffortPreference(selectedId, item.remove ? undefined : item.value, target, validate);
+            await writeEffortPreference(selectedId, item.value, target, validate);
             await this.context.workspaceState.update(LAST, selectedId);
             pick.hide();
           } catch (error) {

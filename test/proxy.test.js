@@ -90,8 +90,12 @@ try {
   ({ generateCommitMessage } = require("../out/commitMessage/CommitMessage.js"));
 } finally { Module._load = originalLoad; }
 const { withRetry } = require("../out/utils/retry.js");
-const catalog = require("./fixtures/thinking-effort-original-catalog.json");
-const model = (id, vendor = "google", version = id) => ({ ...catalog.candidateModels[0], id, version, vendor });
+const catalog = require("../src/models.json");
+const model = (id, vendor = "google", version = id) => {
+  const spec = { ...catalog.candidateModels[0], id, version, vendor };
+  delete spec.effort;
+  return spec;
+};
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
 const flush = () => new Promise(setImmediate);
 function cancellation() {
@@ -300,7 +304,7 @@ function harness(models, authOverrides = {}) {
   for (const vendor of ["google", "anthropic", "grok"]) {
     dispatcher.activeProviders.set(vendor, {
       vendor, initialize(...args) { calls.push(["initialize", vendor, ...args]); }, setLabels() {},
-      getDiscoveryModelId: (id) => id.replace(/-high$/, ""), pingModel() { throw Error("no inference probes allowed"); },
+      pingModel() { throw Error("no inference probes allowed"); },
       provideLanguageModelChatResponse: async (...args) => { calls.push(["infer", vendor, ...args]); return { usage: { input: 1, output: 2, cache_read: 0, cache_create: 0 }, charCount: {} }; },
     });
   }
@@ -336,7 +340,7 @@ test("proxy dispatcher uses the server catalog and sends only an explicit custom
   assert.equal(h.records.length, 1);
   assert.deepEqual(h.records[0][2], remote[0].pricing);
   const info = await h.dispatcher.provideLanguageModelChatInformation();
-  assert.deepEqual(info.map(m=>m.id),['gemini-test','remote']);
+  assert.deepEqual(info.map(m=>m.id),['gemini-test','remote','remote-high']);
   assert.equal(info[1].name, "Remote model");
   assert.match(info[1].detail, /europe-west8/);
   assert.match(info[1].detail, /\$10 in/);
@@ -487,13 +491,13 @@ test("shared inference retries discovery after a previous empty error state", as
 });
 test("shared inference executes exactly the requested authorized model", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
-  const remote = [model("gemini-3.8-flash"), model("claude-sonnet-5-5-medium", "anthropic")];
+  const remote = [model("gemini-3.8-flash"), model("company-claude", "anthropic")];
   fakeDiscovery(t, remote);
   const h = harness(remote);
-  await h.dispatcher.infer("claude-sonnet-5-5-medium", [], { tools: [] }, { report() {} }, cancellation().token, rootB);
+  await h.dispatcher.infer("company-claude", [], { tools: [] }, { report() {} }, cancellation().token, rootB);
   const request = h.calls.find((call) => call[0] === "infer");
   assert.equal(request[1], "anthropic");
-  assert.equal(request[2], "claude-sonnet-5-5-medium");
+  assert.equal(request[2], "company-claude");
 });
 test("shared inference rejects an unavailable model without substituting another", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
@@ -789,7 +793,7 @@ test("inference cancellation while initial discovery is pending returns without 
 });
 
 test("SCM command uses shared inference, target repository and cancellable progress", async (t) => {
-  settings.commitMessageModel = "gemini-test-high";
+  settings.commitMessageModel = "company-gemini";
   const originalWindow = { ...vscode.window };
   const originalGetExtension = vscode.extensions.getExtension;
   t.after(() => { Object.assign(vscode.window, originalWindow); vscode.extensions.getExtension = originalGetExtension; });
@@ -803,7 +807,7 @@ test("SCM command uses shared inference, target repository and cancellable progr
   vscode.window.withProgress = async (options, callback) => { progressOptions = options; return callback({}, progressCancel.token); };
   let count = 0;
   await generateCommitMessage({ async infer(modelId, _messages, _options, progress, _token, resource) {
-    count++; assert.equal(modelId, "gemini-test-high"); assert.equal(resource, rootB); progress.report(new TextPart("feat: change"));
+    count++; assert.equal(modelId, "company-gemini"); assert.equal(resource, rootB); progress.report(new TextPart("feat: change"));
   } }, rootB);
   assert.equal(repo.inputBox.value, "feat: change");
   assert.equal(count, 1);
@@ -821,7 +825,7 @@ test("SCM command uses shared inference, target repository and cancellable progr
 test("SCM reports a saved model removed from the proxy catalog without executing another model", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
   settings.commitMessageModel = "previously-available-model";
-  let remote = [model("previously-available-model"), model("gemini-test-high")];
+  let remote = [model("previously-available-model"), model("company-gemini")];
   const originalFetch = global.fetch;
   global.fetch = async () => Response.json({ candidateModels: remote, regionPriority: ["global"] });
   const originalWindow = { ...vscode.window };
@@ -833,7 +837,7 @@ test("SCM reports a saved model removed from the proxy catalog without executing
   });
   const h = harness([model("local-only")]);
   await h.dispatcher.discoverModelsAndRegion();
-  remote = [model("gemini-test-high")];
+  remote = [model("company-gemini")];
   h.dispatcher.clearModels();
   const repo = {
     rootUri: rootB, state: { indexChanges: [{ uri: { fsPath: "/b/file.ts" } }] },
@@ -1076,7 +1080,7 @@ for (const changed of ["tools", "system", "history", "assistant"]) {
     provider.initialize("gateway", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
     const first = [{role: 0, content: [new TextPart("system")]}, ...userMessage()];
     const tools = [{name: "lookup", description: "original", inputSchema: {type: "object", properties: {}}}];
-    const run = (messages, requestTools) => provider.provideLanguageModelChatResponse("claude-sonnet-5-5-high", messages, {tools: requestTools}, {report() {}}, cancellation().token, {}, model("claude-sonnet-5-5-high", "anthropic"));
+    const run = (messages, requestTools) => provider.provideLanguageModelChatResponse("claude-sonnet-5-5", messages, {tools: requestTools}, {report() {}}, cancellation().token, {}, { ...model("claude-sonnet-5-5", "anthropic"), effort: { values: ["high"], default: "high" } });
     await run(first, tools);
     const next = [...first, {role: 2, content: [new ToolCallPart("tool-guard", "lookup", {})]}, {role: 1, content: [new ToolResultPart("tool-guard", [new TextPart("done")])]}];
     if (changed === "system") next[0] = {role: 0, content: [new TextPart("different system")]};
@@ -1097,21 +1101,19 @@ const {EffortCatalog}=require('../out/effort/EffortCatalog.js');
 const {resolveEffort}=require('../out/effort/ResolveEffort.js');
 const enhancedFixture=require('./fixtures/effort-proxy-enhanced.json');
 
-test('enhanced proxy policies/aliases survive parsing only after exact capability acknowledgement',()=>{
- const legacy=require('./fixtures/effort-proxy-legacy.json');
- assert.deepEqual(parseProxyCatalog(legacy),legacy);
+test('enhanced proxy policies survive parsing only after exact capability acknowledgement',()=>{
+ const basic=require('./fixtures/effort-proxy-basic.json');
+ assert.deepEqual(parseProxyCatalog(basic),basic);
  const parsed=parseProxyCatalog(enhancedFixture);
  assert.deepEqual(parsed.candidateModels,enhancedFixture.candidateModels);
- assert.deepEqual(new EffortCatalog(parsed.candidateModels,'proxy').project().map(m=>m.id),parsed.candidateModels.map(m=>m.id));
+ assert.deepEqual(new EffortCatalog(parsed.candidateModels).models.map(m=>m.id),parsed.candidateModels.map(m=>m.id));
  const unacknowledged={...enhancedFixture};delete unacknowledged.catalogCapabilities;
  assert.throws(()=>parseProxyCatalog(unacknowledged),/requires catalogCapabilities/);
  for(const caps of [['effort-v2'],['effort-v1','effort-v1'],'effort-v1'])assert.throws(()=>parseProxyCatalog({...enhancedFixture,catalogCapabilities:caps}),/capabilities/);
  const invalid=structuredClone(enhancedFixture);invalid.candidateModels[0].effort.default='low';
  assert.throws(()=>parseProxyCatalog(invalid),/default must belong/);
- const collision=structuredClone(enhancedFixture);collision.candidateModels[0].legacyEffortAliases[0].id=collision.candidateModels[1].id;
- assert.throws(()=>parseProxyCatalog(collision),/Duplicate/);
- const redirect=structuredClone(enhancedFixture);redirect.candidateModels[0].legacyEffortAliases[0].version='gemini-3.7-flash-high';
- assert.throws(()=>parseProxyCatalog(redirect),/same backend/);
+ const collision=structuredClone(enhancedFixture);collision.candidateModels[0].id=collision.candidateModels[1].id;
+ assert.throws(()=>parseProxyCatalog(collision),/unique IDs/);
 });
 test('capability header is discovery-only protocol metadata and carries no billing labels',async(t)=>{
  const requests=[];
@@ -1129,23 +1131,22 @@ test('server-only IDs and restricted policies remain authoritative over saved lo
  settings.thinkingEffortByModel={'server-gemini':'low'};inspections.thinkingEffortByModel={globalValue:settings.thinkingEffortByModel};
  await assert.rejects(h.dispatcher.provideLanguageModelChatResponse({id:'server-gemini'},userMessage(),{}, {report(){}},cancellation().token),/not permitted/);
  assert.equal(h.calls.filter(c=>c[0]==='infer').length,0);
- settings.thinkingEffortByModel={'server-gemini':'catalog-default'};inspections.thinkingEffortByModel={globalValue:settings.thinkingEffortByModel};
+ settings.thinkingEffortByModel={'server-gemini':'high'};inspections.thinkingEffortByModel={globalValue:settings.thinkingEffortByModel};
  await h.dispatcher.provideLanguageModelChatResponse({id:'server-gemini'},userMessage(),{}, {report(){}},cancellation().token);
- const request=h.calls.find(c=>c[0]==='infer');assert.equal(request.at(-1).effort.value,'high');assert.equal(request.at(-1).backendModelId,'gemini-3.8-flash');
+ const request=h.calls.find(c=>c[0]==='infer');assert.equal(request.at(-1).effort.value,'high');assert.equal(request.at(-1).spec.version,'gemini-3.8-flash');
  global.fetch=async()=>Response.json({catalogCapabilities:['effort-v1'],candidateModels:[],regionPriority:[]});
  await h.dispatcher.discoverModelsAndRegion();assert.deepEqual(h.dispatcher.getEffortModelSnapshot().models,[]);
  await assert.rejects(h.dispatcher.provideLanguageModelChatResponse({id:'server-gemini'},userMessage(),{}, {report(){}},cancellation().token),/not available/);
 });
-for(const [vendor,Provider]of [['google',VertexGoogleProvider],['anthropic',VertexAnthropicProvider]])test(`${vendor} resolved efforts reach native serialized proxy bodies, including default omission`,async(t)=>{
+for(const [vendor,Provider]of [['google',VertexGoogleProvider],['anthropic',VertexAnthropicProvider]])test(`${vendor} resolved efforts reach native serialized proxy bodies, including named catalog defaults`,async(t)=>{
  const requests=streamingFetch(t,vendor==='google'?[geminiEvent({candidates:[{content:{role:'model',parts:[{text:'ok'}]}}]})]:[claudeEvent({type:'message_stop'})]);
  const spec=require('../src/models.json').candidateModels.find(m=>m.vendor===vendor&&m.effort);
- const index=new EffortCatalog([spec],'proxy');const provider=new Provider();provider.initialize('test-project','global',undefined,new ProxyGateway('https://gateway.test/base',async()=> 'token'));
- for(const preference of [...spec.effort.values,'catalog-default']){
-  const request=resolveEffort(index,spec.id,{preferences:{[spec.id]:preference},sourceByModel:{}});
+ const index=new EffortCatalog([spec]);const provider=new Provider();provider.initialize('test-project','global',undefined,new ProxyGateway('https://gateway.test/base',async()=> 'token'));
+ for(const preference of [...spec.effort.values,undefined]){
+  const request=resolveEffort(index,spec.id,preference===undefined?undefined:{preferences:{[spec.id]:preference},sourceByModel:{}});
   await provider.provideLanguageModelChatResponse(spec.id,userMessage(),{}, {report(){}},cancellation().token,{},request.spec,request);
   const wire=requests.at(-1);assert(wire.url.startsWith('https://gateway.test/base/'));
-  assert(!wire.url.includes('-high:')&&!wire.url.includes('-max:'));
-  const expected=request.effort.value==='provider-default'?undefined:request.effort.value;
+  const expected=request.effort.value;
   if(vendor==='google')assert.equal(wire.body.generationConfig?.thinkingConfig?.thinkingLevel,expected?.toUpperCase());
   else{assert.equal(wire.body.output_config?.effort,expected);assert.equal(wire.body.thinking?.type,expected?'adaptive':undefined);}
   assert.equal(new Headers(wire.init.headers).get('X-Vertex-AI-Catalog-Capabilities'),null);
@@ -1161,7 +1162,7 @@ test('Claude effort change on a tool continuation retains signed and redacted bl
   {type:'content_block_start',index:2,content_block:{type:'tool_use',id:'effort-tool',name:'lookup',input:{}}},
   {type:'content_block_stop',index:2},{type:'message_stop'}];
  const requests=streamingFetch(t,events.map(claudeEvent));
- const spec=require('../src/models.json').candidateModels[0],index=new EffortCatalog([spec],'proxy');
+ const spec=require('../src/models.json').candidateModels[0],index=new EffortCatalog([spec]);
  const provider=new VertexAnthropicProvider();provider.initialize('test-project','global',undefined,new ProxyGateway('https://gateway.test',async()=> 'token'));
  const run=async(effort,messages)=>{const request=resolveEffort(index,spec.id,{preferences:{[spec.id]:effort},sourceByModel:{}});await provider.provideLanguageModelChatResponse(spec.id,messages,{}, {report(){}},cancellation().token,{},request.spec,request);};
  await run('high',userMessage());
@@ -1172,7 +1173,7 @@ test('Claude effort change on a tool continuation retains signed and redacted bl
 test('Gemini effort change on a tool continuation preserves the thought signature',async(t)=>{
  const requests=streamingFetch(t,[geminiEvent({candidates:[{content:{role:'model',parts:[{functionCall:{name:'lookup',args:{}},thoughtSignature:'effort-signed'}]}}]})]);
  const base=require('../src/models.json').candidateModels.find(m=>m.id==='gemini-3.8-flash');
- const spec={...base,effort:{...base.effort,values:['low','high']}};const index=new EffortCatalog([spec],'proxy');
+ const spec={...base,effort:{values:['low','high'],default:'high'}};const index=new EffortCatalog([spec]);
  const provider=new VertexGoogleProvider();provider.initialize('test-project','global',undefined,new ProxyGateway('https://gateway.test',async()=> 'token'));const parts=[];
  const run=async(effort,messages)=>{const request=resolveEffort(index,spec.id,{preferences:{[spec.id]:effort},sourceByModel:{}});await provider.provideLanguageModelChatResponse(spec.id,messages,{}, {report(p){parts.push(p);}},cancellation().token,{},request.spec,request);};
  await run('high',userMessage());const call=parts.find(p=>p instanceof ToolCallPart);

@@ -1,11 +1,11 @@
 import * as vscode from "vscode";
-import { EffortError, EffortPreference, EffortPreferenceSnapshot, snapshot } from "./EffortTypes";
+import { EffortError, EffortPreferenceSnapshot, snapshot } from "./EffortTypes";
 
 const KEY = "thinkingEffortByModel";
 function object(value: unknown): Record<string, unknown> {
   if (value === undefined) { return {}; }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new EffortError("invalid-preference", "vertexAiChat.thinkingEffortByModel must be an object keyed by canonical model ID.");
+    throw new EffortError("invalid-preference", "vertexAiChat.thinkingEffortByModel must be an object keyed by model ID.");
   }
   return value as Record<string, unknown>;
 }
@@ -28,7 +28,7 @@ export function defaultEffortTarget(id: string): vscode.ConfigurationTarget {
 export function hasWorkspace(): boolean { return Boolean(vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.length); }
 
 let writes: Promise<void> = Promise.resolve();
-export function writeEffortPreference(id: string, value: EffortPreference | undefined, target: vscode.ConfigurationTarget, validate: () => void = () => {}): Promise<void> {
+export function writeEffortPreference(id: string, value: string | undefined, target: vscode.ConfigurationTarget, validate: () => void = () => {}): Promise<void> {
   const write = writes.catch(() => {}).then(async () => {
     validate();
     if (target !== vscode.ConfigurationTarget.Global && (target !== vscode.ConfigurationTarget.Workspace || !hasWorkspace())) {

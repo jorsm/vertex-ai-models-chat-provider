@@ -27,11 +27,12 @@ exports.run=async()=>{
   assert.equal(config.inspect('thinkingEffortByModel').workspaceValue['claude-opus-5-5'],'high');
   await d.provideLanguageModelChatResponse({id:'claude-opus-5-5'},[],{}, {report(){}},cancellation.token);
   await d.infer('claude-opus-5-5',[],{}, {report(){}},cancellation.token);
-  await assert.rejects(d.infer('claude-opus-5-5-max',[],{}, {report(){}},cancellation.token),/Model not available/);
-  assert.deepEqual(captured.map(r=>r.effort.value),['high','provider-default']);record('Public provider snapshot, internal default and removed alias rejection');
+  assert.deepEqual(captured.map(r=>r.effort.value),['high','medium']);record('Public provider snapshot and named catalog default');
   assert.equal((await d.provideLanguageModelChatInformation({},cancellation.token)).length,15);
   record('Only canonical models advertised in desktop extension host');
-  const quick=vscode.window.createQuickPick();quick.title='Thinking Effort fixture';quick.items=[{label:'High'},{label:'Max'}];quick.activeItems=[quick.items[1]];quick.show();assert.equal(quick.activeItems[0].label,'Max');quick.hide();quick.dispose();record('Stable createQuickPick contract with activeItems');
+  const quick=vscode.window.createQuickPick();quick.title='Thinking Effort fixture';quick.items=[{label:'Medium',description:'Default',value:'medium'},{label:'High',value:'high'},{label:'Max',value:'max'}];quick.activeItems=[quick.items[0]];quick.show();assert.equal(quick.activeItems[0].label,'Medium');assert.equal(quick.activeItems[0].description,'Default');quick.hide();quick.dispose();record('Stable QuickPick named default with secondary description and activeItems');
+  await writeEffortPreference('claude-opus-5-5','medium',vscode.ConfigurationTarget.Workspace);
+  assert.equal(captureEffortPreferences().preferences['claude-opus-5-5'],'medium');record('Named Workspace default overrides User value');
   await writeEffortPreference('claude-opus-5-5',undefined,vscode.ConfigurationTarget.Workspace);
   assert.equal(captureEffortPreferences().preferences['claude-opus-5-5'],'max');record('Workspace removal reveals real User value');
   assert.equal(records.length,2);d.dispose();

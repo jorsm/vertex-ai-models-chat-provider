@@ -4,7 +4,7 @@ Prepared on **8 October 2026** for an AI agent continuing work on `vertex-ai-mod
 
 ## 1. Goal and user preferences
 
-The extension contributes models through `vscode.LanguageModelChatProvider` to VS Code's existing Chat UI. Effort is currently encoded in model aliases such as `claude-opus-5-5-high`, `claude-opus-5-5-max`, and `gemini-3.8-flash-high`. The user wants to select a real model separately from its thinking/reasoning configuration. Mixing these two dimensions makes the model picker cumbersome and multiplies catalog and routing complexity.
+The extension contributes models through `vscode.LanguageModelChatProvider` to VS Code's existing Chat UI. Model identity is separate from thinking/reasoning configuration. The supported implementation uses named per-model preferences and catalog defaults; see the [current contract](thinking-effort-implementation-plan.md).
 
 The desired outcome is one model identity with an independently selected, persisted effort preference. The extension must receive that preference and translate it into the correct backend request. A visible dropdown alone does not establish that the selected effort reaches inference.
 
@@ -29,17 +29,17 @@ Current code references, with symbol names to survive line-number changes:
 | --- | --- |
 | [package.json](../package.json) | `contributes.languageModelChatProviders` registers vendor `google-vertex`; provider-level configuration points to the Refresh Models management command. It does not declare an effort setting. The engine floor and `@types/vscode` dependency are `^1.110.0`. |
 | [src/extension.ts](../src/extension.ts) | `activate()` registers `vscode.lm.registerLanguageModelChatProvider("google-vertex", provider)`, currently around line 61. No effort-preview commands are registered in this checkout. |
-| [src/models.json](../src/models.json) | Bundled catalog, currently with local modifications. Contains separate effort aliases. Examples begin at lines 4/23/42 for Opus 5.5, 424/443 for Gemini 3.8 Flash, and 564/590/616 for Grok 4.6. |
+| [src/models.json](../src/models.json) | Bundled model definitions, each with a literal backend version and optional named effort choices/default. |
 | [src/VertexChatModelDispatcher.ts](../src/VertexChatModelDispatcher.ts) | `mapModels()` around line 407 creates one Chat model per catalog entry. `provideLanguageModelChatResponse()` around line 513 calls `infer()`, and `inferWithLabels()` around line 620 resolves the selected catalog entry and provider. |
-| [src/providers/ClaudeThinking.ts](../src/providers/ClaudeThinking.ts) | `resolveClaudeModelId()` around line 21 strips effort suffixes and constructs adaptive thinking plus `output_config.effort`. It recognizes `low`, `medium`, `high`, `xhigh`, and `max`. |
+| [src/providers/ClaudeThinking.ts](../src/providers/ClaudeThinking.ts) | Builds adaptive-thinking request configuration and preserves signed thinking content across tool continuations. |
 | [src/providers/VertexAnthropicProvider.ts](../src/providers/VertexAnthropicProvider.ts) | Around lines 101/134, resolves `spec?.version ?? modelId` and spreads the resulting effort configuration into the Anthropic request. Also owns signed thinking replay behavior that must remain intact. |
 | [src/providers/VertexGoogleProvider.ts](../src/providers/VertexGoogleProvider.ts) | `resolveModelId()` around line 112 maps `-high` to `thinkingConfig.thinkingLevel = "HIGH"`. Inference resolves `spec?.version ?? modelId` around line 479. |
-| [src/providers/VertexGrokProvider.ts](../src/providers/VertexGrokProvider.ts) | `resolveGrok46()` around line 42 and request construction around line 257 map supported aliases to `reasoning_effort`. Its inference path currently resolves the supplied `modelId`; do not assume every provider uses `spec.version` identically. |
+| [src/providers/VertexGrokProvider.ts](../src/providers/VertexGrokProvider.ts) | Maps independent effort to `reasoning_effort` and uses the literal catalog version. |
 | [src/ModelCatalogResolver.ts](../src/ModelCatalogResolver.ts) | Custom workspace/user catalogs can replace the bundled catalog. In proxy mode, the server-provided catalog is authoritative, including an empty catalog. |
 | [src/CostStatusBar.ts](../src/CostStatusBar.ts) | Existing cost item, created around line 21. Illustrates a supported, dynamically updateable status bar surface. |
 | [src/DashboardWebview.ts](../src/DashboardWebview.ts) | Existing editor-area webview, created around line 20, with message handling around line 39. Illustrates a surface where the extension controls HTML and receives UI events. |
 
-The dispatcher already groups discovery by vendor and resolved backend model, using `getDiscoveryModelId(model.version)` around lines 286–325. Availability probes are shared by aliases. Removing duplicate model identities is therefore principally a model-selection/configuration problem; it does not require recreating discovery grouping.
+The dispatcher groups discovery by vendor and literal catalog backend version. Entries sharing that version share availability without changing inference effort.
 
 ## 3. Supported UI extension versus HTML injection
 
@@ -208,7 +208,6 @@ There is no supported setter to mutate a manifest-contributed command's title/ic
 | Extension Settings UI | Persisted user/workspace preferences, without adding a toolbar item. | Away from Chat; per-model maps may need JSON or a custom command; changing settings does not automatically modify requests. | Available stable contribution mechanism; not implemented for effort. |
 | Dedicated TreeView in a sidebar/view container | Native extension-controlled model rows and configuration commands. | A second model-management surface and layout cost for a small preference. | Supported alternative, not prototyped. |
 | Webview view/panel or configuration section in the existing dashboard | Full dropdown/text layout and an explicit message channel to the extension. | Navigation/layout overhead; active Chat model association and request integration remain extension responsibilities. | Existing dashboard demonstrates the mechanism; effort UI not implemented. |
-| Existing effort model aliases | Already drives backend request configuration through the catalog. | Keeps mixing model identity and configuration, multiplying entries and user choices. | Current implementation inspected. |
 | Workbench HTML/CSS injection or Copilot/workbench patching | Potentially arbitrary placement/presentation. | Outside the supported extension boundary, coupled to host internals and distribution/update behavior. | Not implemented or verified. |
 
 The supported surfaces are documented in [contribution points](https://code.visualstudio.com/api/references/contribution-points), [QuickPick guidance](https://code.visualstudio.com/api/ux-guidelines/quick-picks), [status bar guidance](https://code.visualstudio.com/api/ux-guidelines/status-bar), [TreeView API](https://code.visualstudio.com/api/extension-guides/tree-view), and [Webview API](https://code.visualstudio.com/api/extension-guides/webview).
@@ -236,7 +235,7 @@ Implementation decisions that remain open:
 2. **Model association:** a header command cannot assume it knows the currently selected Chat model. A model-choice step or a labeled extension-wide default is safer than inferring from the active text editor or an undocumented context key.
 3. **Default semantics:** decide whether Default means omission of backend parameters, a catalog default, or an extension default. Omission and explicit Medium/High are not interchangeable for every model.
 4. **Allowed values:** the dummy five-item picker was not a capability matrix. The code recognizes Claude `xhigh` too; Grok and Gemini have different mappings. Verify each backend/model's currently supported controls before applying a universal enum.
-5. **Precedence and migration:** define precedence between a saved setting, future native `modelConfiguration`, and an explicitly chosen legacy alias. Preserve existing custom catalogs, model IDs, commit-model settings, and attribution while migrating.
+5. **Precedence:** saved Workspace levels override User levels; otherwise use the named catalog default. Model identity and attribution remain independent.
 6. **Request consistency:** snapshot the choice at request start so changing a setting does not alter an in-flight request. Decide whether non-Chat consumers such as commit-message generation inherit the same preference.
 7. **Direct/proxy parity:** the same effective configuration must reach native requests routed through the proxy, while preserving the server's authoritative catalog and restrictions. A local UI value must not invent access to a backend model/effort combination.
 8. **Backend correctness:** retain Claude signed thinking/tool-continuation replay; avoid applying a Gemini thinking-level field to a model requiring another control; validate Grok effort mapping against its supported route.
@@ -267,9 +266,9 @@ Once functional implementation is authorized:
 1. Reproduce the isolated command test in current desktop Stable and Insiders, and record exact versions, extension-host location, and three-path outcomes. Check whether the forwarded argument still contains the internal widget.
 2. Recheck stable/proposed API declarations and Marketplace guidance before deciding between native configuration and extension-owned preferences. Do not silently add proposal dependencies to the publishable extension.
 3. Choose the state scope and precedence, then use the working header/Palette path as the small stable implementation candidate if the native hook remains unsuitable.
-4. Connect the preference to provider request construction, preserving legacy aliases during migration and supported direct/proxy paths.
+4. Connect the preference to provider request construction, using literal backend versions and the supported direct/proxy paths.
 5. Verify actual backend payload configuration, not only picker rendering, command registration, or a changed label.
 
-Meaningful acceptance checks include: a choice persists and is reapplied with the documented scope; canceling leaves it unchanged; unsupported combinations are handled deliberately; the default and legacy-alias precedence is unambiguous; the request contains the intended provider-specific fields; concurrent/in-flight requests keep their starting configuration; custom/proxy catalogs and commit-message consumers follow the documented semantics. Any live cloud tests should be reported separately from local/static checks.
+Meaningful acceptance checks include: a choice persists and is reapplied with the documented scope; canceling leaves it unchanged; unsupported combinations are handled deliberately; the named catalog default and saved preference precedence are unambiguous; the request contains the intended provider-specific fields; concurrent/in-flight requests keep their starting configuration; custom/proxy catalogs and commit-message consumers follow the documented semantics. Any live cloud tests should be reported separately from local/static checks.
 
 All upstream source links in this handoff are pinned to a checked commit. Use their symbol names to locate moved code when reviewing another version. The live browser reproduction is historical evidence; current source checks and design recommendations are explicitly distinguished from newly tested behavior.

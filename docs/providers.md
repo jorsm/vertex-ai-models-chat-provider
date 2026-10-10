@@ -9,14 +9,12 @@
 - [API Reference](#api-reference)
     - [VertexAnthropicProvider](#vertexanthropicprovider)
         - [initialize](#initialize)
-        - [getDiscoveryModelId](#getdiscoverymodelid)
         - [setLabels](#setlabels)
         - [pingModel](#pingmodel)
         - [provideTokenCount](#providetokencount)
         - [provideLanguageModelChatResponse](#providelanguagemodelchatresponse)
     - [VertexGoogleProvider](#vertexgoogleprovider)
         - [initialize](#initialize-1)
-        - [getDiscoveryModelId](#getdiscoverymodelid-1)
         - [setLabels](#setlabels-1)
         - [pingModel](#pingmodel-1)
         - [provideTokenCount](#providetokencount-1)
@@ -25,7 +23,6 @@
         - [provideLanguageModelChatResponse](#providelanguagemodelchatresponse-1)
     - [VertexGrokProvider](#vertexgrokprovider)
         - [initialize](#initialize-2)
-        - [getDiscoveryModelId](#getdiscoverymodelid-2)
         - [setCatalogResolver](#setcatalogresolver)
         - [setLabels](#setlabels-2)
         - [pingModel](#pingmodel-2)
@@ -38,12 +35,12 @@
 ## Core Concepts
 The provider architecture uses a unified `VertexModelProvider` interface to support multiple model families. 
 
-Each provider implements `getDiscoveryModelId(modelVersion)` using its inference alias resolver. The dispatcher groups catalog entries by vendor and resolved backend model, then schedules one discovery operation per group in each region, with at most three concurrent endpoints and staggered starts. Each operation calls `pingModel()` and retries transient failures up to three times with jitter within the configured endpoint deadline. A 429 response preserves reachability even if the retry budget or deadline is exhausted. Pings receive the resolved model ID and omit effort parameters. All entries in a group share availability, while actual chat requests still use the selected entry's effort. This also supports custom catalogs containing only effort variants.
+The dispatcher groups models by vendor and literal catalog `version`, then schedules one discovery operation per backend in each region, with at most three concurrent endpoints and staggered starts. Each operation calls `pingModel()` without effort settings and retries transient failures within the endpoint deadline. A 429 preserves reachability. Entries sharing the same vendor/version share availability; each request resolves its effort independently.
 
 - **Google Gemini Integration**: Managed by `VertexGoogleProvider`, supporting Gemini 3 Flash Preview, Gemini 3.7 and 3.8 Flash, and Gemini 3.1 Pro Preview.
 - **Anthropic Claude Integration**: Managed by `VertexAnthropicProvider`, supporting Claude Opus, Fable, Sonnet, and Haiku variants from the active model catalog.
 - **xAI Grok Integration**: Managed by `VertexGrokProvider`, providing access to Grok 4.6 at High (Default), Low, and Medium effort through Vertex AI's OpenAI-compatible endpoint.
-- **Thinking Models**: Bundled models use independent effort configuration: Gemini sends `thinkingConfig.thinkingLevel` and Claude sends adaptive thinking with `output_config.effort`. Fixed-effort variants are excluded from model selectors.
+- **Thinking Models**: Bundled models use independent effort configuration: Gemini sends `thinkingConfig.thinkingLevel` and Claude sends adaptive thinking with `output_config.effort`.
 - **Thought Signatures**: Provider-specific mechanisms maintain reasoning continuity across tool calls by caching and re-injecting Gemini signatures or Claude signed thinking/redacted-thinking blocks.
 - **Parallel Tool Execution**: Implementation of tool call buffering and message merging to satisfy Gemini's requirements for grouped function responses.
 - **Prompt Caching (Ephemeral)**: Automated caching strategy for Anthropic models to reduce latency and costs for long conversations by marking system prompts, tools, and long conversation histories for ephemeral caching.
@@ -61,12 +58,6 @@ The `VertexAnthropicProvider` class implements the `VertexModelProvider` interfa
 `initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void`
 
 Sets the GCP Project ID and regional endpoint for the Anthropic Vertex client. If provided, `authOptions` are used to configure the underlying `GoogleAuth` instance with the necessary cloud-platform scopes. If a `gateway` is provided, the client is configured to route all requests through the proxy URL using the gateway's authentication client and fetch implementation, disabling SDK-level retries in favor of the shared provider retry logic.
-
-#### getDiscoveryModelId
-[source](../src/providers/VertexAnthropicProvider.ts)
-`getDiscoveryModelId(modelVersion: string): string`
-
-Resolves a catalog model version string (which may include effort suffixes) to its actual backend model ID. For Anthropic models, this strips effort aliases (e.g., `-max`) to identify the underlying endpoint used for reachability probes.
 
 #### setLabels
 [source](../src/providers/VertexAnthropicProvider.ts)
@@ -100,7 +91,7 @@ Handles chat inference for Anthropic models. This method:
 5. Manages streaming responses, reporting text deltas and tool call progress to VS Code after parsing partial JSON tool inputs. Signed `thinking`, `signature_delta`, and `redacted_thinking` data remains hidden, but complete content-block sequences are retained in a bounded in-memory cache and restored unchanged when VS Code returns tool results. Models that emit no thinking blocks use the same stream path without creating replay state.
 6. Captures and returns detailed usage statistics, including `input`, `output`, `cache_read`, and `cache_create` token metrics. It also reports these statistics back to VS Code via a `LanguageModelDataPart` (MIME type `usage`) containing `prompt_tokens`, `completion_tokens`, `total_tokens`, and `cached_tokens` to update the native Copilot Chat usage indicator.
 7. Attaches metadata labels (provided via the `labels` parameter or the provider's internal state) through `X-Vertex-AI-Labels`, enabling Google Cloud Billing attribution for Anthropic PayGo requests. The SDK request options preserve this custom header.
-8. Resolves recognized effort suffixes to the underlying Vertex model ID and sends adaptive thinking with `display: "omitted"`. Availability probes include the same configuration so unsupported custom model/effort combinations are filtered out.
+8. Uses the literal catalog version and sends the selected effort with adaptive thinking and `display: "omitted"`. Availability probes omit effort settings.
 
 ### VertexGoogleProvider
 [source](../src/providers/VertexGoogleProvider.ts)
@@ -112,12 +103,6 @@ The `VertexGoogleProvider` class implements the `VertexModelProvider` interface 
 
 Sets the GCP Project ID and regional endpoint (e.g., `us-central1`) for the provider. It also initiates a dynamic schema discovery process to fetch the latest supported OpenAPI 3.0 schema keys from the Vertex AI Discovery API, ensuring tool definitions remain compatible with API updates. If provided, `authOptions` are stored and passed to the `GoogleGenAI` client during lazy initialization. When initialized with a `gateway`, the provider configures the Gen AI client to route requests through the proxy gateway and skips direct schema discovery.
 
-#### getDiscoveryModelId
-[source](../src/providers/VertexGoogleProvider.ts)
-`getDiscoveryModelId(modelVersion: string): string`
-
-Resolves the requested VS Code model ID to the actual Vertex AI endpoint name. For Gemini models, this strips thinking aliases (e.g., `-high`) to ensure discovery pings target the base model endpoint.
-
 #### setLabels
 [source](../src/providers/VertexGoogleProvider.ts)
 `setLabels(labels: Record<string, string>): void`
@@ -128,7 +113,7 @@ Configures the provider with a set of labels to be attached to Gemini generation
 [source](../src/providers/VertexGoogleProvider.ts)
 `pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean>`
 
-Attempts a minimal request to the specified model ID to verify availability and permissions in the current GCP project using the provided `DiscoveryProbeOptions`. The dispatcher supplies the backend model ID resolved by `getDiscoveryModelId()`. The ping omits thinking settings and surfaces transient failures as `DiscoveryRetryableError` for the shared retry policy.
+Attempts a minimal request to the specified model ID to verify availability and permissions in the current GCP project using the provided `DiscoveryProbeOptions`. The dispatcher supplies the literal catalog backend version. The ping omits thinking settings and surfaces transient failures as `DiscoveryRetryableError` for the shared retry policy.
 
 #### provideTokenCount
 [source](../src/providers/VertexGoogleProvider.ts)
@@ -140,7 +125,7 @@ Provides a rough estimation of token usage. For text or message objects, it comp
 [source](../src/providers/VertexGoogleProvider.ts)
 `isLeakedReasoningHeader(text: string, modelId: string, actualId: string): boolean`
 
-Detects if a given text segment is the starting chunk of a leaked reasoning block (e.g., `gemini-3.5-flash-high\5R+S41tN...`). It checks if the text starts with the configured or resolved model ID followed by a path separator.
+Detects if a given text segment is the starting chunk of a leaked reasoning block (e.g., `gemini-3.5-flash\5R+S41tN...`). It checks if the text starts with the configured or resolved model ID followed by a path separator.
 
 #### stripLeakedReasoningHeader
 [source](../src/providers/VertexGoogleProvider.ts)
@@ -174,12 +159,6 @@ The `VertexGrokProvider` class implements the `VertexModelProvider` interface sp
 
 Sets the GCP Project ID and regional endpoint. It configures the OpenAI SDK to use the Vertex AI OpenAI-compatible `baseURL`. It supports standard Application Default Credentials and Service Account credentials imported into VS Code `SecretStorage`; legacy workspace configurations that link a key file remain readable. The provider dynamically respects the project ID from active VS Code settings to support workspace-specific billing. A supplied gateway marks proxy mode; discovery probes, inference, and direct-client creation then fail with an explicit unsupported-transport error. Reinitializing without a gateway restores direct mode.
 
-#### getDiscoveryModelId
-[source](../src/providers/VertexGrokProvider.ts)
-`getDiscoveryModelId(modelVersion: string): string`
-
-Resolves a catalog model version string (which may include effort suffixes like `-low`, `-medium`, or `-high`) to its actual backend model ID (`xai/grok-4.6`). This ensures discovery pings target the correct endpoint.
-
 #### setCatalogResolver
 [source](../src/providers/VertexGrokProvider.ts)
 `setCatalogResolver(resolver: ModelCatalogResolver): void`
@@ -211,7 +190,7 @@ Estimates token usage using a 4-characters-per-token heuristic.
 Handles Grok 4.6 chat inference using an OpenAI client. This method:
 1. Maps VS Code messages to OpenAI chat completion parameters. It supports `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart` (transformed into discrete `tool` role messages), and `LanguageModelDataPart` (including base64 image conversion or UTF-8 decoding for other data types).
 2. Looks up the output budget from the provided `spec` or the effective model catalog and requests streaming usage.
-3. Resolves Low, Medium, and High aliases to the base Grok 4.6 path and sends `reasoning_effort`; other model families are rejected.
+3. Uses the literal catalog backend path and sends the selected `reasoning_effort`.
 4. Preserves a leading system prompt and inserts a placeholder user turn only if the first conversation turn is missing or is not a user turn.
 5. Executes requests using a retry mechanism to handle transient failures.
 6. Streams final text and accumulates incremental tool call deltas until `finish_reason` is received. It implements a custom stream transformer to filter out malformed `data: : keepalive` heartbeat events occasionally sent by the Vertex Grok endpoint, which are not valid JSON and would otherwise cause the OpenAI SDK parser to fail.
@@ -220,10 +199,10 @@ Handles Grok 4.6 chat inference using an OpenAI client. This method:
 ## Examples
 ## Effort policy and internal request context
 
-`ModelSpec` optionally declares `effort: { kind, values, default }`. Incoming catalogs may still declare `legacyEffortAliases: [{ id, displayName, version, effort }]`, which are validated but never expanded into selectable models; the bundled catalog has no alias definitions. The [JSON schema](../schemas/models.schema.json) supplies editing validation; `EffortCatalog` additionally validates defaults against allowed values, vendor/mode/family restrictions, global identity uniqueness and exact alias backend/effort equivalence. A configurable canonical version must be unsuffixed. A malformed definition in a readable local catalog is quarantined and reported, with that catalog remaining authoritative; existing invalid JSON/root-shape fallback behavior remains. Proxy catalogs fail as a whole.
+`ModelSpec` optionally declares `effort: { values, default }`. Values are unique, nonempty strings; the named default must belong to that list. The [schema](../schemas/models.schema.json) supplies editing validation and `EffortCatalog` checks those basic rules and unique model IDs. Backend APIs decide which model/effort combinations they support. A malformed definition in a readable local catalog is excluded and reported while that catalog remains authoritative. Invalid JSON/root-shape fallback behavior is unchanged; proxy catalogs fail as a whole.
 
-All adapters now accept optional `request?: ResolvedModelRequest` after `spec`. It carries requested/canonical/backend identity and a deeply frozen resolved policy/spec/price snapshot. With explicit policy, Claude sends `output_config.effort` and compatible adaptive thinking; Google maps to `thinkingConfig.thinkingLevel`; Grok sets `reasoning_effort` for the direct Vertex route's supported levels. `provider-default` omits those overrides and never sends disabled thinking. Without policy/context, legacy version suffix behavior remains supported.
+Adapters accept `request?: ResolvedModelRequest` after `spec`, carrying a frozen spec/price snapshot and optional effort. They use `spec.version` literally: Claude sends adaptive thinking plus `output_config.effort`, Google sends `thinkingConfig.thinkingLevel`, and Grok sends `reasoning_effort`. Calls without a request snapshot use the supplied spec's named default. A model without effort metadata sends no override.
 
-Grok resolves `spec.version`, strips supported legacy suffixes and separates the `grok-4.6` lookup key from its `xai/grok-4.6` path. A custom UI ID is valid only when present in the dispatcher's authoritative catalog; unknown backend versions and unsupported suffixes fail. Proxy transport is rejected before a direct client is constructed.
+Custom model IDs and backend names are independent. Grok backend paths, including the `xai/` namespace, are specified in the catalog rather than inferred. Grok proxy transport remains unsupported and fails before creating a direct client. API errors are surfaced without selecting a different model or effort.
 
-The initial bundled policies preserve only formerly offered named choices. A wider SDK enum does not widen catalog permissions. Sonnet/Haiku's new canonical IDs use High/Medium catalog defaults. Signed Claude blocks and Gemini thought signatures remain on continuation payloads when effort changes between invocations, as verified in local serialized transport fixtures. Live Vertex acceptance and a deployed proxy's enforcement remain separate checks in [verification](thinking-effort-verification.md).
+The bundle keeps its existing explicit choices and adds each documented default where necessary. Signed Claude blocks and Gemini thought signatures remain on tool-continuation payloads, and retries retain their invocation's snapshot. See [verification](thinking-effort-verification.md) for local and live evidence.

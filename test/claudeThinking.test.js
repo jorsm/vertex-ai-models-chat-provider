@@ -1,20 +1,12 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix, resolveClaudeModelId } = require("../out/providers/ClaudeThinking.js");
+const { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix, claudeEffortConfig } = require("../out/providers/ClaudeThinking.js");
 
-test("resolves every supported Claude effort suffix for custom catalogs", () => {
-  for (const effort of ["low", "medium", "high", "xhigh", "max"]) {
-    assert.deepEqual(resolveClaudeModelId(`claude-custom@20260901-${effort}`), {
-      actualId: "claude-custom@20260901",
-      effort,
-      requestConfig: {
-        thinking: { type: "adaptive", display: "omitted" },
-        output_config: { effort },
-      },
-    });
-  }
-
-  assert.deepEqual(resolveClaudeModelId("claude-custom-ultra"), { actualId: "claude-custom-ultra" });
+test("maps a catalog effort to Claude request configuration without changing its value", () => {
+  assert.deepEqual(claudeEffortConfig("custom-effort"), {
+    thinking: { type: "adaptive", display: "omitted" },
+    output_config: { effort: "custom-effort" },
+  });
 });
 
 test("reassembles signed and redacted thinking blocks without exposing them as output", () => {

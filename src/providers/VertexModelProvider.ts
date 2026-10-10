@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { DiscoveryProbeOptions } from "../utils/discovery";
 import type { ProxyGateway } from "../ProxyGateway";
-import type { ModelEffortSpec, LegacyEffortAlias, ResolvedModelRequest } from "../effort/EffortTypes";
+import type { ModelEffortSpec, ResolvedModelRequest } from "../effort/EffortTypes";
 
 export interface ModelUsageTokens {
   input: number;
@@ -26,7 +26,6 @@ export interface ChatInferenceResult {
 
 export interface ModelSpec {
   effort?: ModelEffortSpec;
-  legacyEffortAliases?: readonly LegacyEffortAlias[];
   id: string;
   vendor: string;
   displayName: string;
@@ -69,9 +68,6 @@ export interface VertexModelProvider {
 
   /** Update labels to be sent with every request */
   setLabels(labels: Record<string, string>): void;
-
-  /** Resolve a catalog version to its backend model, excluding effort aliases. */
-  getDiscoveryModelId(modelVersion: string): string;
 
   /** Ping without effort parameters; transient failures throw DiscoveryRetryableError. */
   pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean>;

@@ -82,7 +82,7 @@ test("Grok 4.6 request sends image parts and asks for streaming usage", async ()
   assert.equal(request.max_tokens, spec.maxOutputTokens);
   assert.equal(request.stream, true);
   assert.deepEqual(request.stream_options, { include_usage: true });
-  assert.equal(Object.hasOwn(request, "reasoning_effort"), false);
+  assert.equal(request.reasoning_effort, "high");
   assert.deepEqual(request.messages[0].content, [
     { type: "text", text: "Describe this" },
     { type: "image_url", image_url: { url: "data:image/png;base64,AQID" } },
@@ -137,45 +137,29 @@ test("Grok discovery and inference use the catalog-selected region without a reg
   assert.ok(h.requests.every((request) => request.model === spec.version));
 });
 
-test("removed non-Grok models are absent and cannot be discovered or invoked", async () => {
+test("Grok custom backends use their exact catalog path for discovery and inference", async () => {
   const h = harness();
-  assert.deepEqual(new EffortCatalog(catalog.candidateModels).project().filter((model) => model.vendor === "grok").map((model) => model.id),
-    ["grok-4.6"]);
-  for (const [id, version] of [
-    ["qwen3-coder-480b", "qwen/qwen3-coder-480b-a35b-instruct-maas"],
-    ["deepseek-v3.2", "deepseek-ai/deepseek-v3.2-maas"],
-    ["kimi-k2-thinking", "moonshotai/kimi-k2-thinking-maas"],
-    ["grok-4.2-reasoning", "xai/grok-4.20-reasoning"],
-  ]) {
-    assert.equal(await h.provider.pingModel(version), false);
-    await assert.rejects(h.provider.provideLanguageModelChatResponse(id, [], {}, h.progress, token, undefined, { ...spec, id, version }), /Unknown Grok model/);
-  }
-  assert.equal(h.requests.length, 0);
+  const custom = { ...spec, id: "company-model", version: "xai/company-reasoner-high" };
+  assert.equal(await h.provider.pingModel(custom.version), true);
+  await h.provider.provideLanguageModelChatResponse(custom.id, [user([new TextPart("hi")])], {}, h.progress, token, undefined, custom);
+  assert(h.requests.every(request => request.model === custom.version));
 });
 
 test("Grok 4.6 inference uses effort while discovery probes only the endpoint", async () => {
   for (const effort of ["low", "medium", "high"]) {
     const h = harness();
-    const alias = { ...spec, id: `${spec.id}-${effort}`, version: `${spec.version}-${effort}` };
-    await h.provider.provideLanguageModelChatResponse(alias.id, [user([new TextPart("hi")])], {}, h.progress, token, undefined, alias);
+    const model = { ...spec, effort: { values: [effort], default: effort } };
+    await h.provider.provideLanguageModelChatResponse(model.id, [user([new TextPart("hi")])], {}, h.progress, token, undefined, model);
     assert.equal(h.requests[0].model, "xai/grok-4.6");
     assert.equal(h.requests[0].reasoning_effort, effort);
-    assert.equal(await h.provider.pingModel(h.provider.getDiscoveryModelId(alias.version)), true);
+    assert.equal(await h.provider.pingModel(spec.version), true);
     assert.equal(h.requests[1].model, "xai/grok-4.6");
     assert.equal(Object.hasOwn(h.requests[1], "reasoning_effort"), false);
     h.provider.initialize("test-project", "europe-west1");
-    assert.equal(await h.provider.pingModel(h.provider.getDiscoveryModelId(alias.version)), true);
+    assert.equal(await h.provider.pingModel(spec.version), true);
     assert.equal(h.requests.length, 3);
     assert.equal(Object.hasOwn(h.requests[2], "reasoning_effort"), false);
   }
-});
-
-test("unsupported effort aliases fail before making an inference request", async () => {
-  const h = harness();
-  for (const id of ["grok-4.6-xhigh", "grok-4.6-max", "grok-4.6-none", "grok-4.2-reasoning-high", "deepseek-v3.2-high"]) {
-    await assert.rejects(h.provider.provideLanguageModelChatResponse(id, [], {}, h.progress, token, undefined, { ...spec, id, version: id }), /Unknown Grok model/);
-  }
-  assert.equal(h.requests.length, 0);
 });
 
 test("Grok keeps the system prompt first without inserting a spurious user message", async () => {
@@ -262,10 +246,6 @@ test("live Grok 4.6 endpoint discovery", { skip: !process.env.GROK46_LIVE_PROJEC
   const h = harness();
   delete h.provider.getClient;
   h.provider.initialize(process.env.GROK46_LIVE_PROJECT, "global");
-  for (const effort of ["low", "medium", "high"]) {
-    const alias = { ...spec, version: `${spec.version}-${effort}` };
-    assert.equal(h.provider.getDiscoveryModelId(alias.version), spec.version);
-  }
   const { probeWithRetries } = require("../out/utils/discovery.js");
   assert.equal(await probeWithRetries((options) => h.provider.pingModel(spec.version, options),
     new AbortController().signal, () => {}, 45_000, () => {}), true, "endpoint discovery failed");

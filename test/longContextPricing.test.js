@@ -51,13 +51,13 @@ test("keeps the flat rate for models without a long-context price", async () => 
   assert.equal(cost, 0.278);
 });
 
-test('historical usage keeps its recorded prices after alias removal and new entries append without rewriting',async(t)=>{
+test('historical usage keeps its recorded prices after catalog changes and new entries append without rewriting',async(t)=>{
  const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'vertex-effort-usage-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
  const models=require('../src/models.json').candidateModels;
  const tracker=new UsageTrackerService({globalStorageUri:{fsPath:dir}},{getEffectiveCatalog:async()=>({candidateModels:models})});
  const tokens={input:100,output:50,cache_read:0,cache_create:0,characters:{}};
- await tracker.recordUsage('claude-opus-5-5-high',tokens,models[0].pricing);
+ await tracker.recordUsage('historical-model',tokens,models[0].pricing);
  const filename=(await fs.readdir(path.join(dir,'usage_logs')))[0];
  const logFile=path.join(dir,'usage_logs',filename);const historical=await fs.readFile(logFile,'utf8');
  await tracker.recordUsage('claude-opus-5-5',tokens,models[0].pricing);

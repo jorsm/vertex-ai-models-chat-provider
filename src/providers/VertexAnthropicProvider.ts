@@ -5,7 +5,7 @@ import { Logger } from "../utils/Logger";
 import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryableError } from "../utils/discovery";
 import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
-import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix, resolveClaudeModelId, claudeEffortConfig, ClaudeEffort } from "./ClaudeThinking";
+import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix, claudeEffortConfig } from "./ClaudeThinking";
 import type { ResolvedModelRequest } from "../effort/EffortTypes";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 import { ProxyGateway, isGatewayRetryable, normalizeGatewayError, gatewayRetryDelayMs } from "../ProxyGateway";
@@ -47,10 +47,6 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
   setLabels(labels: Record<string, string>): void {
     this.labels = labels;
-  }
-
-  getDiscoveryModelId(modelVersion: string): string {
-    return resolveClaudeModelId(modelVersion).actualId;
   }
 
   async pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean> {
@@ -102,9 +98,8 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     const replayCache = this.thinkingReplayCache;
     const gateway = this.gateway;
     const cancellation = requestCancellation(token, gateway?.signal);
-    const legacy = resolveClaudeModelId(spec?.version ?? modelId);
-    const actualId = request?.effort ? request.backendModelId : legacy.actualId;
-    const effort = request?.effort ? (request.effort.value === "provider-default" ? undefined : request.effort.value as ClaudeEffort) : legacy.effort;
+    const actualId = request?.spec.version ?? spec?.version ?? modelId;
+    const effort = request?.effort?.value ?? spec?.effort?.default;
     const requestConfig = effort ? claudeEffortConfig(effort) : undefined;
     this.logger.log(`▶ Anthropic Plugin provideLanguageModelChatResponse called — requested: ${modelId} -> executed: ${actualId}${effort ? ` (${effort} effort)` : ""}, region: ${this.region}, messages: ${messages.length}`);
 

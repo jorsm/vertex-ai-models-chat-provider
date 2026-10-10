@@ -53,7 +53,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   private indexedModels?: ModelSpec[];
   private currentEffortCatalog(): EffortCatalog {
     if (!this.catalogIndex || this.indexedModels !== this.availableModels) {
-      this.catalogIndex = new EffortCatalog(this.availableModels, this.getProxyUrl() ? "proxy" : "direct");
+      this.catalogIndex = new EffortCatalog(this.availableModels);
       this.indexedModels = this.availableModels;
     }
     return this.catalogIndex;
@@ -313,7 +313,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     this.logger.log(`Starting model discovery for project "${effectiveProjectId}"…`);
 
-    // Providers own alias resolution; group by vendor and backend model, not UI ID.
+    // Probe each distinct vendor/backend pair once, using the literal catalog version.
     const targets = new Map<string, { provider: VertexModelProvider; modelId: string; models: ModelSpec[] }>();
     for (const model of candidates) {
       const provider = this.activeProviders.get(model.vendor);
@@ -321,7 +321,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         this.logger.log(`  ⚠️  No provider registered for vendor "${model.vendor}", skipping ${model.id}`);
         continue;
       }
-      const modelId = provider.getDiscoveryModelId(model.version);
+      const modelId = model.version;
       const key = JSON.stringify([model.vendor, modelId]);
       const target = targets.get(key);
       if (target) {
@@ -446,14 +446,14 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     let preferences: EffortPreferenceSnapshot | undefined;
     let configurationError: unknown;
     try { preferences = captureEffortPreferences(); } catch (error) { configurationError = error; }
-    return catalog.project().map((m) => {
+    return catalog.models.map((m) => {
       const pricing = this.formatPricingDisplay(m.pricing);
       let effortDetail = "";
       try {
-        if (configurationError && !catalog.get(m.id)?.alias) { throw configurationError; }
+        if (configurationError) { throw configurationError; }
         const resolved = resolveEffort(catalog, m.id, preferences);
         if (resolved.effort) {
-          effortDetail = ` · Effort: ${resolved.effort.value} · ${resolved.effort.source}${resolved.effort.source === "legacy-alias" ? " (fixed legacy choice)" : ""}`;
+          effortDetail = ` · Effort: ${resolved.effort.value} · ${resolved.effort.source}`;
         }
       } catch (error) { effortDetail = ` · Invalid effort: ${error instanceof Error ? error.message : String(error)}`; }
       const info: any = {
@@ -519,7 +519,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   }
 
   async provideTokenCount(modelChatInfo: vscode.LanguageModelChatInformation, text: string | vscode.LanguageModelChatRequestMessage, token: vscode.CancellationToken): Promise<number> {
-    const spec = this.currentEffortCatalog().get(modelChatInfo.id)?.canonical;
+    const spec = this.currentEffortCatalog().get(modelChatInfo.id);
     const provider = this.activeProviders.get(spec?.vendor || "");
 
     if (provider?.provideTokenCount) {
@@ -704,7 +704,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     if (revision !== this.connectionRevision) { throw new Error("Configuration changed before inference. Refresh Models."); }
     const request = resolveEffort(this.currentEffortCatalog(), modelId, preferences);
     const spec = request.spec;
-    this.logger.log(`Request resolution: requested=${modelId}, canonical=${request.canonicalId}, backend=${request.backendModelId}, effort=${request.effort?.value ?? "legacy-version"}, source=${request.effort?.source ?? "catalog-default"}`);
+    this.logger.log(`Request resolution: model=${modelId}, backend=${spec.version}, effort=${request.effort?.value ?? "not configured"}, source=${request.effort?.source ?? "catalog"}`);
     const provider = this.activeProviders.get(spec.vendor);
     if (!provider) {
       throw new Error(`No provider is registered for vendor '${spec.vendor}' (model '${modelId}').`);

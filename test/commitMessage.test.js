@@ -144,13 +144,13 @@ for (const scope of ["user", "workspace", "folder"]) {
   });
 }
 
-test("commit generation honors a high-effort ID and a custom prompt independently of VS Code utility settings", async () => {
-  userSettings.commitMessageModel = "gemini-3-flash-preview-high";
+test("commit generation honors a custom model ID and a custom prompt independently of VS Code utility settings", async () => {
+  userSettings.commitMessageModel = "commit-company-model";
   userSettings["chat.utilitySmallModel"] = "another-provider-model";
   folderSettings.set(rootB, { commitMessagePrompt: "  My custom system prompt.  " });
   const h = inferenceHarness();
   await generateCommitMessage(h, rootB);
-  assert.equal(h.calls[0][0], "gemini-3-flash-preview-high");
+  assert.equal(h.calls[0][0], "commit-company-model");
   assert.equal(h.calls[0][1][0].content[0].value, "My custom system prompt.");
   assert.deepEqual(configurations, [["vertexAiChat", rootB]]);
 });
@@ -272,11 +272,11 @@ test("an unavailable default reports an inference error without choosing another
   assert.deepEqual(updates, []);
 });
 
-test('commit picker omits fixed-effort variants from an expanded catalog',async()=>{
- const regular={id:'claude-opus-5-5',version:'claude-opus-5-5',displayName:'Claude Opus 5.5',vendor:'anthropic',family:'claude'};
- const alias={...regular,id:'claude-opus-5-5-max',version:'claude-opus-5-5-max',displayName:'Claude Opus 5.5 (Max)'};
- const h=discoveryHarness([regular,alias]);pickerSelection=regular.id;
+test('commit picker exposes every literal catalog model, including custom backend names',async()=>{
+ const regular={id:'company-standard',version:'company-model-v1',displayName:'Company standard',vendor:'anthropic',family:'claude'};
+ const custom={...regular,id:'company-special',version:'company-model-high',displayName:'Company special'};
+ const h=discoveryHarness([regular,custom]);pickerSelection=regular.id;
  await selectCommitMessageModel(h,{rootUri:rootB});
- assert.equal(pickerCalls[0].items.length,1);assert.equal(pickerCalls[0].items[0].modelId,regular.id);
+ assert.equal(pickerCalls[0].items.length,2);
  assert.equal(updates[0].value,regular.id);assert.equal(updates[0].resource,rootB);
 });

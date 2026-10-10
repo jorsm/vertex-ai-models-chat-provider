@@ -195,4 +195,4 @@ The dashboard renders several key metrics and interactive elements:
 
 Usage records contain the timestamp, requested model ID, token/character counts, and estimated cost. Historical JSONL entries are read unchanged. The dashboard aggregates records into totals, charts, and a summary by model.
 
-Costs use the request's captured prices and returned token usage, with no effort multiplier. Declared aliases resolve their canonical rate card for fallback lookups. Failed/cancelled requests do not create successful usage records; successful inference is accounted once.
+Costs use the request's captured prices and returned token usage, with no effort multiplier. Fallback lookups use the selected catalog model's rate card. Failed/cancelled requests do not create successful usage records; successful inference is accounted once.

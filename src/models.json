@@ -19,12 +19,12 @@
         "cache_create": 5.0
       },
       "effort": {
-        "kind": "anthropic-adaptive",
         "values": [
+          "medium",
           "high",
           "max"
         ],
-        "default": "provider-default"
+        "default": "medium"
       }
     },
     {
@@ -46,11 +46,11 @@
         "cache_create": 6.25
       },
       "effort": {
-        "kind": "anthropic-adaptive",
         "values": [
+          "high",
           "max"
         ],
-        "default": "provider-default"
+        "default": "high"
       }
     },
     {
@@ -72,11 +72,11 @@
         "cache_create": 6.25
       },
       "effort": {
-        "kind": "anthropic-adaptive",
         "values": [
+          "high",
           "max"
         ],
-        "default": "provider-default"
+        "default": "high"
       }
     },
     {
@@ -98,11 +98,11 @@
         "cache_create": 12.5
       },
       "effort": {
-        "kind": "anthropic-adaptive",
         "values": [
+          "high",
           "max"
         ],
-        "default": "provider-default"
+        "default": "high"
       }
     },
     {
@@ -124,11 +124,11 @@
         "cache_create": 12.5
       },
       "effort": {
-        "kind": "anthropic-adaptive",
         "values": [
+          "high",
           "max"
         ],
-        "default": "provider-default"
+        "default": "high"
       }
     },
     {
@@ -150,7 +150,6 @@
         "cache_create": 2.5
       },
       "effort": {
-        "kind": "anthropic-adaptive",
         "values": [
           "high",
           "medium",
@@ -178,11 +177,11 @@
         "cache_create": 3.75
       },
       "effort": {
-        "kind": "anthropic-adaptive",
         "values": [
+          "high",
           "max"
         ],
-        "default": "provider-default"
+        "default": "high"
       }
     },
     {
@@ -230,7 +229,6 @@
         }
       },
       "effort": {
-        "kind": "anthropic-adaptive",
         "values": [
           "medium",
           "high",
@@ -277,11 +275,11 @@
         "cache_create": 0.0
       },
       "effort": {
-        "kind": "gemini-thinking-level",
         "values": [
+          "medium",
           "high"
         ],
-        "default": "provider-default"
+        "default": "medium"
       }
     },
     {
@@ -303,11 +301,11 @@
         "cache_create": 0.0
       },
       "effort": {
-        "kind": "gemini-thinking-level",
         "values": [
+          "medium",
           "high"
         ],
-        "default": "provider-default"
+        "default": "medium"
       }
     },
     {
@@ -329,11 +327,10 @@
         "cache_create": 0.0
       },
       "effort": {
-        "kind": "gemini-thinking-level",
         "values": [
           "high"
         ],
-        "default": "provider-default"
+        "default": "high"
       }
     },
     {
@@ -388,12 +385,12 @@
         }
       },
       "effort": {
-        "kind": "grok-reasoning-effort",
         "values": [
+          "high",
           "low",
           "medium"
         ],
-        "default": "provider-default"
+        "default": "high"
       }
     }
   ],

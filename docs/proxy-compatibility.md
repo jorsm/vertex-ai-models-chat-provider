@@ -25,7 +25,7 @@ Exercise your proxy with an authorized personal token, an unauthorized caller, m
 | Discovery | `/discovery` returns complete metadata only for approved models; no-access callers get an empty catalog or the applicable authorization error. Invalid entries cannot produce a partially accepted client catalog. |
 | Base path | Test a nonempty URL prefix if your deployment uses one; routes need no redirect. |
 | Routing | The incoming project is the user's configured `projectId` and the location is validated against your approved regions. Verify the project allowlist: uncataloged projects and projects not permitted for the verified caller are rejected, and the destination's linked billing account matches the project. A crafted route cannot choose another hostname or an unapproved region. |
-| Authorization | Direct POST requests for models absent from the caller's catalog are denied. Resolve supported aliases before enforcing exact model/effort policies. |
+| Authorization | Direct POST requests for models absent from the caller's catalog are denied. Authorize the literal catalog backend and requested effort. |
 | Labels | Accept omitted client labels unless your documented policy requires them. Gemini uses body labels; Claude uses the base64 JSON header. Keep client attribution separate from authenticated identity. |
 | SSE | First content is delivered before the response ends. Preserve native provider events, usage, signatures, tools, and finish reasons. |
 | Errors | Distinguish caller `401`, policy `403`, temporary `429`/`503`, and upstream-authentication failures. Forward `Retry-After`; do not retry a permanent denial. |

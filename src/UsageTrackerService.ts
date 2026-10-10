@@ -52,7 +52,7 @@ export class UsageTrackerService {
    */
   public async calculateCost(model: string, tokens: Required<TokenUsage>, requestPricing?: ModelSpec["pricing"]): Promise<number> {
     // Prefer prices captured for the request; otherwise use the active catalog.
-    const pricing = requestPricing ?? new EffortCatalog((await this.catalogResolver.getEffectiveCatalog()).candidateModels).get(model)?.canonical.pricing;
+    const pricing = requestPricing ?? new EffortCatalog((await this.catalogResolver.getEffectiveCatalog()).candidateModels).get(model)?.pricing;
 
     if (!pricing) {
       // Default to 0 or fallback pricing if the model is not found in the map

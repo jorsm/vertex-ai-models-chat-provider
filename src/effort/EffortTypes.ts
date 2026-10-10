@@ -1,32 +1,18 @@
 import type { ModelSpec } from "../providers/VertexModelProvider";
 
-export const EFFORT_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
-export type EffortLevel = typeof EFFORT_LEVELS[number];
-export type EffortPreference = EffortLevel | "catalog-default";
 export interface ModelEffortSpec {
-  kind: "anthropic-adaptive" | "gemini-thinking-level" | "grok-reasoning-effort";
-  values: readonly EffortLevel[];
-  default: EffortLevel | "provider-default";
-}
-export interface LegacyEffortAlias {
-  id: string;
-  displayName: string;
-  version: string;
-  effort: EffortLevel;
+  values: readonly string[];
+  default: string;
 }
 export interface EffortPreferenceSnapshot {
   readonly preferences: Readonly<Record<string, unknown>>;
   readonly sourceByModel: Readonly<Record<string, "user" | "workspace">>;
 }
 export interface ResolvedEffort {
-  readonly kind: ModelEffortSpec["kind"];
-  readonly value: EffortLevel | "provider-default";
-  readonly source: "user" | "workspace" | "catalog-default" | "legacy-alias";
+  readonly value: string;
+  readonly source: "user" | "workspace" | "catalog";
 }
 export interface ResolvedModelRequest {
-  readonly requestedId: string;
-  readonly canonicalId: string;
-  readonly backendModelId: string;
   readonly effort?: ResolvedEffort;
   readonly spec: ModelSpec;
 }

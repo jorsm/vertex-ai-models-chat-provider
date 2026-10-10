@@ -1,39 +1,7 @@
 import { createHash, Hash } from "node:crypto";
 
-export const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
-
-export type ClaudeEffort = (typeof CLAUDE_EFFORTS)[number];
-
-export function claudeEffortConfig(effort: ClaudeEffort) {
+export function claudeEffortConfig(effort: string) {
   return { thinking: { type: "adaptive" as const, display: "omitted" as const }, output_config: { effort } };
-}
-
-export interface ClaudeModelResolution {
-  actualId: string;
-  effort?: ClaudeEffort;
-  requestConfig?: {
-    thinking: { type: "adaptive"; display: "omitted" };
-    output_config: { effort: ClaudeEffort };
-  };
-}
-
-/**
- * Treats a recognized trailing effort level as an extension-only model alias.
- * The convention works for bundled and custom catalog entries without tying
- * effort support to a hard-coded list of Claude model names.
- */
-export function resolveClaudeModelId(modelId: string): ClaudeModelResolution {
-  const match = /-(low|medium|high|xhigh|max)$/.exec(modelId);
-  if (!match) {
-    return { actualId: modelId };
-  }
-
-  const effort = match[1] as ClaudeEffort;
-  return {
-    actualId: modelId.slice(0, -match[0].length),
-    effort,
-    requestConfig: claudeEffortConfig(effort),
-  };
 }
 
 export type ClaudeReplayBlock =

@@ -113,30 +113,30 @@ See the [enterprise proxy guide](docs/proxy.md) for use cases, configuration, th
 - **📈 Usage dashboard and status bar:** Track local daily token usage and estimated cost in real time, then open the dashboard from the status bar for trends and detailed breakdowns.
 - **🪄 AI commit messages:** Generate a Conventional Commit-style message from staged Git changes using your own system prompt. Defaults to Gemini 3 Flash (`gemini-3-flash-preview`). Use **Google Agent Platform: Select Commit Message Model** to choose from the current catalog, or edit `vertexAiChat.commitMessageModel` in user, workspace, or folder settings. An empty or unavailable selection shows an error without switching models.
 - **🧠 Gemini thinking and tools:** Supports Gemini thinking modes, thought-signature continuity, vision, and parallel tool calling where available.
-- **⚡ Claude thinking and tools:** Supports signed thinking-trace continuity across tool calls, effort aliases, vision, up to 128K output tokens, and ephemeral prompt caching.
+- **⚡ Claude thinking and tools:** Supports signed thinking-trace continuity across tool calls, configurable effort, vision, up to 128K output tokens, and ephemeral prompt caching.
 - **🔍 Smart discovery:** Probes the available Google Cloud regions and registers only the models that your selected project can access.
 - **🛡️ Safe credential handling:** Stored Service Accounts are encrypted in VS Code; an explicitly selected but invalid credential fails closed instead of falling back silently.
 
 ## Thinking effort
 
-Run **Google Agent Platform: Thinking Effort** from the Command Palette, or use the Chat header brain icon when the host displays it. Select the model explicitly, then its effort. The model list shows each model's name and effective effort in one line; scope and source details appear in the effort step. It remembers the last model configured, which is independent of the active Chat model.
+Run **Google Agent Platform: Thinking Effort** from the Command Palette, or use the Chat header brain icon. Choose a model, then one of its named effort levels. The model list shows the name and effective effort. The effort list contains each value once, with **Default** in gray secondary text beside the catalog's default, for example **High — Default**.
 
-Preferences apply to the next public language-model provider invocation, including callers using VS Code's language-model API. Retries keep that invocation's snapshot. A tool continuation is a new invocation and can use a changed preference. Commit-message generation retains its configured model or fixed-effort alias.
-
-The default write scope is User, except when that model already has a Workspace key. Switch scopes with the picker button. A known default appears once, for example **Medium (Model Default)**; when the provider chooses its own default, the picker shows **Model Default**. Selecting the default saves `catalog-default`, suppressing a lower-scope override for that model. **Remove override at this scope** deletes only its key and can reveal a User preference.
+The default write scope is User, except when that model already has a Workspace key. Switch scopes with the picker button. Selecting any row saves its actual named level, including the default row. Workspace preferences override User preferences per model. Without a saved preference, the catalog's named default is sent. To resume inheritance, remove that model's key in settings.
 
 ```json
 "vertexAiChat.thinkingEffortByModel": {
   "claude-opus-5-5": "max",
-  "claude-sonnet-5-5": "catalog-default"
+  "claude-sonnet-5-5": "high"
 }
 ```
 
-Choices come from the discovered catalog's policy. Unsupported saved values produce a model-specific error; reset them in the picker. Existing unsuffixed entries retain provider-default omission. The new canonical Sonnet 5.5 and Haiku 5.5 entries use explicit High and Medium defaults.
+Preferences apply to the next public language-model invocation. Each invocation captures its configuration before asynchronous work; retries keep that snapshot. Commit-message generation uses its configured model and the catalog default, independently of Chat preferences.
 
-Chat and commit-message model selectors show regular models, with effort configured separately. Fixed-effort variants are removed from the bundled catalog and excluded from selectors; there is no legacy-model toggle. Select a regular model in an old Chat session that used a removed variant.
+A catalog can declare `effort: { "values": ["medium", "high", "max"], "default": "medium" }`. The default must be one of the values. Custom catalogs may declare other nonempty strings: the adapter maps them to its API, and the API validates model support. Saved choices outside the current catalog are reported before inference.
 
-Proxy catalogs remain authoritative for model availability and effort permissions. Independent effort through a proxy requires the server's negotiated `effort-v1` policy; fixed-effort variants in older catalogs are excluded from selectors. The extension never imports bundled permissions into a server catalog. See [proxy contract](docs/proxy.md), [catalog/provider contracts](docs/providers.md), and [verification and remaining host/service checks](docs/thinking-effort-verification.md).
+Bundled defaults follow the documented model defaults: Medium for Claude Opus 5.5, Haiku 5.5 and Gemini 3.7/3.8 Flash; High for the other configured Claude models, Gemini 3 Flash preview and Grok 4.6. Sources: [Claude effort](https://platform.claude.com/docs/en/build-with-claude/effort), [Gemini thinking](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/thinking), [Grok reasoning](https://docs.x.ai/developers/model-capabilities/text/reasoning). Grok's named default follows xAI documentation; Vertex omission behavior is not independently documented here.
+
+Proxy catalogs remain authoritative for models and effort choices. They must acknowledge `effort-v1` to advertise effort metadata. The extension never imports bundled choices into a server catalog. See the [proxy contract](docs/proxy.md), [provider contracts](docs/providers.md), and [verification](docs/thinking-effort-verification.md).
 
 ## 🤖 Supported models
 
@@ -154,7 +154,7 @@ Claude Fable 5 and 5.1 require Model Garden access and are subject to Google's [
 
 In direct mode, need a different model set or region order? Create a workspace `.vscode/models.json` with **Google Agent Platform: Open Workspace models.json**, or a private user catalog with **Open User Models Catalog File**. Both are seeded from the bundled catalog and receive JSON schema validation. A custom catalog fully replaces the bundled catalog, so include every model you want available. In proxy mode, configure the catalog on your server instead; local catalog files are ignored. See [Model Discovery & Project Switching](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-Discovery-&-Project-Switching) for precedence, multi-root behavior, and examples.
 
-For Claude 5 models that support adaptive thinking and the selected [effort](https://platform.claude.com/docs/en/build-with-claude/effort), append `-low`, `-medium`, `-high`, `-xhigh`, or `-max` to both the custom entry's `id` and `version`. The extension removes the suffix before calling Vertex AI, enables adaptive thinking with hidden traces, and sends the selected effort. Unsuffixed generation-5 models use each model's API default effort. For Claude Sonnet 5.5 that default is `high`; the bundled `Medium` entry follows Anthropic's recommended starting point for well-specified agentic coding and multistep tool use. Move to `high` for harder or longer work, and reserve `xhigh` or `max` for workloads where evaluations show a quality gain.
+For a custom model, set `version` to the exact backend model name, and put configurable levels in `effort.values` with a named `effort.default`. For example, `"effort": { "values": ["medium", "high", "max"], "default": "high" }`. Model identity and effort are independent. The extension sends `version` literally and leaves support validation to the backend API.
 
 ## 💳 Billing and labels
 

@@ -14,9 +14,9 @@ let api;
 try { Module._load = function(r,...args){return r==='vscode'?vscode:load.call(this,r,...args);}; api=require('../out/effort/EffortConfiguration.js'); } finally{Module._load=load;}
 test.beforeEach(()=>{user={};workspace={};fail=false;writes.length=0;resources.length=0;vscode.workspace.workspaceFolders=[{}];});
 
-test('Workspace wins per key, explicit default suppresses User; removal reveals User', async()=>{
-  user={a:'high',b:'low'};workspace={a:'catalog-default'};
-  assert.equal(api.captureEffortPreferences().preferences.a,'catalog-default');
+test('Workspace wins per key, named Workspace choice overrides User; removal reveals User', async()=>{
+  user={a:'high',b:'low'};workspace={a:'medium'};
+  assert.equal(api.captureEffortPreferences().preferences.a,'medium');
   assert.equal(api.captureEffortPreferences().preferences.b,'low');
   assert.equal(api.defaultEffortTarget('a'),2); assert.equal(api.defaultEffortTarget('b'),1);
   await api.writeEffortPreference('a',undefined,2);
@@ -28,8 +28,8 @@ test('targeted writes preserve raw scope keys and re-read for serialized concurr
   user={a:'high',unknown:'max'};workspace={b:'low'};
   await Promise.all([api.writeEffortPreference('a','max',1),api.writeEffortPreference('c','high',1)]);
   assert.deepEqual(user,{a:'max',unknown:'max',c:'high'});assert.deepEqual(workspace,{b:'low'});
-  await api.writeEffortPreference('a','catalog-default',2);
-  assert.deepEqual(workspace,{b:'low',a:'catalog-default'});
+  await api.writeEffortPreference('a','medium',2);
+  assert.deepEqual(workspace,{b:'low',a:'medium'});
 });
 test('invalid higher scope stays invalid; unrelated invalid values remain stored; snapshots detach',()=>{
   user={a:'high',unknown:'invalid'};workspace={a:'invalid'};

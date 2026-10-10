@@ -111,20 +111,6 @@ export class VertexGoogleProvider implements VertexModelProvider {
     return this.client;
   }
 
-  /**
-   * Evaluates the VS Code model ID and returns the actual Endpoint name and thinking parameters
-   */
-  private resolveModelId(modelId: string): { actualId: string; config?: any } {
-    if (modelId.endsWith("-high")) {
-      return { actualId: modelId.slice(0, -5), config: { thinkingConfig: { thinkingLevel: "HIGH" } } };
-    }
-    return { actualId: modelId };
-  }
-
-  getDiscoveryModelId(modelVersion: string): string {
-    return this.resolveModelId(modelVersion).actualId;
-  }
-
   async pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean> {
     try {
       options?.signal.throwIfAborted();
@@ -207,7 +193,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
 
   /**
    * Detects if the given text segment is the starting chunk of a leaked reasoning block
-   * (e.g. `gemini-3.5-flash-high\5R+S41tN...`).
+   * (e.g. `gemini-3.5-flash\5R+S41tN...`).
    *
    * @param text The text chunk/part to inspect.
    * @param modelId The configured/requested VS Code model ID.
@@ -482,10 +468,9 @@ export class VertexGoogleProvider implements VertexModelProvider {
     spec?: ModelSpec,
     request?: ResolvedModelRequest,
   ): Promise<ChatInferenceResult> {
-    const legacy = this.resolveModelId(spec?.version ?? modelId);
-    const actualId = request?.effort ? request.backendModelId : legacy.actualId;
-    const config = request?.effort ? (request.effort.value === "provider-default" ? undefined
-      : { thinkingConfig: { thinkingLevel: request.effort.value.toUpperCase() } }) : legacy.config;
+    const actualId = request?.spec.version ?? spec?.version ?? modelId;
+    const effort = request?.effort?.value ?? spec?.effort?.default;
+    const config = effort ? { thinkingConfig: { thinkingLevel: effort.toUpperCase() } } : undefined;
     const gateway = this.gateway;
     const cancellation = requestCancellation(token, gateway?.signal);
     this.logger.log(`▶ Google provideLanguageModelChatResponse called — requested: ${modelId} -> executed: ${actualId}, msgs: ${messages.length}`);

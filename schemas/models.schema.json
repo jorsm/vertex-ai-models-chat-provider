@@ -168,206 +168,28 @@
                     "type": "object",
                     "additionalProperties": false,
                     "required": [
-                        "kind",
                         "values",
                         "default"
                     ],
-                    "description": "Independent effort policy. The adapter/vendor and backend family must support this mode; a named default must belong to values. Canonical versions must not contain effort suffixes.",
+                    "description": "Named effort choices and a default from that list. The vendor adapter maps the value to its API; the API validates model support.",
                     "properties": {
-                        "kind": {
-                            "enum": [
-                                "anthropic-adaptive",
-                                "gemini-thinking-level",
-                                "grok-reasoning-effort"
-                            ]
-                        },
                         "values": {
                             "type": "array",
                             "minItems": 1,
                             "uniqueItems": true,
                             "items": {
-                                "enum": [
-                                    "minimal",
-                                    "low",
-                                    "medium",
-                                    "high",
-                                    "xhigh",
-                                    "max"
-                                ]
+                                "type": "string",
+                                "minLength": 1
                             }
                         },
                         "default": {
-                            "enum": [
-                                "minimal",
-                                "low",
-                                "medium",
-                                "high",
-                                "xhigh",
-                                "max",
-                                "provider-default"
-                            ]
-                        }
-                    }
-                },
-                "legacyEffortAliases": {
-                    "type": "array",
-                    "description": "Explicit compatibility IDs, globally unique across this catalog. Each alias must resolve to the same backend and pin an allowed effort; it inherits limits, capabilities and pricing. Requires effort metadata.",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": [
-                            "id",
-                            "displayName",
-                            "version",
-                            "effort"
-                        ],
-                        "properties": {
-                            "id": {
-                                "type": "string",
-                                "pattern": "^[a-zA-Z0-9_.@-]{1,256}$"
-                            },
-                            "displayName": {
-                                "type": "string",
-                                "minLength": 1,
-                                "maxLength": 256
-                            },
-                            "version": {
-                                "type": "string",
-                                "minLength": 1,
-                                "maxLength": 256
-                            },
-                            "effort": {
-                                "enum": [
-                                    "minimal",
-                                    "low",
-                                    "medium",
-                                    "high",
-                                    "xhigh",
-                                    "max"
-                                ]
-                            }
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Default effort sent when no saved model preference is present. Must belong to values."
                         }
                     }
                 }
-            },
-            "dependencies": {
-                "legacyEffortAliases": [
-                    "effort"
-                ]
-            },
-            "allOf": [
-                {
-                    "if": {
-                        "required": [
-                            "effort"
-                        ],
-                        "properties": {
-                            "effort": {
-                                "properties": {
-                                    "kind": {
-                                        "const": "anthropic-adaptive"
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "then": {
-                        "properties": {
-                            "vendor": {
-                                "const": "anthropic"
-                            },
-                            "effort": {
-                                "properties": {
-                                    "values": {
-                                        "items": {
-                                            "enum": [
-                                                "low",
-                                                "medium",
-                                                "high",
-                                                "xhigh",
-                                                "max"
-                                            ]
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                {
-                    "if": {
-                        "required": [
-                            "effort"
-                        ],
-                        "properties": {
-                            "effort": {
-                                "properties": {
-                                    "kind": {
-                                        "const": "gemini-thinking-level"
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "then": {
-                        "properties": {
-                            "vendor": {
-                                "const": "google"
-                            },
-                            "effort": {
-                                "properties": {
-                                    "values": {
-                                        "items": {
-                                            "enum": [
-                                                "minimal",
-                                                "low",
-                                                "medium",
-                                                "high"
-                                            ]
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                {
-                    "if": {
-                        "required": [
-                            "effort"
-                        ],
-                        "properties": {
-                            "effort": {
-                                "properties": {
-                                    "kind": {
-                                        "const": "grok-reasoning-effort"
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "then": {
-                        "properties": {
-                            "vendor": {
-                                "const": "grok"
-                            },
-                            "effort": {
-                                "properties": {
-                                    "values": {
-                                        "items": {
-                                            "enum": [
-                                                "low",
-                                                "medium",
-                                                "high"
-                                            ]
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            ]
+            }
         }
     }
 }

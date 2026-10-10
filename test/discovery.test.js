@@ -30,7 +30,7 @@ try {
 }
 const { DISCOVERY_PROBE_TIMEOUT_MS, probeWithDeadline, probeWithRetries, resolveDiscoveryTimeoutMs, runDiscoveryQueue, DiscoveryRetryableError } = require("../out/utils/discovery.js");
 const { VertexAuthenticationError } = require("../out/utils/retry.js");
-const catalogModel = require("./fixtures/thinking-effort-original-catalog.json").candidateModels[0];
+const catalogModel = require("../src/models.json").candidateModels[0];
 const model = (id, vendor = "anthropic") => ({ ...catalogModel, id, version: id, vendor });
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const never = () => new Promise(() => {});
@@ -57,26 +57,20 @@ function harness(models, regions = ["global"]) {
   const auth = { onAuthUpdated() {}, getResolvedAuthOptions: async () => undefined };
   const dispatcher = new Dispatcher("test-project", {}, auth, catalog);
   dispatcher.discoveryStartDelayMs = () => 0;
-  return { dispatcher, add(vendor, pingModel, inference = async () => emptyUsage, getDiscoveryModelId = (id) => id) {
+  return { dispatcher, add(vendor, pingModel, inference = async () => emptyUsage) {
     const provider = { vendor, initialize(_project, region) { this.region = region; }, setLabels() {}, pingModel,
-      getDiscoveryModelId,
       provideLanguageModelChatResponse: inference };
     dispatcher.activeProviders.set(vendor, provider);
     return provider;
   } };
 }
 
-function discoveryResolver(Provider) {
-  const provider = new Provider();
-  return provider.getDiscoveryModelId.bind(provider);
-}
-
-test("bundled effort variants share 15 endpoint probes and keep catalog order across refreshes", async () => {
+test("bundled models use 15 literal endpoint probes and keep catalog order across refreshes", async () => {
   const models = require("../src/models.json").candidateModels;
   const h = harness(models);
   const requests = [];
-  for (const [vendor, Provider] of [["anthropic", VertexAnthropicProvider], ["google", VertexGoogleProvider], ["grok", VertexGrokProvider]]) {
-    h.add(vendor, async (id) => { requests.push([vendor, id]); return true; }, undefined, discoveryResolver(Provider));
+  for (const vendor of ["anthropic", "google", "grok"]) {
+    h.add(vendor, async (id) => { requests.push([vendor, id]); return true; });
   }
   for (let refresh = 0; refresh < 2; refresh++) {
     const before = requests.length;
@@ -95,36 +89,37 @@ test("bundled effort variants share 15 endpoint probes and keep catalog order ac
 
 test("custom catalogs use version rather than UI ID and keep vendor/version boundaries", async () => {
   const models = [
-    { ...model("Display-Max"), version: "claude-custom@20261001-max" },
-    { ...model("Display-Low"), version: "claude-custom@20261001-low" },
-    { ...model("Display-Other-Version"), version: "claude-custom@20260901-high" },
-    { ...model("Display-Other-Vendor", "google"), version: "claude-custom@20261001" },
-    { ...model("Display-Unknown-Suffix"), version: "claude-custom@20261001-ultra" },
+    { ...model("Display-Max"), version: "company-reasoner-high" },
+    { ...model("Display-Low"), version: "company-reasoner-low" },
+    { ...model("Display-Other-Version"), version: "company-reasoner-other-high" },
+    { ...model("Display-Other-Vendor", "google"), version: "company-reasoner" },
+    { ...model("Display-Unknown-Suffix"), version: "company-reasoner-ultra" },
   ];
   const h = harness(models);
   const requests = [];
-  for (const [vendor, Provider] of [["anthropic", VertexAnthropicProvider], ["google", VertexGoogleProvider]]) {
-    h.add(vendor, async (id) => { requests.push([vendor, id]); return id !== "claude-custom@20260901"; }, undefined, discoveryResolver(Provider));
+  for (const vendor of ["anthropic", "google"]) {
+    h.add(vendor, async (id) => { requests.push([vendor, id]); return id !== "company-reasoner-other-high"; });
   }
   const result = await h.dispatcher.discoverModelsAndRegion();
   assert.deepEqual(requests, [
-    ["anthropic", "claude-custom@20261001"], ["anthropic", "claude-custom@20260901"],
-    ["google", "claude-custom@20261001"], ["anthropic", "claude-custom@20261001-ultra"],
+    ["anthropic", "company-reasoner-high"], ["anthropic", "company-reasoner-low"],
+    ["anthropic", "company-reasoner-other-high"], ["google", "company-reasoner"],
+    ["anthropic", "company-reasoner-ultra"],
   ]);
   assert.deepEqual(result.availableModels.map((m) => m.id), ["Display-Max", "Display-Low", "Display-Other-Vendor", "Display-Unknown-Suffix"]);
 });
 
-test("one timed-out endpoint excludes every variant even if it succeeds late", async (t) => {
+test("one timed-out backend excludes every entry sharing that version even if it succeeds late", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const variants = ["medium", "high", "max"].map((effort) => ({ ...model(effort), version: `claude-sonnet-5-5-${effort}` }));
+  const entries = ["first", "second", "third"].map((id) => ({ ...model(id), version: "company-reasoner-v1" }));
   const healthy = model("healthy", "google");
-  const h = harness([...variants, healthy]);
+  const h = harness([...entries, healthy]);
   let calls = 0, finishLate, signal;
   h.add("anthropic", (_id, options) => {
     calls++;
     signal = options.signal;
     return new Promise((resolve) => { finishLate = resolve; });
-  }, undefined, discoveryResolver(VertexAnthropicProvider));
+  });
   h.add("google", async () => true);
   const discovery = h.dispatcher.discoverModelsAndRegion();
   await flush();
@@ -138,27 +133,14 @@ test("one timed-out endpoint excludes every variant even if it succeeds late", a
 });
 
 test("grouped endpoints are re-probed in each region after shared failure", async () => {
-  const variants = ["low", "medium", "high"].map((effort) => ({ ...model(effort), version: `claude-custom-${effort}` }));
-  const h = harness(variants, ["asia-northeast1", "europe-west8"]);
+  const entries = ["first", "second", "third"].map((id) => ({ ...model(id), version: "company-reasoner-v1" }));
+  const h = harness(entries, ["asia-northeast1", "europe-west8"]);
   const requests = [];
-  h.add("anthropic", async function (id) { requests.push([this.region, id]); return this.region === "europe-west8"; }, undefined, discoveryResolver(VertexAnthropicProvider));
+  h.add("anthropic", async function (id) { requests.push([this.region, id]); return this.region === "europe-west8"; });
   const result = await h.dispatcher.discoverModelsAndRegion();
   assert.equal(result.region, "europe-west8");
-  assert.deepEqual(result.availableModels, variants);
-  assert.deepEqual(requests, [["asia-northeast1", "claude-custom"], ["europe-west8", "claude-custom"]]);
-});
-
-test("endpoint resolution strips only the supported trailing alias once", async () => {
-  const google = new VertexGoogleProvider();
-  assert.equal(google.getDiscoveryModelId("gemini-high-custom-high"), "gemini-high-custom");
-  assert.equal(google.getDiscoveryModelId("gemini-custom-medium"), "gemini-custom-medium");
-  const anthropic = new VertexAnthropicProvider();
-  const endpoint = anthropic.getDiscoveryModelId("claude-custom-high-max");
-  assert.equal(endpoint, "claude-custom-high");
-  let request;
-  anthropic.client = { messages: { create: async (body) => { request = body; } } };
-  assert.equal(await anthropic.pingModel(endpoint), true);
-  assert.equal(request.model, endpoint);
+  assert.deepEqual(result.availableModels, entries);
+  assert.deepEqual(requests, [["asia-northeast1", "company-reasoner-v1"], ["europe-west8", "company-reasoner-v1"]]);
 });
 
 test("a stuck probe times out, aborts, and unblocks healthy-model inference", async (t) => {
@@ -302,16 +284,16 @@ test("probe timers are cleared after success and late rejection is handled", asy
   assert.equal(timeouts, 1);
 });
 
-test("429s retry three times with exponential jitter and retain every catalog variant", async (t) => {
+test("429s retry three times with exponential jitter and retain every catalog entry", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
   t.mock.method(Math, "random", () => 0.5);
-  const variants = ["medium", "high", "max"].map((effort) => ({ ...model(effort), version: `claude-sonnet-5-5-${effort}` }));
-  const h = harness(variants);
+  const entries = ["first", "second", "third"].map((id) => ({ ...model(id), version: "company-reasoner-v1" }));
+  const h = harness(entries);
   const starts = [];
   h.add("anthropic", async () => {
     starts.push(Date.now());
     throw new DiscoveryRetryableError({ status: 429 }, true);
-  }, undefined, discoveryResolver(VertexAnthropicProvider));
+  });
   const discovery = h.dispatcher.discoverModelsAndRegion();
   await flush();
   assert.deepEqual(starts, [0]);
@@ -324,7 +306,7 @@ test("429s retry three times with exponential jitter and retain every catalog va
     await flush();
     assert.equal(starts.length, before + 1);
   }
-  assert.deepEqual((await discovery).availableModels, variants);
+  assert.deepEqual((await discovery).availableModels, entries);
   assert.deepEqual(starts, [0, 1500, 4500, 10500]);
   assert(logs.some((line) => line.includes("Retries exhausted; endpoint reachable (rate limited)")));
 });
@@ -510,20 +492,15 @@ for (const [vendor, Provider, version] of [
     assert.equal(await provider.pingModel(version, { signal: controller.signal, timeoutMs: 1234 }), false);
   });
 
-  test(`${vendor} effort aliases resolve to an endpoint and discovery omits effort parameters`, async () => {
-    const efforts = vendor === "anthropic" ? ["low", "medium", "high", "xhigh", "max"] : vendor === "google" ? ["high"] : ["low", "medium", "high"];
-    for (const effort of efforts) {
-      let request;
-      const provider = providerWith(async (body) => { request = body; });
-      const endpoint = provider.getDiscoveryModelId(`${version}-${effort}`);
-      assert.equal(endpoint, version);
-      assert.equal(await provider.pingModel(endpoint), true);
-      assert.equal(request.model, version);
-      assert.equal(Object.hasOwn(request, "reasoning_effort"), false);
-      assert.equal(Object.hasOwn(request, "thinking"), false);
-      assert.equal(Object.hasOwn(request, "output_config"), false);
-      assert.equal(Object.hasOwn(request.config ?? {}, "thinkingConfig"), false);
-    }
+  test(`${vendor} discovery probes the literal backend without effort parameters`, async () => {
+    let request;
+    const provider = providerWith(async (body) => { request = body; });
+    assert.equal(await provider.pingModel(version), true);
+    assert.equal(request.model, version);
+    assert.equal(Object.hasOwn(request, "reasoning_effort"), false);
+    assert.equal(Object.hasOwn(request, "thinking"), false);
+    assert.equal(Object.hasOwn(request, "output_config"), false);
+    assert.equal(Object.hasOwn(request.config ?? {}, "thinkingConfig"), false);
   });
 
   test(`${vendor} discovery suppresses late success after cancellation`, async () => {

@@ -13,13 +13,6 @@ import { ModelSpec } from "./VertexModelProvider";
 import type { ResolvedModelRequest } from "../effort/EffortTypes";
 import { requestCancellation, cancellableRequest } from "../utils/cancellation";
 
-// ─── Model configuration types ──────────────────────────────────────────────
-
-interface ModelConfig {
-  modelPath: string;
-  extraBody?: Record<string, unknown>;
-}
-
 // ─── Provider Plugin ────────────────────────────────────────────────────────
 
 export class VertexGrokProvider implements VertexModelProvider {
@@ -31,20 +24,6 @@ export class VertexGrokProvider implements VertexModelProvider {
   private labels: Record<string, string> = {};
   private catalogResolver?: ModelCatalogResolver;
   private readonly logger = new Logger("VertexGrokProvider");
-
-  private static readonly MODEL_CONFIG: Record<string, ModelConfig> = {
-    "grok-4.6": {
-      modelPath: "xai/grok-4.6",
-      extraBody: { stream_options: { include_usage: true } },
-    },
-  };
-
-  // Live Vertex checks accept low/medium/high but reject xAI's xhigh.
-  // Keep suffix resolution limited to supported Grok 4.6 variants.
-  private static resolveGrok46(modelId: string): { actualId: string; effort?: "low" | "medium" | "high" } {
-    const match = modelId.match(/^(?:xai\/)?grok-4\.6-(low|medium|high)$/);
-    return match ? { actualId: modelId.replace(/-(low|medium|high)$/, ""), effort: match[1] as "low" | "medium" | "high" } : { actualId: modelId };
-  }
 
   // ── Initialization ────────────────────────────────────────────────────
 
@@ -159,18 +138,9 @@ export class VertexGrokProvider implements VertexModelProvider {
 
   // ── Discovery ping ────────────────────────────────────────────────────
 
-  getDiscoveryModelId(modelVersion: string): string {
-    const actualId = VertexGrokProvider.resolveGrok46(modelVersion).actualId;
-    return VertexGrokProvider.MODEL_CONFIG[actualId.replace(/^xai\//, "")]?.modelPath ?? actualId;
-  }
-
   async pingModel(modelVersion: string, options?: DiscoveryProbeOptions): Promise<boolean> {
     this.assertTransportSupported();
     const modelPath = modelVersion;
-    if (modelPath !== "xai/grok-4.6") {
-      return false;
-    }
-    // Discovery receives the backend path, already resolved from catalog aliases.
     try {
       options?.signal.throwIfAborted();
       const client = await this.getClient();
@@ -220,7 +190,7 @@ export class VertexGrokProvider implements VertexModelProvider {
   ): Promise<ChatInferenceResult> {
     this.assertTransportSupported();
     // Use passed spec if available, otherwise resolve from catalog
-    let modelSpec = spec;
+    let modelSpec = request?.spec ?? spec;
     if (!modelSpec) {
       const catalog = await this.catalogResolver?.getEffectiveCatalog();
       modelSpec = catalog?.candidateModels.find((m: ModelSpec) => m.id === modelId);
@@ -229,13 +199,10 @@ export class VertexGrokProvider implements VertexModelProvider {
     if (!modelSpec) {
       throw new Error(`Model spec not found in catalog for: ${modelId}`);
     }
-    const resolved = VertexGrokProvider.resolveGrok46(request?.effort ? request.backendModelId : modelSpec.version);
-    const config = VertexGrokProvider.MODEL_CONFIG[resolved.actualId.replace(/^xai\//, "")];
-    if (!config) { throw new Error(`Unknown Grok model: ${modelSpec.version}. Available: ${Object.keys(VertexGrokProvider.MODEL_CONFIG).join(", ")}`); }
-    const effort = request?.effort ? (request.effort.value === "provider-default" ? undefined : request.effort.value) : resolved.effort;
-    if (effort && !["low", "medium", "high"].includes(effort)) { throw new Error(`Unsupported Grok effort: ${effort}`); }
+    const modelPath = modelSpec.version;
+    const effort = request?.effort?.value ?? modelSpec.effort?.default;
 
-    this.logger.log(`▶ Grok provider response — model: ${modelId} (${config.modelPath}), region: ${this.region}, messages: ${messages.length}`);
+    this.logger.log(`▶ Grok provider response — model: ${modelId} (${modelPath}), region: ${this.region}, messages: ${messages.length}`);
 
     const requestLabels = labels || this.labels;
     if (Object.keys(requestLabels).length > 0) {
@@ -254,12 +221,12 @@ export class VertexGrokProvider implements VertexModelProvider {
       const client = await cancellableRequest(() => clientPromise, cancellation.signal);
 
       const requestParams = {
-        model: config.modelPath,
+        model: modelPath,
         messages: mappedMessages as any,
         max_tokens: modelSpec.maxOutputTokens,
         stream: true as const,
         ...(tools?.length ? { tools, tool_choice: "auto" as const } : {}),
-        ...(config.extraBody ?? {}),
+        stream_options: { include_usage: true },
         ...(effort ? { reasoning_effort: effort } : {}),
       };
       this.logger.log(`  📤 Request keys: ${Object.keys(requestParams).join(", ")}`);
@@ -268,12 +235,12 @@ export class VertexGrokProvider implements VertexModelProvider {
 
       this.logger.log(`  Stream created successfully`);
 
-      const usage = await this.processStream(stream, config, charCount, progress, token);
+      const usage = await this.processStream(stream, modelPath, charCount, progress, token);
       if (cancellation.signal.aborted || token.isCancellationRequested) { throw new vscode.CancellationError(); }
 
       // Report token usage to VS Code (MIME type 'usage') for Copilot Chat indicator
       if (typeof vscode.LanguageModelDataPart !== "undefined") {
-        const promptTokens = usage.input + (config.modelPath === "xai/grok-4.6" ? usage.cache_read : 0);
+        const promptTokens = usage.input + (modelPath === "xai/grok-4.6" ? usage.cache_read : 0);
         const usagePayload = {
           prompt_tokens: promptTokens,
           completion_tokens: usage.output,
@@ -454,11 +421,11 @@ export class VertexGrokProvider implements VertexModelProvider {
 
   // ── Stream processing ─────────────────────────────────────────────────
 
-  private readUsage(usage: OpenAI.CompletionUsage, config: ModelConfig): { input: number; output: number; cache_read: number; cache_create: number } {
+  private readUsage(usage: OpenAI.CompletionUsage, modelPath: string): { input: number; output: number; cache_read: number; cache_create: number } {
     const input = usage.prompt_tokens ?? 0;
     const output = usage.completion_tokens ?? 0;
     const cached = usage.prompt_tokens_details?.cached_tokens ?? 0;
-    if (config.modelPath === "xai/grok-4.6") {
+    if (modelPath === "xai/grok-4.6") {
       // Google's Grok API reports reasoning separately from completion_tokens.
       // Prefer total - prompt to also handle servers that include it in completion.
       const reasoning = usage.completion_tokens_details?.reasoning_tokens ?? 0;
@@ -474,7 +441,7 @@ export class VertexGrokProvider implements VertexModelProvider {
 
   private async processStream(
     stream: Stream<OpenAI.Chat.Completions.ChatCompletionChunk>,
-    config: ModelConfig,
+    modelPath: string,
     charCount: { assistant_text: number; tool_use: number },
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
     token: vscode.CancellationToken,
@@ -493,7 +460,7 @@ export class VertexGrokProvider implements VertexModelProvider {
 
       // Extract usage if present
       if (chunk.usage) {
-        Object.assign(tokenUsage, this.readUsage(chunk.usage, config));
+        Object.assign(tokenUsage, this.readUsage(chunk.usage, modelPath));
       }
 
       const delta = chunk.choices?.[0]?.delta;
@@ -559,7 +526,7 @@ export class VertexGrokProvider implements VertexModelProvider {
         if (typeof s.finalChatCompletion === "function") {
           const completion = await s.finalChatCompletion();
           if (completion.usage) {
-            Object.assign(tokenUsage, this.readUsage(completion.usage, config));
+            Object.assign(tokenUsage, this.readUsage(completion.usage, modelPath));
           }
         } else {
           this.logger.log(`  ⚠️  Stream type does not support finalChatCompletion — usage may be incomplete`);

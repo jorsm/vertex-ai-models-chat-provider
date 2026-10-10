@@ -18,7 +18,7 @@ export async function selectCommitMessageModel(
       location: vscode.ProgressLocation.Notification,
       title: "Loading commit message models",
     }, () => provider.discoverModelsAndRegion());
-    const availableModels = new EffortCatalog(discovered.availableModels).project();
+    const availableModels = [...new EffortCatalog(discovered.availableModels).models];
     if (availableModels.length === 0) {
       vscode.window.showWarningMessage("Google Agent Platform: No model is available for commit-message generation.");
       return;

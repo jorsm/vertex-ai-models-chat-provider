@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const Module = require('node:module');
-let prefs = {}, workspacePrefs = {}, showLegacyModels;
+let prefs = {}, workspacePrefs = {};
 class TextPart { constructor(value){this.value=value;} }
 class ToolCallPart { constructor(callId,name,input){Object.assign(this,{callId,name,input});} }
 class ToolResultPart { constructor(callId,content){Object.assign(this,{callId,content});} }
@@ -10,7 +10,7 @@ const vscode={CancellationError:class extends Error{},version:'1.110.0',
   LanguageModelTextPart:TextPart,LanguageModelToolCallPart:ToolCallPart,LanguageModelToolResultPart:ToolResultPart,LanguageModelDataPart:DataPart,
   LanguageModelChatMessageRole:{User:1,Assistant:2},
   EventEmitter:class{event=()=>({dispose(){}});fire(){this.fires=(this.fires??0)+1;}dispose(){}},
-  workspace:{getConfiguration:()=>({get:(key,fallback)=>key==='thinkingEffortByModel'?{...prefs,...workspacePrefs}:key==='showLegacyEffortModels'?(showLegacyModels??fallback):fallback,
+  workspace:{getConfiguration:()=>({get:(key,fallback)=>key==='thinkingEffortByModel'?{...prefs,...workspacePrefs}:fallback,
     inspect:key=>key==='thinkingEffortByModel'?{globalValue:prefs,workspaceValue:workspacePrefs}:{}})},
   window:{showWarningMessage(){},showErrorMessage(){}},
 };
@@ -36,18 +36,17 @@ function harness(){class D extends Dispatcher{registerProviders(){}}
  const d=new D('test-project',{recordUsage:async(...args)=>records.push(args)}, {onAuthUpdated(){},getResolvedAuthOptions:async()=>undefined},
    {getEffectiveCatalog:async()=>({candidateModels:models,regionPriority:['global']})});
  d.availableModels=models;d.discoveryDone=true;
- for(const vendor of ['anthropic','google','grok'])d.activeProviders.set(vendor,{vendor,setLabels(){},initialize(){},getDiscoveryModelId:v=>v,pingModel:async()=>true,
+ for(const vendor of ['anthropic','google','grok'])d.activeProviders.set(vendor,{vendor,setLabels(){},initialize(){},pingModel:async()=>true,
   provideLanguageModelChatResponse:async(...args)=>{requests.push(args);return usage;}});
  return{d,records,requests};
 }
-test.beforeEach(()=>{prefs={};workspacePrefs={};showLegacyModels=undefined;});
-test('public callbacks capture preferences; internal infer keeps the model default and removed aliases fail',async()=>{
+test.beforeEach(()=>{prefs={};workspacePrefs={};});
+test('public callbacks capture preferences; internal infer keeps the catalog default',async()=>{
  const h=harness();prefs={'claude-opus-5-5':'max'};
  await h.d.provideLanguageModelChatResponse({id:'claude-opus-5-5'},messages,{},progress,token());
  await h.d.infer('claude-opus-5-5',messages,{},progress,token());
- await assert.rejects(h.d.provideLanguageModelChatResponse({id:'claude-opus-5-5-high'},messages,{},progress,token()),/Model not available/);
- assert.deepEqual(h.requests.map(r=>r[7].effort.value),['max','provider-default']);
- assert.deepEqual(h.requests.map(r=>r[7].effort.source),['user','catalog-default']);
+ assert.deepEqual(h.requests.map(r=>r[7].effort.value),['max','medium']);
+ assert.deepEqual(h.requests.map(r=>r[7].effort.source),['user','catalog']);
  assert.deepEqual(h.records.map(r=>r[0]),['claude-opus-5-5','claude-opus-5-5']);
  assert(h.records.every(r=>r.length===3));
 });
@@ -67,15 +66,9 @@ test('invalid policy fails before inference; exact dispatcher membership remains
  await assert.rejects(h.d.infer('arbitrary-ui-id',messages,{},progress,token()),/not available/);
  assert.equal(h.requests.length,0);assert.equal(h.records.length,0);
 });
-test('model list excludes aliases even with the former setting enabled, without discovery',async()=>{
+test('model information exposes the complete catalog and refreshes effort without discovery',async()=>{
  const h=harness();let discoveryCalls=0;h.d.discoverModelsAndRegion=()=>{discoveryCalls++;throw Error('no probes');};
- assert.equal(require('../package.json').contributes.configuration.properties['vertexAiChat.showLegacyEffortModels'],undefined);
  assert.deepEqual((await h.d.provideLanguageModelChatInformation()).map(m=>m.id),models.map(m=>m.id));
- showLegacyModels=true;h.d.refreshModelInformation();
- assert.equal((await h.d.provideLanguageModelChatInformation()).length,15);
- showLegacyModels=false;h.d.refreshModelInformation();
- assert.equal((await h.d.provideLanguageModelChatInformation()).length,15);
- await assert.rejects(h.d.infer('claude-opus-5-5-max',messages,{},progress,token()),/Model not available/);
  await h.d.ensureInitialDiscovery(token());
  prefs={'claude-opus-5-5':'high'};h.d.refreshModelInformation();
  const info=(await h.d.provideLanguageModelChatInformation()).find(m=>m.id==='claude-opus-5-5');
@@ -98,19 +91,19 @@ function adapter(vendor,onRequest){
  if(vendor==='grok')provider.getClient=async()=>({chat:{completions:{create:capture}}});
  return{provider,requests};
 }
-for(const model of models.filter(m=>m.effort))test(`${model.id} sends every allowed named/default effort and equivalent legacy payloads`,async()=>{
+for(const model of models.filter(m=>m.effort))test(`${model.id} sends every named effort and the catalog default`,async()=>{
  const h=adapter(model.vendor);
- for(const value of [...model.effort.values,'catalog-default']){
-  const request=resolveEffort(catalog,model.id,value==='catalog-default'?undefined:{preferences:{[model.id]:value},sourceByModel:{}});
+ for(const value of [...model.effort.values,undefined]){
+  const request=resolveEffort(catalog,model.id,value===undefined?undefined:{preferences:{[model.id]:value},sourceByModel:{}});
   await h.provider.provideLanguageModelChatResponse(model.id,messages,{},progress,token(),{},request.spec,request);
   const body=h.requests.at(-1);
-  const effective=value==='catalog-default'?model.effort.default:value;
+  const effective=value===undefined?model.effort.default:value;
   assert.equal(body.model,model.version);
   if(model.vendor==='anthropic'){
-   assert.equal(body.output_config?.effort,effective==='provider-default'?undefined:effective);
-   assert.deepEqual(body.thinking,effective==='provider-default'?undefined:{type:'adaptive',display:'omitted'});
-  }else if(model.vendor==='google')assert.equal(body.config.thinkingConfig?.thinkingLevel,effective==='provider-default'?undefined:effective.toUpperCase());
-  else assert.equal(body.reasoning_effort,effective==='provider-default'?undefined:effective);
+   assert.equal(body.output_config?.effort,effective);
+   assert.deepEqual(body.thinking,{type:'adaptive',display:'omitted'});
+  }else if(model.vendor==='google')assert.equal(body.config.thinkingConfig?.thinkingLevel,effective.toUpperCase());
+  else assert.equal(body.reasoning_effort,effective);
  }
 });
 for(const vendor of ['anthropic','google','grok'])test(`${vendor} retries reuse the payload/client despite settings and provider reinitialization`,async(t)=>{
@@ -120,17 +113,18 @@ for(const vendor of ['anthropic','google','grok'])test(`${vendor} retries reuse 
  const h=adapter(vendor,async(_body,attempt)=>{if(attempt===1)throw{status:503,message:'503 service unavailable'};});
  const pending=h.provider.provideLanguageModelChatResponse(model.id,messages,{},progress,token(),{},request.spec,request);
  await flush();assert.equal(h.requests.length,1);
- prefs[model.id]='catalog-default';
+ prefs[model.id]=model.effort.default;
  if(vendor==='anthropic')h.provider.client={messages:{create:async()=>{throw Error('redirected retry');}}};
  else h.provider.getClient=async()=>{throw Error('redirected retry');};
  t.mock.timers.tick(4000);await pending;
  assert.equal(h.requests.length,2);assert.deepEqual(h.requests[0],h.requests[1]);
 });
-test('custom Grok UI IDs use the catalog namespace and unknown backend versions still fail',async()=>{
+test('custom Grok UI IDs and backend versions use the catalog literally',async()=>{
  const h=adapter('grok'),model={...models.at(-1),id:'enterprise-grok'};
  await h.provider.provideLanguageModelChatResponse(model.id,messages,{},progress,token(),{},model);
  assert.equal(h.requests[0].model,'xai/grok-4.6');
- await assert.rejects(h.provider.provideLanguageModelChatResponse(model.id,messages,{},progress,token(),{},{...model,version:'xai/grok-unknown'}),/Unknown Grok/);
+ await h.provider.provideLanguageModelChatResponse(model.id,messages,{},progress,token(),{},{...model,version:'xai/company-reasoner-high'});
+ assert.equal(h.requests[1].model,'xai/company-reasoner-high');
 });
 
 for(const vendor of ['anthropic','google','grok'])test(`${vendor} connection reset cancels direct backoff, sends no retry and records no success`,async(t)=>{
@@ -144,3 +138,18 @@ for(const vendor of ['anthropic','google','grok'])test(`${vendor} connection res
  h.d.resetConnection();await rejected;t.mock.timers.tick(5000);await flush();
  assert.equal(a.requests.length,1);assert.equal(h.records.length,0);
 });
+
+for (const vendor of ['anthropic', 'google', 'grok']) {
+ test(`${vendor} custom backend and effort reach the adapter, and API rejection is surfaced`, async () => {
+  const model = { ...models.find(m => m.vendor === vendor), id: 'company-model', version: 'company-model-high',
+   effort: { values: ['custom-effort'], default: 'custom-effort' } };
+  const request = resolveEffort(new EffortCatalog([model]), model.id);
+  const h = adapter(vendor, () => { throw Object.assign(new Error('API rejected custom effort'), { status: 400 }); });
+  await assert.rejects(h.provider.provideLanguageModelChatResponse(model.id, messages, {}, progress, token(), {}, model, request), /API rejected custom effort/);
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.requests[0].model, model.version);
+  const body = h.requests[0];
+  assert.equal(vendor === 'anthropic' ? body.output_config.effort : vendor === 'google' ? body.config.thinkingConfig.thinkingLevel : body.reasoning_effort,
+   vendor === 'google' ? 'CUSTOM-EFFORT' : 'custom-effort');
+ });
+}

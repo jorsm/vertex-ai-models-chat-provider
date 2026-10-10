@@ -196,17 +196,9 @@
           "default": {},
           "additionalProperties": {
             "type": "string",
-            "enum": [
-              "catalog-default",
-              "minimal",
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
+            "minLength": 1
           },
-          "description": "Thinking effort for public language-model requests, by canonical model ID. Available values depend on the current catalog and backend. Internal commit-message generation keeps its configured model behavior."
+          "description": "Thinking effort for public language-model requests, by model ID. Available values depend on the current catalog and backend. Internal commit-message generation keeps its configured model behavior."
         }
       }
     }

@@ -8,14 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- Thinking Effort command and Chat header contribution using stable APIs, with per-model User/Workspace preferences, explicit catalog default and removal actions, current-value metadata, and cancellation/stale-policy handling.
-- Optional effort policy and compatibility-alias metadata in local catalogs and negotiated `effort-v1` proxy catalogs. Invalid definitions cannot grant bundled permissions.
+- Thinking Effort command and Chat header contribution using stable APIs, with per-model User/Workspace preferences, named catalog defaults, current-value metadata, and cancellation/stale-policy handling.
+- Optional named effort configuration in local catalogs and negotiated `effort-v1` proxy catalogs. Invalid definitions cannot grant bundled permissions.
 
 ### Changed
 
-- Consolidate the bundle into 15 regular models and remove fixed-effort variants from model selectors and the bundled catalog. Configure effort separately without a legacy-model toggle. Add canonical Sonnet 5.5 (High default) and Haiku 5.5 (Medium default).
-- Simplify the Thinking Effort model list to one line per model and merge each named default with its matching effort value, such as Medium (Model Default).
-- Public provider invocations capture effort once; retries preserve that snapshot. Internal commit generation retains catalog/alias behavior. Grok routes by catalog version with independent xAI namespace normalization.
+- Use 15 model definitions with independent effort choices and explicit named defaults.
+- Simplify the Thinking Effort model list to one line per model and show each effort value once, with gray Default text on the catalog default.
+- Custom catalogs accept nonempty effort strings; backend APIs validate model support.
+- Public provider invocations capture effort once; retries preserve that snapshot. Internal commit generation uses catalog defaults. All providers route by the literal catalog version.
 - Refresh effort metadata without resetting connections or probing availability. Put the existing Refresh Models management command at the provider contribution's top level.
 
 Verification and remaining real-host/live-service checks are recorded in [thinking-effort-verification.md](docs/thinking-effort-verification.md). No version bump, publication or external proxy deployment is included.
@@ -54,7 +55,7 @@ Verification and remaining real-host/live-service checks are recorded in [thinki
 
 ### Fixed
 
-- Replaced Claude Sonnet 5.5's unsuffixed entry with explicit High effort and added a Max effort choice alongside Medium.
+- Updated Claude Sonnet 5.5 effort choices to High, Medium and Max.
 
 ## [0.6.6] — 2026-09-29
 
@@ -122,7 +123,7 @@ Verification and remaining real-host/live-service checks are recorded in [thinki
 
 ### Added
 
-- **Claude Generation 5 Max Effort** — Added `-max` variants for Claude Opus 5, Sonnet 5, Fable 5, and Fable 5.1. Custom Claude catalogs can use any supported `-low`, `-medium`, `-high`, `-xhigh`, or `-max` effort suffix.
+- **Claude Generation 5 Max Effort** — Added Max effort support for Claude Opus 5, Sonnet 5, Fable 5, and Fable 5.1.
 
 ### Fixed
 
@@ -132,7 +133,7 @@ Verification and remaining real-host/live-service checks are recorded in [thinki
 
 ### Added
 
-- **Gemini 3.8 and 3.7 Flash High Reasoning** — Added support for the high-reasoning variants `gemini-3.8-flash-high` and `gemini-3.7-flash-high`.
+- **Gemini 3.8 and 3.7 Flash High Reasoning** — Added High thinking-level support for Gemini 3.8 and 3.7 Flash.
 
 ## [0.5.11] — 2026-09-02
 
@@ -262,7 +263,7 @@ Verification and remaining real-host/live-service checks are recorded in [thinki
 
 ### Fixed
 
-- **Gemini 3.5 Thought Signature Leak** — Fixed an issue where Gemini 3.5 models (especially `gemini-3.5-flash-high`) would leak internal thought signatures (e.g. `gemini-3.5-flash-high\5R+S41tN...`) into the chat output. The provider now automatically detects and strips these headers while preserving the clean answer text.
+- **Gemini 3.5 Thought Signature Leak** — Prevented internal thought signatures from leaking into chat output while preserving clean answer text.
 
 ### Added
 
@@ -300,7 +301,7 @@ Verification and remaining real-host/live-service checks are recorded in [thinki
 
 ### Added
 
-- **Gemini 3.5 Flash Support** — Added support for the new `gemini-3.5-flash` model and its high-reasoning variant `gemini-3.5-flash-high`.
+- **Gemini 3.5 Flash Support** — Added support for the `gemini-3.5-flash` model.
 - **In-UI Pricing Display** — Added live pricing information directly to the model picker details and tooltips, allowing users to see token costs ($/1M) before selecting a model.
 
 ## [0.4.1] — 2026-05-19
