@@ -11,7 +11,7 @@ fs.writeFileSync(root+'/user-data/User/settings.json',JSON.stringify({'vertexAiC
 fs.writeFileSync(root+'/workspace/.vscode/settings.json',JSON.stringify({'vertexAiChat.projectLabelValue':'local-proxy-vscode-test'}));
 JS
 git -C "$proxy_test_root/workspace" init -q
-git -C "$proxy_test_root/workspace" -c user.name='Local Proxy Test' -c user.email='test@example.invalid' commit --allow-empty -q -m 'Initialize isolated test repository' 
+git -C "$proxy_test_root/workspace" -c user.name='Local Proxy Test' -c user.email='test@example.invalid' commit --allow-empty -q -m 'Initialize isolated test repository'
 cd "$proxy_test_repo"
 npm run bundle
 export PROXY_TEST_URL="$proxy_test_url"

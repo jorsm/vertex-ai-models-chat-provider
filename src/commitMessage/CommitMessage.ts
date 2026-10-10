@@ -36,7 +36,7 @@ Generate a single commit message based solely on the changes shown in the user's
 
 5. **Body Constraints (Use sparingly):**
    - ONLY include a body if the diff represents a complex architectural change, a non-obvious bug fix, or a major refactoring.
-   - If included, focus on the *why* and *what*, rather than the *how*. 
+   - If included, focus on the *why* and *what*, rather than the *how*.
    - Wrap lines at 72 characters.
    - Separate the subject from the body with a single blank line.
 
@@ -62,7 +62,7 @@ refactor(db): rewrite caching mechanism
 
 The previous caching implementation retained stale references to query results, causing memory exhaustion under sustained load. This introduces a proper LRU cache with strict TTL limits.`;
 
-const getUserPrompt = (diffString: string) => `Analyze the following staged Git diff and generate a commit message based on your system instructions. 
+const getUserPrompt = (diffString: string) => `Analyze the following staged Git diff and generate a commit message based on your system instructions.
 
 CRITICAL: Output ONLY the raw commit message text. Do NOT wrap your response in markdown formatting or code blocks. Do NOT include conversational filler.
 
