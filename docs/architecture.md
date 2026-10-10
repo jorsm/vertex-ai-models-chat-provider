@@ -173,6 +173,8 @@ _(High-level explanation of the architecture, dependencies, or primary design pa
 
 ## Thinking effort resolution
 
+The effort folder has three modules: [Effort.ts](../src/effort/Effort.ts) contains types, errors, immutable snapshots, model indexing and pure effort resolution; [EffortConfiguration.ts](../src/effort/EffortConfiguration.ts) reads and writes VS Code settings; [ConfigureThinkingEffort.ts](../src/effort/ConfigureThinkingEffort.ts) owns the picker lifecycle. The core module has no VS Code runtime dependency.
+
 The dispatcher builds an immutable `EffortCatalog` indexed by model ID. Chat and commit-message selectors expose the catalog's models directly. Discovery groups by vendor and literal backend `version`; effort does not change the endpoint or availability probe.
 
 `captureEffortPreferences()` reads User/Remote and Workspace window configuration without an editor URI. The public provider callback captures it synchronously before awaiting labels or discovery. Public requests use Workspace, then User, then the catalog's named default. Internal `infer()` defaults to catalog-only intent. All saved choices are literal named levels; values outside the selected model's catalog choices produce an `EffortError`.

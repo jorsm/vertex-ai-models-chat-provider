@@ -62,8 +62,7 @@ try {
 } finally {
     Module._load = load;
 }
-const { EffortCatalog } = require("../out/effort/EffortCatalog.js");
-const { resolveEffort } = require("../out/effort/ResolveEffort.js");
+const { EffortCatalog, resolveEffort } = require("../out/effort/Effort.js");
 const models = require("../src/models.json").candidateModels;
 const catalog = new EffortCatalog(models);
 const flush = () => new Promise(setImmediate);

@@ -1,9 +1,7 @@
 import * as vscode from "vscode";
 import type { VertexChatModelDispatcher } from "../VertexChatModelDispatcher";
-import { EffortCatalog } from "./EffortCatalog";
+import { EffortCatalog, EffortError, resolveEffort } from "./Effort";
 import { captureEffortPreferences, defaultEffortTarget, hasWorkspace, writeEffortPreference } from "./EffortConfiguration";
-import { EffortError } from "./EffortTypes";
-import { resolveEffort } from "./ResolveEffort";
 
 interface Item extends vscode.QuickPickItem {
     modelId?: string;

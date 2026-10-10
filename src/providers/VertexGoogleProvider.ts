@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { Logger } from "../utils/Logger";
 import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryableError } from "../utils/discovery";
 import { checkAuthError, withRetry } from "../utils/retry";
-import type { ResolvedModelRequest } from "../effort/EffortTypes";
+import type { ResolvedModelRequest } from "../effort/Effort";
 import { estimateTokens } from "../utils/tokens";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 import { ProxyGateway, isGatewayRetryable, normalizeGatewayError, gatewayRetryDelayMs } from "../ProxyGateway";

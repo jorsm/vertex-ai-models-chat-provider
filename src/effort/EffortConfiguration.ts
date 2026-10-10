@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { EffortError, EffortPreferenceSnapshot, snapshot } from "./EffortTypes";
+import { EffortError, type EffortPreferenceSnapshot, snapshot } from "./Effort";
 
 const KEY = "thinkingEffortByModel";
 function object(value: unknown): Record<string, unknown> {

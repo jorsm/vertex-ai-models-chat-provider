@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { DiscoveryProbeOptions } from "../utils/discovery";
 import type { ProxyGateway } from "../ProxyGateway";
-import type { ModelEffortSpec, ResolvedModelRequest } from "../effort/EffortTypes";
+import type { ModelEffortSpec, ResolvedModelRequest } from "../effort/Effort";
 
 export interface ModelUsageTokens {
     input: number;

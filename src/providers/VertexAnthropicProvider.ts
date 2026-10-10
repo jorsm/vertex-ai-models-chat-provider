@@ -6,7 +6,7 @@ import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryabl
 import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
 import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix, claudeEffortConfig } from "./ClaudeThinking";
-import type { ResolvedModelRequest } from "../effort/EffortTypes";
+import type { ResolvedModelRequest } from "../effort/Effort";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 import { ProxyGateway, isGatewayRetryable, normalizeGatewayError, gatewayRetryDelayMs } from "../ProxyGateway";
 import { requestCancellation, cancellableRequest } from "../utils/cancellation";

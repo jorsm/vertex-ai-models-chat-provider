@@ -10,7 +10,7 @@ import { estimateTokens } from "../utils/tokens";
 import type { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
 import type { ProxyGateway } from "../ProxyGateway";
 import { ModelSpec } from "./VertexModelProvider";
-import type { ResolvedModelRequest } from "../effort/EffortTypes";
+import type { ResolvedModelRequest } from "../effort/Effort";
 import { requestCancellation, cancellableRequest } from "../utils/cancellation";
 
 // ─── Provider Plugin ────────────────────────────────────────────────────────

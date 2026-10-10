@@ -11,10 +11,8 @@ import { UsageTrackerService } from "./UsageTrackerService";
 import { Logger } from "./utils/Logger";
 import { DISCOVERY_PROBE_TIMEOUT_MS, getDiscoveryStartDelayMs, probeWithRetries, resolveDiscoveryTimeoutMs, runDiscoveryQueue } from "./utils/discovery";
 import { estimateTokens } from "./utils/tokens";
-import { EffortCatalog } from "./effort/EffortCatalog";
+import { EffortCatalog, type EffortPreferenceSnapshot, resolveEffort, snapshot } from "./effort/Effort";
 import { captureEffortPreferences } from "./effort/EffortConfiguration";
-import { EffortPreferenceSnapshot, snapshot } from "./effort/EffortTypes";
-import { resolveEffort } from "./effort/ResolveEffort";
 import { cancellableRequest, requestCancellation } from "./utils/cancellation";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
