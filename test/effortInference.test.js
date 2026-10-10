@@ -47,7 +47,9 @@ test('public callbacks capture preferences; internal infer keeps the model defau
  await h.d.infer('claude-opus-5-5',messages,{},progress,token());
  await assert.rejects(h.d.provideLanguageModelChatResponse({id:'claude-opus-5-5-high'},messages,{},progress,token()),/Model not available/);
  assert.deepEqual(h.requests.map(r=>r[7].effort.value),['max','provider-default']);
- assert.deepEqual(h.records.map(r=>r[3].effortSource),['user','catalog-default']);
+ assert.deepEqual(h.requests.map(r=>r[7].effort.source),['user','catalog-default']);
+ assert.deepEqual(h.records.map(r=>r[0]),['claude-opus-5-5','claude-opus-5-5']);
+ assert(h.records.every(r=>r.length===3));
 });
 test('settings change while waiting for labels does not alter the public snapshot; invocations remain independent',async()=>{
  const h=harness(),gate=deferred();

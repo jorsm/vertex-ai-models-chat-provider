@@ -60,9 +60,10 @@ test('historical usage keeps its recorded prices after alias removal and new ent
  await tracker.recordUsage('claude-opus-5-5-high',tokens,models[0].pricing);
  const filename=(await fs.readdir(path.join(dir,'usage_logs')))[0];
  const logFile=path.join(dir,'usage_logs',filename);const historical=await fs.readFile(logFile,'utf8');
- await tracker.recordUsage('claude-opus-5-5',tokens,models[0].pricing,{canonicalModel:'claude-opus-5-5',backendModel:'claude-opus-5-5',effort:'provider-default',effortSource:'catalog-default'});
+ await tracker.recordUsage('claude-opus-5-5',tokens,models[0].pricing);
  assert((await fs.readFile(logFile,'utf8')).startsWith(historical));
  const entries=await tracker.getUsageForDate(filename.slice(0,-6));
- assert.equal(entries.length,2);assert.equal(entries[0].effort,undefined);assert.equal(entries[1].effort,'provider-default');
- assert.equal(entries[0].cost,entries[1].cost);assert.equal(entries[1].canonicalModel,'claude-opus-5-5');
+ assert.equal(entries.length,2);assert.equal(entries[1].model,'claude-opus-5-5');
+ assert.equal(entries[0].cost,entries[1].cost);
+ assert.deepEqual(Object.keys(entries[1]).sort(),['cost','model','timestamp','tokens']);
 });

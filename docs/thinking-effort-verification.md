@@ -4,6 +4,8 @@ Implementation date: 8 October 2026. This records completed checks separately fr
 
 9 October 2026 follow-up: removed the legacy-model toggle and bundled alias definitions. Chat and commit selectors now exclude fixed-effort variants, including entries from expanded catalogs. Named defaults use one row, such as Medium (Model Default), and an existing explicit preference at that value highlights the same row. The updated automated suite passed; the older alias/compact desktop-host results below describe the 8 October implementation and were not rerun for this follow-up.
 
+10 October 2026 follow-up: removed the per-request dashboard table and its supporting usage-log fields. Existing cost calculations, aggregate dashboard displays, and historical logs are preserved. Repository tests, lint, bundling, and dashboard JavaScript syntax checks passed. The desktop-host fixtures and live-service checks below were not rerun for this removal.
+
 ## Starting state
 
 Branch `codex/cloud-function-proxy`, HEAD `d4867a51e24f166d4025963d2d8a707c2e2cbc25`. The initial working tree contained modifications to `CHANGELOG.md`, `package.json`, `package-lock.json`, `src/models.json`, and `test/discovery.test.js`, the staged investigation document, and the untracked implementation plan. Initial unstaged/staged diffs were captured at `/tmp/vertex-thinking-effort-start.patch` and `/tmp/vertex-thinking-effort-start-index.patch`. Existing release metadata, dependencies and unrelated catalog/pricing work were retained; the staged investigation remains unchanged.

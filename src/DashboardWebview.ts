@@ -217,13 +217,6 @@ export class DashboardWebview {
                     </table>
                 </div>
 
-                <h1 class="section-title">Recent requests</h1>
-                <div class="table-container">
-                    <table id="requests-table">
-                        <thead><tr><th>Time</th><th>Model</th><th>Effort</th><th>Source</th><th>Cost</th></tr></thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
                 <script nonce="${nonce}" src="${echartsUri}"></script>
                 <script nonce="${nonce}" src="${scriptUri}"></script>
             </body>

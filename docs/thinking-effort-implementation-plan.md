@@ -6,6 +6,8 @@ Prepared on 8 October 2026. Companion evidence: [Thinking effort UI investigatio
 
 9 October 2026 decision: the user removed the legacy-model requirement. The current implementation has no legacy visibility setting or bundled alias definitions; Chat and commit selectors exclude fixed-effort variants. Named defaults share one effort row with their matching value, for example Medium (Model Default). This supersedes the compatibility/default-registration parts of the original plan below.
 
+10 October 2026 decision: the user removed the per-request dashboard table and its supporting effort metadata from usage logs. Usage reporting retains the existing aggregate totals, charts, and model summary.
+
 ## 1. Intended result
 
 Let a user select a model independently from its thinking effort. Provide a **Thinking Effort** action in the Chat view header and Command Palette, persist preferences per canonical model, and translate the resolved choice into the provider's actual request payload.
@@ -29,7 +31,7 @@ This plan selects concrete defaults so implementation can proceed without anothe
 | Grok routing | Inference currently resolves the passed UI `modelId`; it accepts low/medium/high aliases and blocks proxy transport. | Normalize Grok using the catalog version as part of this work, with route-specific tests. |
 | Catalog sources | Workspace replaces User, which replaces Bundled. Proxy mode makes even an empty server catalog authoritative. | Do not enrich a proxy/custom catalog with bundled model permissions. |
 | Proxy parsing | `parseProxyCatalog()` reconstructs models from an explicit field list. | New effort and alias metadata must be validated and copied deliberately. |
-| Usage | JSONL entries contain a model ID, tokens, and cost; request pricing is already passed to the tracker. | Add optional effort metadata without rewriting historical entries. |
+| Usage | JSONL entries contain a model ID, tokens, and cost; request pricing is already passed to the tracker. | Preserve existing accounting and historical entries. |
 
 Relevant existing files: [manifest](../package.json), [dispatcher](../src/VertexChatModelDispatcher.ts), [catalog resolver](../src/ModelCatalogResolver.ts), [provider interface](../src/providers/VertexModelProvider.ts), [proxy](../src/ProxyGateway.ts), [catalog schema](../schemas/models.schema.json), [usage tracker](../src/UsageTrackerService.ts).
 
@@ -277,7 +279,7 @@ For legacy standalone entries without new metadata, retain each provider's exist
 4. Resolve and validate the effective effort against the selected model's policy and the provider/transport capabilities.
 5. Pass the resolved backend ID and effort as an internal typed context to the adapter. Preserve ordinary VS Code tools/options and request labels separately.
 6. Build the provider payload from the snapshot once. All retries reuse it. Capture local client/gateway references or fail on the existing connection-change guard so reinitializing a provider cannot redirect an in-flight retry.
-7. On successful completion, record usage with the same model, effort, and pricing snapshot.
+7. On successful completion, record usage with the same requested model and pricing snapshot.
 
 Validate before creating an inference stream or making an inference POST. Initial discovery may itself contact the configured service before the model's capabilities are known; do not describe an invalid effort check as guaranteeing zero network activity in that situation.
 
@@ -338,15 +340,13 @@ The extension repository can implement the client and fixtures. A production pro
 
 ## 8. Usage, diagnostics, and displayed state
 
-Add optional fields to new usage entries, for example `canonicalModel`, `backendModel`, `effort`, and `effortSource`. Keep the existing `model` field as the requested identity so historical alias-based records remain interpretable.
-
-When effort parameters are omitted, record `provider-default`; do not report Medium or High as an observed backend decision. The actual amount of reasoning is not determined by the selected label alone.
+Keep usage records limited to the timestamp, requested model ID, token/character counts, and estimated cost. Do not add effort metadata or a per-request dashboard table. Historical JSONL records are read unchanged.
 
 Continue calculating costs from the request's captured rate card and actual returned token usage. Do not invent an effort-based pricing multiplier. Do not create successful usage records for failed/cancelled requests, and preserve existing once-per-success accounting.
 
 Update the tracker's fallback catalog lookup to resolve declared aliases through the normalized index when no request rate card is supplied. Condensing aliases must not accidentally change their fallback cost to zero. Historical JSONL records already contain recorded costs and do not need recomputation.
 
-Update the dashboard's per-request display, if needed, to show the optional effective effort with a graceful value for historical records. Keep existing totals and model groupings compatible; rewriting old JSONL files is unnecessary.
+Keep the dashboard's existing totals, charts, and model groupings compatible; rewriting old JSONL files is unnecessary.
 
 Model details can show `Effort: High · Workspace` or `Effort: catalog default`. Refreshing metadata must preserve ID, backend version, token limits, capabilities, and pricing. A static header gear does not claim to display the active Chat model's effort.
 
@@ -367,7 +367,7 @@ New paths below are proposed implementation files, not files created by this pla
 | `schemas/models.schema.json` | Describe new optional fields, enums, required members, and local validation rules. |
 | `src/ModelCatalogResolver.ts` | Validate new metadata in local catalogs while preserving old-format precedence and source boundaries. |
 | `src/models.json` | Consolidate reviewed bundled entries and retain explicit historical aliases. Preserve unrelated staged/unstaged catalog work. |
-| `src/VertexChatModelDispatcher.ts` | Snapshot intent at the public callback, build/use normalized indexes, route exact IDs, project Chat model information, retain discovery grouping, and record resolved metadata. |
+| `src/VertexChatModelDispatcher.ts` | Snapshot intent at the public callback, build/use normalized indexes, route exact IDs, project Chat model information, retain discovery grouping, and record usage with the request's pricing snapshot. |
 | `src/providers/ClaudeThinking.ts` | Reuse compatibility suffix parsing; expose explicit effort construction without changing signed-history handling. |
 | `src/providers/VertexAnthropicProvider.ts` | Use explicit resolved context for request construction; retain compatibility when called without it. |
 | `src/providers/VertexGoogleProvider.ts` | Map permitted named levels without alias synthesis; preserve the rest of generation configuration. |
@@ -376,7 +376,7 @@ New paths below are proposed implementation files, not files created by this pla
 | `src/extension.ts` | Register the command and setting listeners; refresh metadata without re-probing endpoints. |
 | `package.json` | Add command/header contribution and both settings; correct the misplaced management command separately. No new proposed-API requirement. |
 | `src/commitMessage/CommitMessageModelSelection.ts` | Consume the full compatibility model projection; preserve current setting scope and selection rules. |
-| `src/UsageTrackerService.ts`, `src/DashboardWebview.ts` | Add optional effective-effort reporting with old-log compatibility and unchanged cost computation. |
+| `src/UsageTrackerService.ts` | Preserve existing usage records and cost computation with the request's captured prices and a normalized catalog fallback. |
 | `README.md`, `docs/extension.md`, `docs/architecture.md` | Describe scope, canonical identities, defaults, compact mode, compatibility limits, and provider flow. |
 | `docs/proxy.md`, `docs/proxy-compatibility.md` | Document negotiation, permitted efforts, policy enforcement, and legacy/enhanced validation. |
 | `test/*.test.js` | Add focused effort cases and extend existing provider, proxy, discovery, pricing, and commit regressions. |
@@ -467,7 +467,7 @@ External dependency: production use of independent effort through a proxy requir
 
 Tasks:
 
-1. Add optional usage fields and dashboard display with historical-log compatibility.
+1. Preserve existing usage accounting and aggregate dashboard displays with historical-log compatibility.
 2. Correct the manifest's management-command shape in a separate change: remove the invalid nested-only configuration object and place the existing Refresh Models command at the provider's top level. Verify the legacy management action; do not make effort configuration depend on this deprecated entry point.
 3. Complete the host matrix and targeted backend checks described below.
 4. Run the final repository checks once after the implementation settles.
@@ -646,7 +646,7 @@ For the desired composer placement, a separate upstream fix must prevent interna
 - [ ] Local, custom, legacy proxy, and enhanced proxy catalogs follow their distinct authority rules.
 - [ ] No extra discovery probes, new billing attribution on discovery, or direct fallback are introduced.
 - [ ] Compact mode's restoration limitations are tested and documented; compatibility mode retains former identities.
-- [ ] Current-value metadata and optional usage fields remain readable with historical data.
+- [ ] Current-value model metadata remains readable; aggregate usage reporting preserves historical data.
 - [ ] Final compile/test, lint, bundle, and diff checks are recorded, with real-host and live-service results identified separately.
 
 ## 16. Sources and evidence boundaries

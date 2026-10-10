@@ -191,8 +191,8 @@ The dashboard renders several key metrics and interactive elements:
     - **Payload Footprint**: Analysis of payload density (System, User, Assistant, Images, Tools) across models.
 - **Summary Table**: Detailed breakdown of Model, Total Cost, Input Tokens, Output Tokens, Cached Tokens, and Request counts.
 
-## Effort metadata
+## Usage accounting
 
-New records retain `model` as the requested ID and may include `canonicalModel`, `backendModel`, `effort` and `effortSource`. A resolved omitted override is recorded as `provider-default`, without claiming an observed upstream reasoning level. Historical JSONL entries are read unchanged and show **Not recorded** in the recent-requests table. Totals and model grouping continue to use the existing cost/model fields.
+Usage records contain the timestamp, requested model ID, token/character counts, and estimated cost. Historical JSONL entries are read unchanged. The dashboard aggregates records into totals, charts, and a summary by model.
 
 Costs use the request's captured prices and returned token usage, with no effort multiplier. Declared aliases resolve their canonical rate card for fallback lookups. Failed/cancelled requests do not create successful usage records; successful inference is accounted once.

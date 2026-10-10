@@ -10,7 +10,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - Thinking Effort command and Chat header contribution using stable APIs, with per-model User/Workspace preferences, explicit catalog default and removal actions, current-value metadata, and cancellation/stale-policy handling.
 - Optional effort policy and compatibility-alias metadata in local catalogs and negotiated `effort-v1` proxy catalogs. Invalid definitions cannot grant bundled permissions.
-- Optional canonical/backend/effort fields in usage logs and a recent-requests dashboard table that also reads historical entries.
 
 ### Changed
 

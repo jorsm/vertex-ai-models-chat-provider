@@ -724,8 +724,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
             cache_read: result.usage.cache_read,
             cache_create: result.usage.cache_create,
             characters: result.charCount,
-          }, spec.pricing, { canonicalModel: request.canonicalId, backendModel: request.backendModelId,
-            ...(request.effort ? { effort: request.effort.value, effortSource: request.effort.source } : {}) })
+          }, spec.pricing)
           .catch((err) => this.logger.log(`  ⚠️ Failed to record usage: ${err}`));
       }
     } catch (e) {

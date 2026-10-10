@@ -247,7 +247,6 @@ function renderDashboard(logs) {
 
   renderCharts(datesMap, tokenSeriesMap, costByModel, payloadSeriesMap);
   renderTable(modelStats);
-  renderRequests(logs);
 }
 
 function renderCharts(datesMap, tokenSeriesMap, costByModel, payloadSeriesMap) {
@@ -410,20 +409,6 @@ function renderCharts(datesMap, tokenSeriesMap, costByModel, payloadSeriesMap) {
     },
     true,
   );
-}
-
-function renderRequests(logs) {
-  const tbody = document.querySelector("#requests-table tbody");
-  tbody.replaceChildren();
-  for (const entry of [...logs].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 100)) {
-    const row = document.createElement("tr");
-    for (const value of [new Date(entry.timestamp).toLocaleString(), entry.model, entry.effort ?? "Not recorded", entry.effortSource ?? "—", `$${entry.cost.toFixed(4)}`]) {
-      const cell = document.createElement("td");
-      cell.textContent = value;
-      row.appendChild(cell);
-    }
-    tbody.appendChild(row);
-  }
 }
 
 function renderTable(modelStats) {
