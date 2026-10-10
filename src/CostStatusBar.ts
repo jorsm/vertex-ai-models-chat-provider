@@ -109,7 +109,7 @@ export class CostStatusBar implements vscode.Disposable {
             tooltip.appendMarkdown(`**Model Catalog:** ${catalogDesc}\n\n`);
             tooltip.appendMarkdown(`${identityText}\n\n`);
             tooltip.appendMarkdown(`---\n\n`);
-            tooltip.appendMarkdown(`$(dashboard) Click to open Dashboard`);
+            tooltip.appendMarkdown(`*Click to open Dashboard*`);
 
             this.statusBarItem.tooltip = tooltip;
         } catch (error) {

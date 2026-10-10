@@ -100,7 +100,7 @@ export function resolveCommitMessageResourceUri(context?: CommitMessageCommandCo
 }
 
 /**
- * Command handler for "vertexAiChat.generateCommitMessage".
+ * Command handler for `vertexAiChat.generateCommitMessage`.
  *
  * Collects staged diffs, sends them to the LLM, and writes the generated
  * commit message into the SCM input box.
