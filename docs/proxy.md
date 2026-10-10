@@ -280,10 +280,10 @@ Optional inference attribution uses these client label keys:
 
 | Label | Resolution |
 | --- | --- |
-| `vscode-vertex-ai-user` | Enabled by `enableUserLabel`; explicit `userLabelValue`, otherwise the resolved client identity, using the same authentication identity resolver as direct Vertex mode. |
-| `vscode-vertex-ai-project` | Enabled by `enableProjectLabel`; workspace/folder `projectLabelValue`, otherwise the workspace or target repository name. |
+| `vscode-vertex-ai-user` | Enabled by `enableUserLabel`; uses the effective request-scoped `userLabelValue`, then resolves the client identity through `AuthManager`. |
+| `vscode-vertex-ai-project` | Enabled by `enableProjectLabel`; uses folder/workspace `projectLabelValue`, then resolves the folder or workspace name using the ordered fallbacks in [usage and billing](usage-and-billing.md#request-label-resolution). |
 
-Values are sanitized to lowercase letters, digits, underscores, and hyphens, start with a letter, and are truncated to 63 characters. A missing value produces a warning and that label is omitted. Discovery sends neither label. Gemini inference carries labels in the root JSON body; Claude uses `X-Vertex-AI-Labels`, containing base64-encoded UTF-8 JSON. Do not inject root JSON `labels` into Claude requests.
+Values are sanitized to lowercase letters, digits, underscores, and hyphens, start with a letter, and are truncated to 63 characters. If an enabled label cannot be resolved, the extension shows an error and blocks inference; no request is sent. Discovery sends neither label. Gemini inference carries labels in the root JSON body; Claude uses `X-Vertex-AI-Labels`, containing base64-encoded UTF-8 JSON. Do not inject root JSON `labels` into Claude requests.
 
 Client labels are attribution hints, not proof of identity or permission. Derive the authenticated caller independently from verified authentication and keep that dimension separate in your metrics. Your business logic can map callers to teams or cost centers, require a project label, overwrite attribution, enforce model/effort access, set per-user limits, or reject requests before upstream inference. These policies belong to your proxy and are not automatically provided by the setting.
 
