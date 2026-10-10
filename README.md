@@ -183,7 +183,9 @@ Install dependencies with `npm ci`. Run `npm run format` to format the repositor
 
 VS Code recommends **Prettier - Code formatter** and formats supported files on save using the repository configuration. `npm run lint` checks TypeScript source using the recommended ESLint and TypeScript rules plus type-aware checks for unhandled and misused promises, including VS Code thenables. The lint command requires zero warnings. SDK payload types remain dynamic while those boundaries are migrated separately.
 
-`npm test` compiles and runs the tests. The compiler enables strict checking, unused-local detection, checked array/object indexing, and exact optional-property types. Internal state that can be cleared declares `undefined` explicitly; optional object properties represent values that may be omitted. The pre-commit hook, version checks, and CI workflows check formatting, and their existing compile/lint steps enforce these checks.
+`npm test` compiles and runs the tests. The compiler enables strict checking, unused-local detection, checked array/object indexing, and exact optional-property types. Internal state that can be cleared declares `undefined` explicitly; optional object properties represent values that may be omitted.
+
+The pre-commit hook stays fast: `lint-staged` checks formatting only for staged files, respecting the repository's formatting exclusions and ignoring unsupported file types. Partially staged files are checked with their unstaged changes temporarily hidden and then restored. Compilation, lint, and tests run at pre-push through `npm run check`, which runs `npm run format:check && npm run lint && npm test` for the whole repository. TypeScript compiles once as part of `npm test`. Hooks report failures without automatically formatting files and block the commit or push when a check fails. `npm ci` installs the Husky hooks through the `prepare` script. Version checks and CI workflows also check formatting and compile/lint.
 
 ## License
 
