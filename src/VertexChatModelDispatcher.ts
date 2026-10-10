@@ -536,6 +536,87 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     }
   }
 
+  private async resolveUserLabel(
+    config: vscode.WorkspaceConfiguration,
+    token: vscode.CancellationToken,
+    revision: number,
+  ): Promise<string> {
+    // Prefer an explicitly configured value.
+    let userLabelValue = this.getValidLabelValue(config.get<string>("userLabelValue"));
+
+    if (!userLabelValue) {
+      // Otherwise, resolve the request's user identity.
+      let identity: string | undefined;
+      try {
+        identity = await this.authManager.getIdentity();
+      } catch (error) {
+        if (error instanceof vscode.CancellationError || token.isCancellationRequested) { throw new vscode.CancellationError(); }
+        this.failMissingLabelValue("user", true);
+      }
+      if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
+      if (revision !== this.connectionRevision) { throw new Error("Configuration changed before inference. Refresh Models."); }
+      userLabelValue = this.getValidLabelValue(identity);
+    }
+
+    if (!userLabelValue) {
+      this.failMissingLabelValue("user");
+    }
+
+    return userLabelValue;
+  }
+
+  private resolveProjectLabel(config: vscode.WorkspaceConfiguration, resource: vscode.Uri | undefined): string {
+    // Check for an explicitly configured value first, which overrides any automatic inference.
+    const inspection = config.inspect<string>("projectLabelValue");
+    const configuredValue = this.getValidLabelValue(inspection?.workspaceFolderValue || inspection?.workspaceValue);
+    if (configuredValue) {
+      return configuredValue;
+    }
+
+    // If not set, infer a value from the workspace context.
+    const activeResourceFolder = resource ? vscode.workspace.getWorkspaceFolder(resource) : undefined;
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    const workspaceName = this.getValidLabelValue(vscode.workspace.name);
+    const isMultiRootWorkspace = (workspaceFolders?.length ?? 0) > 1;
+
+    // 1. In a multi-root workspace, use the folder containing the active resource.
+    if (isMultiRootWorkspace && activeResourceFolder) {
+      const activeResourceFolderValue = this.getValidLabelValue(activeResourceFolder.name);
+      if (activeResourceFolderValue) {
+        return activeResourceFolderValue;
+      }
+    }
+
+    // 2. In a multi-root workspace without a matching resource folder, use the workspace name.
+    if (isMultiRootWorkspace && !activeResourceFolder && workspaceName) {
+      return workspaceName;
+    }
+
+    // 3. In a single-folder or folderless context, use the workspace name.
+    if (!isMultiRootWorkspace && workspaceName) {
+      return workspaceName;
+    }
+
+    // 4. If the workspace name was unavailable, use the folder containing the resource.
+    if (resource) {
+      const resourceFolderValue = this.getValidLabelValue(activeResourceFolder?.name);
+      if (resourceFolderValue) {
+        return resourceFolderValue;
+      }
+    }
+
+    // 5. If exactly one folder is open, use it as the final automatic fallback.
+    if (workspaceFolders?.length === 1) {
+      const singleFolderValue = this.getValidLabelValue(workspaceFolders[0].name);
+      if (singleFolderValue) {
+        return singleFolderValue;
+      }
+    }
+
+    // Fallback: No valid project label could be determined.
+    return this.failMissingLabelValue("project");
+  }
+
   private async resolveRequestLabels(resource: vscode.Uri | undefined, token: vscode.CancellationToken): Promise<Record<string, string>> {
     if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
     const revision = this.connectionRevision;
@@ -544,62 +625,17 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const requestLabels: Record<string, string> = {};
 
     if (config.get<boolean>("enableUserLabel")) {
-      // 0. Check for a custom user label value in settings
-      let userLabelValue = this.getValidLabelValue(config.get<string>("userLabelValue"));
-
-      if (!userLabelValue) {
-        // Use the request's scoped checkbox, rather than the startup configuration.
-        let identity: string | undefined;
-        try {
-          identity = await this.authManager.getIdentity();
-        } catch (error) {
-          if (error instanceof vscode.CancellationError || token.isCancellationRequested) { throw new vscode.CancellationError(); }
-          this.failMissingLabelValue("user", true);
-        }
-        if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
-        if (revision !== this.connectionRevision) { throw new Error("Configuration changed before inference. Refresh Models."); }
-        userLabelValue = this.getValidLabelValue(identity);
-      }
-
-      if (userLabelValue) {
-        this.clearMissingLabelWarning("user");
-        requestLabels["vscode-vertex-ai-user"] = userLabelValue;
-      } else {
-        this.failMissingLabelValue("user");
-      }
+      const userLabelValue = await this.resolveUserLabel(config, token, revision);
+      this.clearMissingLabelWarning("user");
+      requestLabels["vscode-vertex-ai-user"] = userLabelValue;
     } else {
       this.clearMissingLabelWarning("user");
     }
 
     if (config.get<boolean>("enableProjectLabel")) {
-      // 0. Check for a custom project label value in settings (Workspace/Folder level only)
-      const inspection = config.inspect<string>("projectLabelValue");
-      let projectLabelValue = this.getValidLabelValue(inspection?.workspaceFolderValue || inspection?.workspaceValue);
-
-      if (!projectLabelValue) {
-        // 1. Try to use the workspace name (e.g. from .code-workspace file)
-        const folder = resource ? vscode.workspace.getWorkspaceFolder(resource) : undefined;
-        projectLabelValue = this.getValidLabelValue(vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 1 ? folder?.name : vscode.workspace.name);
-
-        if (!projectLabelValue) {
-          // 2. Fallback to the active editor's workspace folder
-          if (resource) {
-            projectLabelValue = this.getValidLabelValue(vscode.workspace.getWorkspaceFolder(resource)?.name);
-          }
-        }
-
-        if (!projectLabelValue) {
-          // 3. Final fallback to the first workspace folder
-          projectLabelValue = this.getValidLabelValue(vscode.workspace.workspaceFolders?.[0]?.name);
-        }
-      }
-
-      if (projectLabelValue) {
-        this.clearMissingLabelWarning("project");
-        requestLabels["vscode-vertex-ai-project"] = projectLabelValue;
-      } else {
-        this.failMissingLabelValue("project");
-      }
+      const projectLabelValue = this.resolveProjectLabel(config, resource);
+      this.clearMissingLabelWarning("project");
+      requestLabels["vscode-vertex-ai-project"] = projectLabelValue;
     } else {
       this.clearMissingLabelWarning("project");
     }

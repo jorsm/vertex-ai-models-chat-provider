@@ -453,6 +453,34 @@ test("shared inference resolves the target repository labels and records usage o
   assert.deepEqual(request[7], { "vscode-vertex-ai-project": "repository-b" });
   assert.equal(h.records.length, 1);
 });
+test("project label uses the workspace name without an active resource and the folder name with one", async (t) => {
+  inspections.proxyUrl = { globalValue: "https://gateway.test" };
+  settings.enableProjectLabel = true;
+  const previousProjectLabelInspection = inspections.projectLabelValue;
+  inspections.projectLabelValue = {};
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  vscode.workspace.getConfiguration = (section, uri) => {
+    const configuration = originalGetConfiguration(section, uri);
+    return { ...configuration, inspect: (key) => key === "projectLabelValue" ? {} : configuration.inspect(key) };
+  };
+  t.after(() => {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+    if (previousProjectLabelInspection === undefined) delete inspections.projectLabelValue;
+    else inspections.projectLabelValue = previousProjectLabelInspection;
+  });
+  fakeDiscovery(t, [{ id: "gemini-test", vendor: "google" }]);
+  const h = harness([model("gemini-test")]);
+  const infer = (resource) => h.dispatcher.infer(
+    "gemini-test", userMessage(), { tools: [] }, { report() {} }, cancellation().token, resource,
+  );
+
+  await infer();
+  await infer(rootB);
+
+  const requests = h.calls.filter((call) => call[0] === "infer");
+  assert.deepEqual(requests[0][7], { "vscode-vertex-ai-project": "workspace" });
+  assert.deepEqual(requests[1][7], { "vscode-vertex-ai-project": "b" });
+});
 test("proxy discovery rejects models without a configured region before initializing adapters", async (t) => {
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
   fakeDiscovery(t, [model("gemini-test")], 200, []);
