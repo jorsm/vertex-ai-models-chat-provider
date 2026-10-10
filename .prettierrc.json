@@ -1,4 +1,14 @@
 {
     "tabWidth": 4,
-    "printWidth": 300
+    "printWidth": 300,
+    "useTabs": false,
+    "semi": true,
+    "singleQuote": false,
+    "trailingComma": "all",
+    "arrowParens": "always",
+    "objectWrap": "preserve",
+    "plugins": ["prettier-plugin-multiline-arrays"],
+    "multilineArraysWrapThreshold": 1,
+    "proseWrap": "preserve",
+    "endOfLine": "lf"
 }

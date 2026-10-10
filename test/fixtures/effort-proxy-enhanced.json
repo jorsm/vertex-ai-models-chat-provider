@@ -43,7 +43,10 @@
                 "cache_create": 5.0
             },
             "effort": {
-                "values": ["high", "max"],
+                "values": [
+                    "high",
+                    "max"
+                ],
                 "default": "high"
             }
         }

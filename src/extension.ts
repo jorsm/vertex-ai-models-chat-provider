@@ -101,7 +101,10 @@ export async function activate(context: vscode.ExtensionContext) {
                 return;
             }
 
-            for (const [index, tool] of tools.entries()) {
+            for (const [
+                index,
+                tool,
+            ] of tools.entries()) {
                 outputChannel.appendLine(`\n[${index}] Tool Name: ${tool.name}`);
                 outputChannel.appendLine(`Description: ${tool.description}`);
                 outputChannel.appendLine(`Tags: ${tool.tags?.join(", ") ?? "none"}`);

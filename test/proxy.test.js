@@ -205,7 +205,14 @@ test.afterEach(() => {
 test("proxy URL validates HTTPS, optional base path and loopback; rejects token/query/arbitrary schemes", () => {
     assert.equal(validateProxyUrl("https://gateway.test/proxy/"), "https://gateway.test/proxy");
     assert.equal(validateProxyUrl("http://127.0.0.1:8080"), "http://127.0.0.1:8080");
-    for (const url of ["http://public.test", "https://user:pass@gateway.test", "https://gateway.test/?token=secret", "https://gateway.test/#token", "file:///tmp/x", "relative"]) {
+    for (const url of [
+        "http://public.test",
+        "https://user:pass@gateway.test",
+        "https://gateway.test/?token=secret",
+        "https://gateway.test/#token",
+        "file:///tmp/x",
+        "relative",
+    ]) {
         assert.throws(() => validateProxyUrl(url), GatewayError);
     }
 });
@@ -246,7 +253,13 @@ test("token acquisition uses a bounded personal CLI command, caches until JWT ex
     }
 });
 test("token acquisition rejects SA, expired, unverified and malformed tokens without exposing stderr", async () => {
-    for (const output of [jwt({ email: "service@project.iam.gserviceaccount.com" }), jwt({ email_verified: false }), jwt({ exp: 1 }), "not-a-token", new Error("Authorization: Bearer secret")]) {
+    for (const output of [
+        jwt({ email: "service@project.iam.gserviceaccount.com" }),
+        jwt({ email_verified: false }),
+        jwt({ exp: 1 }),
+        "not-a-token",
+        new Error("Authorization: Bearer secret"),
+    ]) {
         commandResult = output;
         const auth = new AuthManager({});
         await assert.rejects(auth.getProxyIdToken(), (error) => error.status === 401 && !error.message.includes("secret"));
@@ -268,7 +281,16 @@ test("a transient gcloud timeout retries once and shares recovery across callers
         if (++attempts === 1) throw Object.assign(new Error("timeout with secret stderr"), { code: "GCLOUD_TIMEOUT", killed: true });
         return { stdout: expected, stderr: "" };
     };
-    assert.deepEqual(await Promise.all([auth.getProxyIdToken(), auth.getProxyIdToken()]), [expected, expected]);
+    assert.deepEqual(
+        await Promise.all([
+            auth.getProxyIdToken(),
+            auth.getProxyIdToken(),
+        ]),
+        [
+            expected,
+            expected,
+        ],
+    );
     assert.equal(attempts, 2);
 });
 test("persistent timeout is bounded and is not reported as expired authentication", async () => {
@@ -319,7 +341,10 @@ test("server catalog supplies complete metadata and validates IDs, prices, limit
     const entry = model("server-only-high", "google", "backend-high");
     const catalog = {
         candidateModels: [entry],
-        regionPriority: ["europe-west8", "us-east5"],
+        regionPriority: [
+            "europe-west8",
+            "us-east5",
+        ],
     };
     assert.deepEqual(parseProxyCatalog({ models: [entry], regionPriority: catalog.regionPriority }), catalog);
     assert.deepEqual(parseProxyCatalog(catalog), catalog);
@@ -327,7 +352,11 @@ test("server catalog supplies complete metadata and validates IDs, prices, limit
     const namespaced = model("grok", "grok", "xai/grok-4.6");
     const custom = model("future-model", "future-provider", "organization/model");
     const mixed = {
-        candidateModels: [entry, namespaced, custom],
+        candidateModels: [
+            entry,
+            namespaced,
+            custom,
+        ],
         regionPriority: catalog.regionPriority,
     };
     assert.deepEqual(parseProxyCatalog(mixed), mixed);
@@ -350,7 +379,10 @@ test("server catalog supplies complete metadata and validates IDs, prices, limit
         {},
         { models: null },
         {
-            models: [entry, entry],
+            models: [
+                entry,
+                entry,
+            ],
             regionPriority: catalog.regionPriority,
         },
         { candidateModels: [entry] },
@@ -360,7 +392,10 @@ test("server catalog supplies complete metadata and validates IDs, prices, limit
         { models: [entry], regionPriority: ["https://elsewhere"] },
         {
             candidateModels: [entry],
-            regionPriority: ["europe-west8", 42],
+            regionPriority: [
+                "europe-west8",
+                42,
+            ],
         },
         { candidateModels: [entry], regionPriority: ["https://elsewhere"] },
         { candidateModels: [entry], regionPriority: [], models: [] },
@@ -374,7 +409,10 @@ test("authenticated discovery sends only an ID token and bounds a stalled creden
         "https://gateway.test/base",
         async () => "personal-token",
         async (url, init) => {
-            calls.push([url, init]);
+            calls.push([
+                url,
+                init,
+            ]);
             return Response.json({ candidateModels: [], regionPriority: ["global"] });
         },
     );
@@ -402,7 +440,12 @@ test("gateway transport rejects another origin/base path and removes quota/API-k
     assert.equal(headers.get("x-goog-api-key"), null);
 });
 test("canonical discovery failures never try another endpoint or catalog source", async () => {
-    for (const status of [401, 403, 404, 500]) {
+    for (const status of [
+        401,
+        403,
+        404,
+        500,
+    ]) {
         const calls = [];
         const gateway = new ProxyGateway(
             "https://gateway.test/base",
@@ -417,7 +460,14 @@ test("canonical discovery failures never try another endpoint or catalog source"
     }
 });
 test("policy and caller/upstream authentication errors never retry even with quota-like text", async () => {
-    for (const status of [400, 401, 403, 404, 413, 502]) {
+    for (const status of [
+        400,
+        401,
+        403,
+        404,
+        413,
+        502,
+    ]) {
         let calls = 0;
         await assert.rejects(
             withRetry(
@@ -457,29 +507,52 @@ function harness(models, authOverrides = {}) {
         getEffectiveCatalog: async () => proxyCatalog ?? { candidateModels: models, regionPriority: ["forbidden-client-region"] },
     };
     const dispatcher = new Dispatcher("user-project", { recordUsage: async (...args) => records.push(args) }, auth, resolver);
-    for (const vendor of ["google", "anthropic", "grok"]) {
+    for (const vendor of [
+        "google",
+        "anthropic",
+        "grok",
+    ]) {
         dispatcher.activeProviders.set(vendor, {
             vendor,
             initialize(...args) {
-                calls.push(["initialize", vendor, ...args]);
+                calls.push([
+                    "initialize",
+                    vendor,
+                    ...args,
+                ]);
             },
             setLabels() {},
             pingModel() {
                 throw Error("no inference probes allowed");
             },
             provideLanguageModelChatResponse: async (...args) => {
-                calls.push(["infer", vendor, ...args]);
+                calls.push([
+                    "infer",
+                    vendor,
+                    ...args,
+                ]);
                 return { usage: { input: 1, output: 2, cache_read: 0, cache_create: 0 }, charCount: {} };
             },
         });
     }
     return { dispatcher, calls, records, auth, resolver };
 }
-function fakeDiscovery(t, allowed, status = 200, regionPriority = ["europe-west8", "us-east5"]) {
+function fakeDiscovery(
+    t,
+    allowed,
+    status = 200,
+    regionPriority = [
+        "europe-west8",
+        "us-east5",
+    ],
+) {
     const originalFetch = global.fetch;
     const calls = [];
     global.fetch = async (url, init) => {
-        calls.push([url, init]);
+        calls.push([
+            url,
+            init,
+        ]);
         return Response.json(
             {
                 candidateModels: allowed.map((entry) => ({ ...model(entry.id, entry.vendor), ...entry })),
@@ -497,9 +570,16 @@ test("proxy dispatcher uses the server catalog and sends only an explicit custom
     inspections.proxyUrl = { globalValue: "https://gateway.test" };
     settings.enableUserLabel = true;
     settings.userLabelValue = "Custom.User@example.com";
-    const remote = [model("gemini-test"), { ...model("remote", "google", "backend"), displayName: "Remote model", pricing: { input: 10, output: 20 } }, { ...model("remote-high", "google", "backend-high"), displayName: "Remote model (High)", pricing: { input: 10, output: 20 } }];
+    const remote = [
+        model("gemini-test"),
+        { ...model("remote", "google", "backend"), displayName: "Remote model", pricing: { input: 10, output: 20 } },
+        { ...model("remote-high", "google", "backend-high"), displayName: "Remote model (High)", pricing: { input: 10, output: 20 } },
+    ];
     const requests = fakeDiscovery(t, remote);
-    const h = harness([model("denied"), model("grok", "grok")]);
+    const h = harness([
+        model("denied"),
+        model("grok", "grok"),
+    ]);
     h.resolver.getEffectiveCatalog = async () => {
         throw new Error("must not read local catalog during proxy discovery");
     };
@@ -517,7 +597,11 @@ test("proxy dispatcher uses the server catalog and sends only an explicit custom
     const info = await h.dispatcher.provideLanguageModelChatInformation();
     assert.deepEqual(
         info.map((m) => m.id),
-        ["gemini-test", "remote", "remote-high"],
+        [
+            "gemini-test",
+            "remote",
+            "remote-high",
+        ],
     );
     assert.equal(info[1].name, "Remote model");
     assert.match(info[1].detail, /europe-west8/);
@@ -585,7 +669,10 @@ test("proxyUrl without projectId fails before any token request, connection or p
         tokenRequests++;
         return "token";
     };
-    for (const projectId of ["", "   "]) {
+    for (const projectId of [
+        "",
+        "   ",
+    ]) {
         h.dispatcher.setProjectId(projectId);
         await assert.rejects(h.dispatcher.discoverModelsAndRegion(), (error) => error instanceof MissingProjectIdError && error.viaProxy === true && /proxy was not contacted/.test(error.message));
     }
@@ -676,7 +763,10 @@ test("shared inference retries discovery after a previous empty error state", as
 });
 test("shared inference executes exactly the requested authorized model", async (t) => {
     inspections.proxyUrl = { globalValue: "https://gateway.test" };
-    const remote = [model("gemini-3.8-flash"), model("company-claude", "anthropic")];
+    const remote = [
+        model("gemini-3.8-flash"),
+        model("company-claude", "anthropic"),
+    ];
     fakeDiscovery(t, remote);
     const h = harness(remote);
     await h.dispatcher.infer("company-claude", [], { tools: [] }, { report() {} }, cancellation().token, rootB);
@@ -694,7 +784,11 @@ test("shared inference rejects an unavailable model without substituting another
 });
 test("proxy discovery retains every advertised vendor and initializes registered adapters without a vendor allowlist", async (t) => {
     inspections.proxyUrl = { globalValue: "https://gateway.test" };
-    const remote = [model("gemini-test"), model("grok-4.6", "grok", "xai/grok-4.6"), model("future-model", "future-provider")];
+    const remote = [
+        model("gemini-test"),
+        model("grok-4.6", "grok", "xai/grok-4.6"),
+        model("future-model", "future-provider"),
+    ];
     fakeDiscovery(t, remote);
     const h = harness([model("local-only")]);
     assert.deepEqual((await h.dispatcher.discoverModelsAndRegion()).availableModels, remote);
@@ -704,7 +798,11 @@ test("proxy discovery retains every advertised vendor and initializes registered
     );
     assert.deepEqual(
         h.calls.filter((c) => c[0] === "initialize").map((c) => c[1]),
-        ["google", "anthropic", "grok"],
+        [
+            "google",
+            "anthropic",
+            "grok",
+        ],
     );
     await h.dispatcher.infer("grok-4.6", userMessage(), {}, { report() {} }, cancellation().token);
     assert.equal(h.calls.find((c) => c[0] === "infer")[1], "grok");
@@ -766,7 +864,10 @@ test("pinned Gemini SDK sends ID-token Vertex wire format and delivers output be
     const gate = deferred();
     const requests = streamingFetch(
         t,
-        [geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: "first " }] } }] }), geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: "last" }] } }], usageMetadata: { promptTokenCount: 7, candidatesTokenCount: 2, cachedContentTokenCount: 3 } })],
+        [
+            geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: "first " }] } }] }),
+            geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: "last" }] } }], usageMetadata: { promptTokenCount: 7, candidatesTokenCount: 2, cachedContentTokenCount: 3 } }),
+        ],
         gate,
     );
     const provider = new VertexGoogleProvider();
@@ -831,12 +932,23 @@ test("pinned Claude SDK uses gateway token, native SSE and label header, preserv
     assert.equal(headers.get("authorization"), "Bearer personal-id-token");
     assert.deepEqual(JSON.parse(Buffer.from(headers.get("X-Vertex-AI-Labels"), "base64")), { "vscode-vertex-ai-project": "project" });
     assert.ok(!parts.some((p) => p.value?.includes("private")));
-    await run([...userMessage(), { role: 2, content: [new ToolCallPart("tool-1", "lookup", {})] }, { role: 1, content: [new ToolResultPart("tool-1", [new TextPart("done")])] }]);
+    await run([
+        ...userMessage(),
+        { role: 2, content: [new ToolCallPart("tool-1", "lookup", {})] },
+        { role: 1, content: [new ToolResultPart("tool-1", [new TextPart("done")])] },
+    ]);
     assert.equal(requests[1].body.messages[1].content[0].signature, "signed");
 });
 test("Gemini cancellation during streaming aborts the actual SDK transport without retry", async (t) => {
     const gate = deferred();
-    const requests = streamingFetch(t, [geminiEvent({ candidates: [{ content: { parts: [{ text: "first" }] } }] }), geminiEvent({})], gate);
+    const requests = streamingFetch(
+        t,
+        [
+            geminiEvent({ candidates: [{ content: { parts: [{ text: "first" }] } }] }),
+            geminiEvent({}),
+        ],
+        gate,
+    );
     const provider = new VertexGoogleProvider();
     provider.initialize("gateway", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
     const cancel = cancellation(),
@@ -928,20 +1040,38 @@ test("pinned Gemini SDK replays signed tool calls on the following gateway reque
     await run(userMessage());
     const call = parts.find((p) => p instanceof ToolCallPart);
     assert.ok(call);
-    await run([...userMessage(), { role: 2, content: [call] }, { role: 1, content: [new ToolResultPart(call.callId, [new TextPart('{"value":42}')])] }]);
+    await run([
+        ...userMessage(),
+        { role: 2, content: [call] },
+        { role: 1, content: [new ToolResultPart(call.callId, [new TextPart('{"value":42}')])] },
+    ]);
     assert.equal(requests[1].body.contents[1].parts[0].thoughtSignature, "gemini-signed");
     assert.equal(requests[1].body.contents[2].parts[0].functionResponse.name, "lookup");
 });
-for (const [vendor, Provider] of [
-    ["google", VertexGoogleProvider],
-    ["anthropic", VertexAnthropicProvider],
+for (const [
+    vendor,
+    Provider,
+] of [
+    [
+        "google",
+        VertexGoogleProvider,
+    ],
+    [
+        "anthropic",
+        VertexAnthropicProvider,
+    ],
 ]) {
     test(`${vendor} SDK denies gateway 403 once; 401 remains a gateway error without ADC login classification`, async (t) => {
         const originalFetch = global.fetch;
         t.after(() => {
             global.fetch = originalFetch;
         });
-        for (const status of [400, 403, 401, 502]) {
+        for (const status of [
+            400,
+            403,
+            401,
+            502,
+        ]) {
             let calls = 0;
             global.fetch = async () => {
                 calls++;
@@ -1014,7 +1144,11 @@ test("cancelling backoff is immediate and temporary failures recover without unb
     }
 });
 test("discovery rejects oversized, malformed and empty responses", async () => {
-    for (const body of ["", "not-json", JSON.stringify({ models: [] }) + " ".repeat(1_048_576)]) {
+    for (const body of [
+        "",
+        "not-json",
+        JSON.stringify({ models: [] }) + " ".repeat(1_048_576),
+    ]) {
         const gateway = new ProxyGateway(
             "https://gateway.test",
             async () => "token",
@@ -1024,9 +1158,18 @@ test("discovery rejects oversized, malformed and empty responses", async () => {
     }
 });
 
-for (const [vendor, Provider] of [
-    ["google", VertexGoogleProvider],
-    ["anthropic", VertexAnthropicProvider],
+for (const [
+    vendor,
+    Provider,
+] of [
+    [
+        "google",
+        VertexGoogleProvider,
+    ],
+    [
+        "anthropic",
+        VertexAnthropicProvider,
+    ],
 ]) {
     test(`${vendor} cancellation while acquiring credentials returns immediately and sends no late request`, async (t) => {
         const originalFetch = global.fetch;
@@ -1124,7 +1267,13 @@ test("inference cancellation while initial discovery is pending returns without 
         return credentials.promise;
     };
     const cancel = cancellation();
-    const args = [[], { tools: [] }, { report() {} }, cancel.token, rootB];
+    const args = [
+        [],
+        { tools: [] },
+        { report() {} },
+        cancel.token,
+        rootB,
+    ];
     const promise = h.dispatcher.infer("gemini-test", ...args);
     await entered.promise;
     cancel.cancel();
@@ -1190,7 +1339,10 @@ test("SCM command uses shared inference, target repository and cancellable progr
 test("SCM reports a saved model removed from the proxy catalog without executing another model", async (t) => {
     inspections.proxyUrl = { globalValue: "https://gateway.test" };
     settings.commitMessageModel = "previously-available-model";
-    let remote = [model("previously-available-model"), model("company-gemini")];
+    let remote = [
+        model("previously-available-model"),
+        model("company-gemini"),
+    ];
     const originalFetch = global.fetch;
     global.fetch = async () => Response.json({ candidateModels: remote, regionPriority: ["global"] });
     const originalWindow = { ...vscode.window };
@@ -1228,7 +1380,10 @@ test("proxy catalog takes precedence for all consumers and an empty response nev
     const remote = [{ ...model("server-only"), pricing: { input: 3, output: 9, cache_read: 1 } }];
     const catalog = {
         candidateModels: remote,
-        regionPriority: ["europe-west8", "us-east5"],
+        regionPriority: [
+            "europe-west8",
+            "us-east5",
+        ],
     };
     resolver.setProxyCatalog(catalog);
     assert.equal(await resolver.getActiveSource(), "proxy");
@@ -1271,9 +1426,18 @@ test("proxy status bar describes server catalog and personal login without resol
     bar.dispose();
 });
 
-for (const [vendor, Provider] of [
-    ["google", VertexGoogleProvider],
-    ["anthropic", VertexAnthropicProvider],
+for (const [
+    vendor,
+    Provider,
+] of [
+    [
+        "google",
+        VertexGoogleProvider,
+    ],
+    [
+        "anthropic",
+        VertexAnthropicProvider,
+    ],
 ]) {
     test(`${vendor} changing the gateway during streaming aborts the transport without sending further output`, async (t) => {
         const gate = deferred();
@@ -1283,7 +1447,14 @@ for (const [vendor, Provider] of [
                 : claudeEvent({ type: "message_start", message: { id: "msg", role: "assistant", content: [], usage: { input_tokens: 1, output_tokens: 0 } } }) +
                   claudeEvent({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }) +
                   claudeEvent({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "first" } });
-        const requests = streamingFetch(t, [firstEvent, vendor === "google" ? geminiEvent({}) : claudeEvent({ type: "message_stop" })], gate);
+        const requests = streamingFetch(
+            t,
+            [
+                firstEvent,
+                vendor === "google" ? geminiEvent({}) : claudeEvent({ type: "message_stop" }),
+            ],
+            gate,
+        );
         const gateway = new ProxyGateway("https://gateway.test", async () => "token");
         const provider = new Provider();
         provider.initialize("gateway", "global", undefined, gateway);
@@ -1360,7 +1531,10 @@ test("partial Claude stream failure preserves delivered text and does not restar
     assert.equal(requests, 1);
 });
 
-for (const proxy of [false, true]) {
+for (const proxy of [
+    false,
+    true,
+]) {
     test(`user label uses the same client identity resolver in ${proxy ? "proxy" : "direct"} mode`, async () => {
         if (proxy) inspections.proxyUrl = { globalValue: "https://gateway.test" };
         settings.enableUserLabel = true;
@@ -1405,12 +1579,30 @@ test("an enabled unresolved user label stops before sending an inference request
     assert.equal(h.calls.filter((call) => call[0] === "infer").length, 0);
 });
 
-for (const [status, code] of [
-    [400, "Blocked"],
-    [401, "NoPermissions"],
-    [403, "NoPermissions"],
-    [404, "NotFound"],
-    [422, "Blocked"],
+for (const [
+    status,
+    code,
+] of [
+    [
+        400,
+        "Blocked",
+    ],
+    [
+        401,
+        "NoPermissions",
+    ],
+    [
+        403,
+        "NoPermissions",
+    ],
+    [
+        404,
+        "NotFound",
+    ],
+    [
+        422,
+        "Blocked",
+    ],
 ]) {
     test(`HTTP ${status} reaches VS Code as ${code}, preserving the original status and message`, async (t) => {
         inspections.proxyUrl = { globalValue: "https://gateway.test" };
@@ -1460,10 +1652,22 @@ test("SDK JSON messages preserve proxy policy details and remain non-retryable",
     assert.equal(isGatewayRetryable(error), false);
 });
 
-for (const proxy of [false, true]) {
-    for (const [reason, lookup] of [
-        ["missing", async () => undefined],
-        ["empty", async () => "  "],
+for (const proxy of [
+    false,
+    true,
+]) {
+    for (const [
+        reason,
+        lookup,
+    ] of [
+        [
+            "missing",
+            async () => undefined,
+        ],
+        [
+            "empty",
+            async () => "  ",
+        ],
         [
             "failed",
             async () => {
@@ -1484,7 +1688,14 @@ for (const proxy of [false, true]) {
                 global.fetch = originalFetch;
             });
             const h = harness([model("gemini-test")], { getIdentity: lookup });
-            const args = ["gemini-test", userMessage(), {}, { report() {} }, cancellation().token, rootB];
+            const args = [
+                "gemini-test",
+                userMessage(),
+                {},
+                { report() {} },
+                cancellation().token,
+                rootB,
+            ];
             await assert.rejects(h.dispatcher.infer(...args), (error) => error.code === "Blocked" && /Local configuration error.*vscode-vertex-ai-user.*No request was sent/.test(error.message));
             assert.equal(requests, 0);
             assert.equal(h.calls.length, 0);
@@ -1516,7 +1727,14 @@ for (const proxy of [false, true]) {
             global.fetch = originalFetch;
         });
         const h = harness([model("gemini-test")]);
-        const args = ["gemini-test", userMessage(), {}, { report() {} }, cancellation().token, rootB];
+        const args = [
+            "gemini-test",
+            userMessage(),
+            {},
+            { report() {} },
+            cancellation().token,
+            rootB,
+        ];
         await assert.rejects(h.dispatcher.infer(...args), (error) => error.code === "Blocked" && /Local configuration error.*vscode-vertex-ai-project/.test(error.message));
         assert.equal(requests, 0);
         assert.equal(h.calls.length, 0);
@@ -1524,7 +1742,12 @@ for (const proxy of [false, true]) {
     });
 }
 
-for (const changed of ["tools", "system", "history", "assistant"]) {
+for (const changed of [
+    "tools",
+    "system",
+    "history",
+    "assistant",
+]) {
     test(`Claude continuation drops invalidated thinking when ${changed} changes, before HTTP`, async (t) => {
         const requests = streamingFetch(t, [
             claudeEvent({ type: "message_start", message: { id: "msg", role: "assistant", content: [], usage: { input_tokens: 1, output_tokens: 0 } } }),
@@ -1537,15 +1760,30 @@ for (const changed of ["tools", "system", "history", "assistant"]) {
         ]);
         const provider = new VertexAnthropicProvider();
         provider.initialize("gateway", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
-        const first = [{ role: 0, content: [new TextPart("system")] }, ...userMessage()];
+        const first = [
+            { role: 0, content: [new TextPart("system")] },
+            ...userMessage(),
+        ];
         const tools = [{ name: "lookup", description: "original", inputSchema: { type: "object", properties: {} } }];
         const run = (messages, requestTools) => provider.provideLanguageModelChatResponse("claude-sonnet-5-5", messages, { tools: requestTools }, { report() {} }, cancellation().token, {}, { ...model("claude-sonnet-5-5", "anthropic"), effort: { values: ["high"], default: "high" } });
         await run(first, tools);
-        const next = [...first, { role: 2, content: [new ToolCallPart("tool-guard", "lookup", {})] }, { role: 1, content: [new ToolResultPart("tool-guard", [new TextPart("done")])] }];
+        const next = [
+            ...first,
+            { role: 2, content: [new ToolCallPart("tool-guard", "lookup", {})] },
+            { role: 1, content: [new ToolResultPart("tool-guard", [new TextPart("done")])] },
+        ];
         if (changed === "system") next[0] = { role: 0, content: [new TextPart("different system")] };
         if (changed === "history") next[1] = { role: 1, content: [new TextPart("different user content")] };
         if (changed === "assistant") next[2] = { role: 2, content: [new ToolCallPart("tool-guard", "lookup", { changed: true })] };
-        await run(next, changed === "tools" ? [...tools, { name: "added", description: "new", inputSchema: { type: "object" } }] : tools);
+        await run(
+            next,
+            changed === "tools"
+                ? [
+                      ...tools,
+                      { name: "added", description: "new", inputSchema: { type: "object" } },
+                  ]
+                : tools,
+        );
         assert.equal(requests.length, 2);
         const body = requests[1].body;
         assert.ok(body.messages.every((m) => m.content.every((b) => b.type !== "thinking" && b.type !== "redacted_thinking")));
@@ -1572,7 +1810,15 @@ test("enhanced proxy policies survive parsing only after exact capability acknow
     const unacknowledged = { ...enhancedFixture };
     delete unacknowledged.catalogCapabilities;
     assert.throws(() => parseProxyCatalog(unacknowledged), /requires catalogCapabilities/);
-    for (const caps of [["effort-v2"], ["effort-v1", "effort-v1"], "effort-v1"]) assert.throws(() => parseProxyCatalog({ ...enhancedFixture, catalogCapabilities: caps }), /capabilities/);
+    for (const caps of [
+        ["effort-v2"],
+        [
+            "effort-v1",
+            "effort-v1",
+        ],
+        "effort-v1",
+    ])
+        assert.throws(() => parseProxyCatalog({ ...enhancedFixture, catalogCapabilities: caps }), /capabilities/);
     const invalid = structuredClone(enhancedFixture);
     invalid.candidateModels[0].effort.default = "low";
     assert.throws(() => parseProxyCatalog(invalid), /default must belong/);
@@ -1621,9 +1867,18 @@ test("server-only IDs and restricted policies remain authoritative over saved lo
     assert.deepEqual(h.dispatcher.getEffortModelSnapshot().models, []);
     await assert.rejects(h.dispatcher.provideLanguageModelChatResponse({ id: "server-gemini" }, userMessage(), {}, { report() {} }, cancellation().token), /not available/);
 });
-for (const [vendor, Provider] of [
-    ["google", VertexGoogleProvider],
-    ["anthropic", VertexAnthropicProvider],
+for (const [
+    vendor,
+    Provider,
+] of [
+    [
+        "google",
+        VertexGoogleProvider,
+    ],
+    [
+        "anthropic",
+        VertexAnthropicProvider,
+    ],
 ])
     test(`${vendor} resolved efforts reach native serialized proxy bodies, including named catalog defaults`, async (t) => {
         const requests = streamingFetch(t, vendor === "google" ? [geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: "ok" }] } }] })] : [claudeEvent({ type: "message_stop" })]);
@@ -1631,7 +1886,10 @@ for (const [vendor, Provider] of [
         const index = new EffortCatalog([spec]);
         const provider = new Provider();
         provider.initialize("test-project", "global", undefined, new ProxyGateway("https://gateway.test/base", async () => "token"));
-        for (const preference of [...spec.effort.values, undefined]) {
+        for (const preference of [
+            ...spec.effort.values,
+            undefined,
+        ]) {
             const request = resolveEffort(index, spec.id, preference === undefined ? undefined : { preferences: { [spec.id]: preference }, sourceByModel: {} });
             await provider.provideLanguageModelChatResponse(spec.id, userMessage(), {}, { report() {} }, cancellation().token, {}, request.spec, request);
             const wire = requests.at(-1);
@@ -1666,7 +1924,11 @@ test("Claude effort change on a tool continuation retains signed and redacted bl
         await provider.provideLanguageModelChatResponse(spec.id, messages, {}, { report() {} }, cancellation().token, {}, request.spec, request);
     };
     await run("high", userMessage());
-    await run("max", [...userMessage(), { role: 2, content: [new ToolCallPart("effort-tool", "lookup", {})] }, { role: 1, content: [new ToolResultPart("effort-tool", [new TextPart("done")])] }]);
+    await run("max", [
+        ...userMessage(),
+        { role: 2, content: [new ToolCallPart("effort-tool", "lookup", {})] },
+        { role: 1, content: [new ToolResultPart("effort-tool", [new TextPart("done")])] },
+    ]);
     assert.equal(requests[0].body.output_config.effort, "high");
     assert.equal(requests[1].body.output_config.effort, "max");
     assert.deepEqual(requests[1].body.messages[1].content.slice(0, 2), [
@@ -1680,7 +1942,10 @@ test("Gemini effort change on a tool continuation preserves the thought signatur
     const spec = {
         ...base,
         effort: {
-            values: ["low", "high"],
+            values: [
+                "low",
+                "high",
+            ],
             default: "high",
         },
     };
@@ -1707,7 +1972,11 @@ test("Gemini effort change on a tool continuation preserves the thought signatur
     };
     await run("high", userMessage());
     const call = parts.find((p) => p instanceof ToolCallPart);
-    await run("low", [...userMessage(), { role: 2, content: [call] }, { role: 1, content: [new ToolResultPart(call.callId, [new TextPart("done")])] }]);
+    await run("low", [
+        ...userMessage(),
+        { role: 2, content: [call] },
+        { role: 1, content: [new ToolResultPart(call.callId, [new TextPart("done")])] },
+    ]);
     assert.equal(requests[0].body.generationConfig.thinkingConfig.thinkingLevel, "HIGH");
     assert.equal(requests[1].body.generationConfig.thinkingConfig.thinkingLevel, "LOW");
     assert.equal(requests[1].body.contents[1].parts[0].thoughtSignature, "effort-signed");
@@ -1726,17 +1995,27 @@ test("malformed local definitions are excluded at ingestion without falling thro
     const good = model("local-healthy"),
         fallback = model("user-fallback");
     let content = JSON.stringify({
-        candidateModels: [bad, good],
+        candidateModels: [
+            bad,
+            good,
+        ],
         regionPriority: ["global"],
     });
     const previousFs = vscode.workspace.fs;
     vscode.workspace.fs = { readFile: async (uri) => Buffer.from(uri === ws ? content : JSON.stringify({ candidateModels: [fallback], regionPriority: ["global"] })) };
     t.after(() => (vscode.workspace.fs = previousFs));
-    for (const mutate of [(m) => (m.effort.values = "high"), (m) => delete m.pricing, (m) => (m.capabilities.imageInput = "yes")]) {
+    for (const mutate of [
+        (m) => (m.effort.values = "high"),
+        (m) => delete m.pricing,
+        (m) => (m.capabilities.imageInput = "yes"),
+    ]) {
         const malformed = structuredClone(bad);
         mutate(malformed);
         content = JSON.stringify({
-            candidateModels: [malformed, good],
+            candidateModels: [
+                malformed,
+                good,
+            ],
             regionPriority: ["global"],
         });
         resolver.invalidateCache();

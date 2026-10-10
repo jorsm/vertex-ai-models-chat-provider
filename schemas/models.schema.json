@@ -4,7 +4,10 @@
     "description": "Catalog of candidate models and prioritized GCP regions for the Google Agent Platform for Copilot Chat extension. A custom copy of this file (workspace `.vscode/models.json` or user-level) fully replaces the bundled catalog. Resolution precedence: Workspace > User > Bundled.",
     "type": "object",
     "additionalProperties": false,
-    "required": ["candidateModels", "regionPriority"],
+    "required": [
+        "candidateModels",
+        "regionPriority"
+    ],
     "properties": {
         "candidateModels": {
             "type": "array",
@@ -20,14 +23,29 @@
                 "type": "string",
                 "pattern": "^[a-z][a-z0-9-]*$"
             },
-            "examples": [["global", "us-east5", "europe-west1", "asia-southeast1"]]
+            "examples": [[
+                    "global",
+                    "us-east5",
+                    "europe-west1",
+                    "asia-southeast1"
+                ]]
         }
     },
     "definitions": {
         "ModelSpec": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["id", "vendor", "displayName", "family", "version", "maxInputTokens", "maxOutputTokens", "capabilities", "pricing"],
+            "required": [
+                "id",
+                "vendor",
+                "displayName",
+                "family",
+                "version",
+                "maxInputTokens",
+                "maxOutputTokens",
+                "capabilities",
+                "pricing"
+            ],
             "properties": {
                 "id": {
                     "type": "string",
@@ -79,7 +97,10 @@
                 "capabilities": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["imageInput", "toolCalling"],
+                    "required": [
+                        "imageInput",
+                        "toolCalling"
+                    ],
                     "properties": {
                         "imageInput": {
                             "type": "boolean",
@@ -94,7 +115,10 @@
                 "pricing": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["input", "output"],
+                    "required": [
+                        "input",
+                        "output"
+                    ],
                     "properties": {
                         "input": {
                             "type": "number",
@@ -120,7 +144,11 @@
                             "type": "object",
                             "description": "Optional rate card used when the complete input context is larger than inputThresholdTokens. Every token in that request uses these rates.",
                             "additionalProperties": false,
-                            "required": ["inputThresholdTokens", "input", "output"],
+                            "required": [
+                                "inputThresholdTokens",
+                                "input",
+                                "output"
+                            ],
                             "properties": {
                                 "inputThresholdTokens": {
                                     "type": "integer",
@@ -155,7 +183,10 @@
                 "effort": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["values", "default"],
+                    "required": [
+                        "values",
+                        "default"
+                    ],
                     "description": "Named effort choices and a default from that list. The vendor adapter maps the value to its API; the API validates model support.",
                     "properties": {
                         "values": {

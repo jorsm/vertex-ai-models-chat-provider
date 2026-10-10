@@ -7,7 +7,12 @@ const sourceFiles = ["src/**/*.ts"];
 
 export default [
     {
-        ignores: ["out/**", "dist/**", "node_modules/**", "playground/**"],
+        ignores: [
+            "out/**",
+            "dist/**",
+            "node_modules/**",
+            "playground/**",
+        ],
     },
     { ...js.configs.recommended, files: sourceFiles },
     ...typescriptEslint.configs["flat/recommended"].map((config) => ({ ...config, files: sourceFiles })),
@@ -28,17 +33,29 @@ export default [
                 "warn",
                 {
                     selector: "import",
-                    format: ["camelCase", "PascalCase"],
+                    format: [
+                        "camelCase",
+                        "PascalCase",
+                    ],
                 },
             ],
 
             // SDK payloads still use dynamic types; tightening them is a separate migration.
             "@typescript-eslint/no-explicit-any": "off",
-            "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", caughtErrors: "none", ignoreRestSiblings: true }],
-            "@typescript-eslint/no-floating-promises": ["error", { checkThenables: true }],
+            "@typescript-eslint/no-unused-vars": [
+                "error",
+                { argsIgnorePattern: "^_", caughtErrors: "none", ignoreRestSiblings: true },
+            ],
+            "@typescript-eslint/no-floating-promises": [
+                "error",
+                { checkThenables: true },
+            ],
             "@typescript-eslint/no-misused-promises": "error",
             // Timer and cancellation callbacks capture handles before their assignment.
-            "prefer-const": ["error", { ignoreReadBeforeAssign: true }],
+            "prefer-const": [
+                "error",
+                { ignoreReadBeforeAssign: true },
+            ],
             curly: "error",
             eqeqeq: "error",
             "no-throw-literal": "error",

@@ -507,7 +507,10 @@ export class VertexGrokProvider implements VertexModelProvider {
             // Check finish_reason — when the model finishes, emit any complete tool calls
             const finishReason = chunk.choices?.[0]?.finish_reason;
             if (finishReason) {
-                for (const [, acc] of toolAccumulator) {
+                for (const [
+                    ,
+                    acc,
+                ] of toolAccumulator) {
                     if (acc.name && acc.json) {
                         let parsedInput = {};
                         try {

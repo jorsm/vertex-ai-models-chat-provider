@@ -85,7 +85,12 @@ export class ConfigureThinkingEffort implements vscode.Disposable {
                 scopeButton.tooltip = hasWorkspace() ? `Scope: ${scope}. Switch to ${scope === "User" ? "Workspace" : "User"}` : "Scope: User. Workspace unavailable until a workspace is open";
                 pick.title = `Thinking Effort — ${model.displayName} — ${scope}`;
                 pick.placeholder = `Current: ${description(model.id)}. Applies to your next request.`;
-                pick.buttons = hasWorkspace() ? [vscode.QuickInputButtons.Back, scopeButton] : [vscode.QuickInputButtons.Back];
+                pick.buttons = hasWorkspace()
+                    ? [
+                          vscode.QuickInputButtons.Back,
+                          scopeButton,
+                      ]
+                    : [vscode.QuickInputButtons.Back];
                 let current: unknown;
                 try {
                     current = resolveEffort(catalog, model.id, captureEffortPreferences()).effort?.value;

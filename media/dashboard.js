@@ -232,7 +232,10 @@ function renderDashboard(logs) {
     // Find most used model
     let topModel = "--";
     let maxCost = 0;
-    for (const [m, c] of Object.entries(costByModel)) {
+    for (const [
+        m,
+        c,
+    ] of Object.entries(costByModel)) {
         if (c > maxCost) {
             maxCost = c;
             topModel = m;
@@ -305,7 +308,12 @@ function renderCharts(datesMap, tokenSeriesMap, costByModel, payloadSeriesMap) {
     );
 
     // Token Chart
-    const tokenSeriesProps = ["input", "output", "cache_read", "cache_create"];
+    const tokenSeriesProps = [
+        "input",
+        "output",
+        "cache_read",
+        "cache_create",
+    ];
     const tokenSeries = tokenSeriesProps.map((prop) => ({
         name: prop,
         type: "bar",
@@ -359,7 +367,14 @@ function renderCharts(datesMap, tokenSeriesMap, costByModel, payloadSeriesMap) {
     );
 
     // Payload Chart
-    const payloadSeriesProps = ["system", "user_text", "assistant_text", "image", "tool_use", "tool_result"];
+    const payloadSeriesProps = [
+        "system",
+        "user_text",
+        "assistant_text",
+        "image",
+        "tool_use",
+        "tool_result",
+    ];
     const payloadSeries = payloadSeriesProps.map((prop) => ({
         name: prop.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()),
         type: "bar",
@@ -418,7 +433,10 @@ function renderTable(modelStats) {
     // Sort array by cost descending
     const sorted = Object.entries(modelStats).sort((a, b) => b[1].cost - a[1].cost);
 
-    for (const [m, s] of sorted) {
+    for (const [
+        m,
+        s,
+    ] of sorted) {
         const tr = document.createElement("tr");
         tr.innerHTML = `
             <td>${m}</td>

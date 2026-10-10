@@ -338,7 +338,10 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
                 continue;
             }
             const modelId = model.version;
-            const key = JSON.stringify([model.vendor, modelId]);
+            const key = JSON.stringify([
+                model.vendor,
+                modelId,
+            ]);
             const target = targets.get(key);
             if (target) {
                 target.models.push(model);
@@ -463,7 +466,10 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     private mapModels(): vscode.LanguageModelChatInformation[] {
         // Check if we are running in VS Code 1.120 or higher
-        const [major = "0", minor = "0"] = vscode.version.split(".");
+        const [
+            major = "0",
+            minor = "0",
+        ] = vscode.version.split(".");
         const isV120OrHigher = Number.parseInt(major) > 1 || (Number.parseInt(major) === 1 && Number.parseInt(minor) >= 120);
 
         const catalog = this.currentEffortCatalog();
@@ -540,7 +546,10 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     }
 
     private formatRateCard(rates: Pick<ModelSpec["pricing"], "input" | "output" | "cache_read" | "cache_create">): string {
-        const parts = [`Input: **$${rates.input}**`, `Output: **$${rates.output}**`];
+        const parts = [
+            `Input: **$${rates.input}**`,
+            `Output: **$${rates.output}**`,
+        ];
         if (rates.cache_read !== undefined) {
             parts.push(`Cache hit: **$${rates.cache_read}**`);
         }
@@ -607,7 +616,16 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
                 if (error.status === 404) {
                     throw vscode.LanguageModelError.NotFound(message);
                 }
-                if ((error.status && error.status >= 400 && error.status < 500 && ![408, 429].includes(error.status)) || error.policyCode === "UPSTREAM_AUTHENTICATION_FAILED") {
+                if (
+                    (error.status &&
+                        error.status >= 400 &&
+                        error.status < 500 &&
+                        ![
+                            408,
+                            429,
+                        ].includes(error.status)) ||
+                    error.policyCode === "UPSTREAM_AUTHENTICATION_FAILED"
+                ) {
                     throw vscode.LanguageModelError.Blocked(message);
                 }
             }

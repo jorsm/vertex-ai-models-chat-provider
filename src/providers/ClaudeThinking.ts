@@ -102,7 +102,14 @@ export class ClaudeStreamContentAccumulator {
     }
 
     createThinkingReplay(): ClaudeThinkingReplay | undefined {
-        const orderedStates = [...this.states.entries()].sort(([a], [b]) => a - b).map(([, state]) => state);
+        const orderedStates = [...this.states.entries()]
+            .sort(([a], [b]) => a - b)
+            .map(
+                ([
+                    ,
+                    state,
+                ]) => state,
+            );
         if (orderedStates.length === 0 || orderedStates.some((state) => !state.stopped || !state.valid)) {
             return undefined;
         }

@@ -84,5 +84,10 @@ test("historical usage keeps its recorded prices after catalog changes and new e
     assert.equal(entries.length, 2);
     assert.equal(entries[1].model, "claude-opus-5-5");
     assert.equal(entries[0].cost, entries[1].cost);
-    assert.deepEqual(Object.keys(entries[1]).sort(), ["cost", "model", "timestamp", "tokens"]);
+    assert.deepEqual(Object.keys(entries[1]).sort(), [
+        "cost",
+        "model",
+        "timestamp",
+        "tokens",
+    ]);
 });

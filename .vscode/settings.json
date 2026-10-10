@@ -36,7 +36,10 @@
     "chat.tools.terminal.autoApprove": {
         "npx tsx": true
     },
-    "autodoc.contextFiles": ["README.md", "package.json"],
+    "autodoc.contextFiles": [
+        "README.md",
+        "package.json"
+    ],
     "autodoc.mappings": [
         {
             "name": "Core Architecture",

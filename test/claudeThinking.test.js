@@ -69,14 +69,26 @@ test("finds only exact tool-call groups and returns defensive copies", () => {
             { type: "tool_use", id: "tool-1", name: "first", input: {} },
             { type: "tool_use", id: "tool-2", name: "second", input: {} },
         ],
-        toolCallIds: ["tool-1", "tool-2"],
+        toolCallIds: [
+            "tool-1",
+            "tool-2",
+        ],
     });
 
     assert.equal(cache.find(["tool-1"]), undefined);
-    const firstRead = cache.find(["tool-2", "tool-1"]);
+    const firstRead = cache.find([
+        "tool-2",
+        "tool-1",
+    ]);
     assert.ok(firstRead);
     firstRead[0].signature = "changed";
-    assert.equal(cache.find(["tool-1", "tool-2"])[0].signature, "signature-1");
+    assert.equal(
+        cache.find([
+            "tool-1",
+            "tool-2",
+        ])[0].signature,
+        "signature-1",
+    );
 
     cache.store({
         blocks: [
@@ -85,7 +97,13 @@ test("finds only exact tool-call groups and returns defensive copies", () => {
         ],
         toolCallIds: ["tool-3"],
     });
-    assert.equal(cache.find(["tool-1", "tool-2"]), undefined);
+    assert.equal(
+        cache.find([
+            "tool-1",
+            "tool-2",
+        ]),
+        undefined,
+    );
 });
 
 test("binds replay to tools and context, permanently discarding mismatches", () => {

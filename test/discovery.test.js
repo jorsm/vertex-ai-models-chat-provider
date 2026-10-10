@@ -100,9 +100,16 @@ test("bundled models use 15 literal endpoint probes and keep catalog order acros
     const models = require("../src/models.json").candidateModels;
     const h = harness(models);
     const requests = [];
-    for (const vendor of ["anthropic", "google", "grok"]) {
+    for (const vendor of [
+        "anthropic",
+        "google",
+        "grok",
+    ]) {
         h.add(vendor, async (id) => {
-            requests.push([vendor, id]);
+            requests.push([
+                vendor,
+                id,
+            ]);
             return true;
         });
     }
@@ -117,12 +124,34 @@ test("bundled models use 15 literal endpoint probes and keep catalog order acros
         assert.equal(probes.filter(([vendor]) => vendor === "google").length, 4);
         assert.deepEqual(
             probes.filter(([vendor]) => vendor === "grok"),
-            [["grok", "xai/grok-4.6"]],
+            [
+                [
+                    "grok",
+                    "xai/grok-4.6",
+                ],
+            ],
         );
-        assert(probes.some(([vendor, id]) => vendor === "anthropic" && id === "claude-sonnet-5-5"));
+        assert(
+            probes.some(
+                ([
+                    vendor,
+                    id,
+                ]) => vendor === "anthropic" && id === "claude-sonnet-5-5",
+            ),
+        );
         assert.deepEqual(
-            probes.filter(([vendor, id]) => vendor === "anthropic" && id === "claude-haiku-5-5"),
-            [["anthropic", "claude-haiku-5-5"]],
+            probes.filter(
+                ([
+                    vendor,
+                    id,
+                ]) => vendor === "anthropic" && id === "claude-haiku-5-5",
+            ),
+            [
+                [
+                    "anthropic",
+                    "claude-haiku-5-5",
+                ],
+            ],
         );
     }
 });
@@ -137,31 +166,64 @@ test("custom catalogs use version rather than UI ID and keep vendor/version boun
     ];
     const h = harness(models);
     const requests = [];
-    for (const vendor of ["anthropic", "google"]) {
+    for (const vendor of [
+        "anthropic",
+        "google",
+    ]) {
         h.add(vendor, async (id) => {
-            requests.push([vendor, id]);
+            requests.push([
+                vendor,
+                id,
+            ]);
             return id !== "company-reasoner-other-high";
         });
     }
     const result = await h.dispatcher.discoverModelsAndRegion();
     assert.deepEqual(requests, [
-        ["anthropic", "company-reasoner-high"],
-        ["anthropic", "company-reasoner-low"],
-        ["anthropic", "company-reasoner-other-high"],
-        ["google", "company-reasoner"],
-        ["anthropic", "company-reasoner-ultra"],
+        [
+            "anthropic",
+            "company-reasoner-high",
+        ],
+        [
+            "anthropic",
+            "company-reasoner-low",
+        ],
+        [
+            "anthropic",
+            "company-reasoner-other-high",
+        ],
+        [
+            "google",
+            "company-reasoner",
+        ],
+        [
+            "anthropic",
+            "company-reasoner-ultra",
+        ],
     ]);
     assert.deepEqual(
         result.availableModels.map((m) => m.id),
-        ["Display-Max", "Display-Low", "Display-Other-Vendor", "Display-Unknown-Suffix"],
+        [
+            "Display-Max",
+            "Display-Low",
+            "Display-Other-Vendor",
+            "Display-Unknown-Suffix",
+        ],
     );
 });
 
 test("one timed-out backend excludes every entry sharing that version even if it succeeds late", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const entries = ["first", "second", "third"].map((id) => ({ ...model(id), version: "company-reasoner-v1" }));
+    const entries = [
+        "first",
+        "second",
+        "third",
+    ].map((id) => ({ ...model(id), version: "company-reasoner-v1" }));
     const healthy = model("healthy", "google");
-    const h = harness([...entries, healthy]);
+    const h = harness([
+        ...entries,
+        healthy,
+    ]);
     let calls = 0,
         finishLate,
         signal;
@@ -185,26 +247,45 @@ test("one timed-out backend excludes every entry sharing that version even if it
 });
 
 test("grouped endpoints are re-probed in each region after shared failure", async () => {
-    const entries = ["first", "second", "third"].map((id) => ({ ...model(id), version: "company-reasoner-v1" }));
-    const h = harness(entries, ["asia-northeast1", "europe-west8"]);
+    const entries = [
+        "first",
+        "second",
+        "third",
+    ].map((id) => ({ ...model(id), version: "company-reasoner-v1" }));
+    const h = harness(entries, [
+        "asia-northeast1",
+        "europe-west8",
+    ]);
     const requests = [];
     h.add("anthropic", async function (id) {
-        requests.push([this.region, id]);
+        requests.push([
+            this.region,
+            id,
+        ]);
         return this.region === "europe-west8";
     });
     const result = await h.dispatcher.discoverModelsAndRegion();
     assert.equal(result.region, "europe-west8");
     assert.deepEqual(result.availableModels, entries);
     assert.deepEqual(requests, [
-        ["asia-northeast1", "company-reasoner-v1"],
-        ["europe-west8", "company-reasoner-v1"],
+        [
+            "asia-northeast1",
+            "company-reasoner-v1",
+        ],
+        [
+            "europe-west8",
+            "company-reasoner-v1",
+        ],
     ]);
 });
 
 test("a stuck probe times out, aborts, and unblocks healthy-model inference", async (t) => {
     assert.equal(DISCOVERY_PROBE_TIMEOUT_MS, 45_000);
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const h = harness([model("healthy"), model("slow", "grok")]);
+    const h = harness([
+        model("healthy"),
+        model("slow", "grok"),
+    ]);
     let called = false,
         slowSignal;
     h.add(
@@ -251,7 +332,10 @@ test("custom discovery timeout reaches providers and is re-read on refresh", asy
         requests.push(options);
         return never();
     });
-    for (const seconds of [90, 5]) {
+    for (const seconds of [
+        90,
+        5,
+    ]) {
         settings.modelDiscoveryTimeoutSeconds = seconds;
         const discovery = h.dispatcher.discoverModelsAndRegion();
         await flush();
@@ -268,7 +352,17 @@ test("custom discovery timeout reaches providers and is re-read on refresh", asy
 });
 
 test("invalid discovery timeout settings fall back to the 45-second default", () => {
-    for (const value of [undefined, null, "90", 0, -1, 1.5, NaN, Infinity, 2_147_484]) {
+    for (const value of [
+        undefined,
+        null,
+        "90",
+        0,
+        -1,
+        1.5,
+        NaN,
+        Infinity,
+        2_147_484,
+    ]) {
         assert.equal(resolveDiscoveryTimeoutMs(value), 45_000);
     }
     assert.equal(resolveDiscoveryTimeoutMs(1), 1000);
@@ -281,7 +375,13 @@ test("invalid discovery timeout settings fall back to the 45-second default", ()
 
 test("timed-out regions advance and late probe success cannot change the chosen region", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const h = harness([model("healthy")], ["global", "europe-west1"]);
+    const h = harness(
+        [model("healthy")],
+        [
+            "global",
+            "europe-west1",
+        ],
+    );
     let finishLate, oldSignal;
     h.add("anthropic", function (_id, { signal }) {
         if (this.region === "global") {
@@ -341,7 +441,10 @@ test("cancelling one chat stops its wait without cancelling shared discovery", a
 
 test("authentication failure cancels sibling probes and releases discovery", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const h = harness([model("bad-auth"), model("slow", "grok")]);
+    const h = harness([
+        model("bad-auth"),
+        model("slow", "grok"),
+    ]);
     let signal;
     h.add("anthropic", async () => {
         throw new VertexAuthenticationError("expired");
@@ -387,9 +490,19 @@ test("probe timers are cleared after success and late rejection is handled", asy
 });
 
 test("429s retry three times with exponential jitter and retain every catalog entry", async (t) => {
-    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+    t.mock.timers.enable({
+        apis: [
+            "setTimeout",
+            "Date",
+        ],
+        now: 0,
+    });
     t.mock.method(Math, "random", () => 0.5);
-    const entries = ["first", "second", "third"].map((id) => ({ ...model(id), version: "company-reasoner-v1" }));
+    const entries = [
+        "first",
+        "second",
+        "third",
+    ].map((id) => ({ ...model(id), version: "company-reasoner-v1" }));
     const h = harness(entries);
     const starts = [];
     h.add("anthropic", async () => {
@@ -399,7 +512,11 @@ test("429s retry three times with exponential jitter and retain every catalog en
     const discovery = h.dispatcher.discoverModelsAndRegion();
     await flush();
     assert.deepEqual(starts, [0]);
-    for (const delay of [1500, 3000, 6000]) {
+    for (const delay of [
+        1500,
+        3000,
+        6000,
+    ]) {
         const before = starts.length;
         t.mock.timers.tick(delay - 1);
         await flush();
@@ -409,12 +526,26 @@ test("429s retry three times with exponential jitter and retain every catalog en
         assert.equal(starts.length, before + 1);
     }
     assert.deepEqual((await discovery).availableModels, entries);
-    assert.deepEqual(starts, [0, 1500, 4500, 10500]);
+    assert.deepEqual(
+        starts,
+        [
+            0,
+            1500,
+            4500,
+            10500,
+        ],
+    );
     assert(logs.some((line) => line.includes("Retries exhausted; endpoint reachable (rate limited)")));
 });
 
 test("transient network failures retry and can recover, while permanent failures do not", async (t) => {
-    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+    t.mock.timers.enable({
+        apis: [
+            "setTimeout",
+            "Date",
+        ],
+        now: 0,
+    });
     t.mock.method(Math, "random", () => 0);
     const signal = new AbortController().signal;
     let calls = 0;
@@ -452,7 +583,13 @@ test("transient network failures retry and can recover, while permanent failures
 });
 
 test("network retry exhaustion does not mark an unreachable endpoint available", async (t) => {
-    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+    t.mock.timers.enable({
+        apis: [
+            "setTimeout",
+            "Date",
+        ],
+        now: 0,
+    });
     t.mock.method(Math, "random", () => 0);
     let calls = 0;
     const pending = probeWithRetries(
@@ -466,7 +603,11 @@ test("network retry exhaustion does not mark an unreachable endpoint available",
         () => {},
     );
     await flush();
-    for (const delay of [1000, 2000, 4000]) {
+    for (const delay of [
+        1000,
+        2000,
+        4000,
+    ]) {
         t.mock.timers.tick(delay);
         await flush();
     }
@@ -475,7 +616,13 @@ test("network retry exhaustion does not mark an unreachable endpoint available",
 });
 
 test("429 evidence survives a later hanging request at the shared deadline", async (t) => {
-    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+    t.mock.timers.enable({
+        apis: [
+            "setTimeout",
+            "Date",
+        ],
+        now: 0,
+    });
     t.mock.method(Math, "random", () => 0);
     let calls = 0,
         requestSignal,
@@ -507,7 +654,13 @@ test("429 evidence survives a later hanging request at the shared deadline", asy
 });
 
 test("Retry-After is honored within the deadline and cancellation interrupts backoff", async (t) => {
-    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+    t.mock.timers.enable({
+        apis: [
+            "setTimeout",
+            "Date",
+        ],
+        now: 0,
+    });
     t.mock.method(Math, "random", () => 0);
     const controller = new AbortController();
     let calls = 0;
@@ -533,7 +686,13 @@ test("Retry-After is honored within the deadline and cancellation interrupts bac
 });
 
 test("an oversized Retry-After cannot extend the configured endpoint deadline", async (t) => {
-    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+    t.mock.timers.enable({
+        apis: [
+            "setTimeout",
+            "Date",
+        ],
+        now: 0,
+    });
     const pending = probeWithRetries(
         async () => {
             throw new DiscoveryRetryableError({ status: 429, headers: { "retry-after": "999999999" } }, true);
@@ -549,16 +708,31 @@ test("an oversized Retry-After cannot extend the configured endpoint deadline", 
 });
 
 test("the discovery queue staggers starts and never exceeds three active probes", async (t) => {
-    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+    t.mock.timers.enable({
+        apis: [
+            "setTimeout",
+            "Date",
+        ],
+        now: 0,
+    });
     t.mock.method(Math, "random", () => 0);
     const starts = [],
         completions = [];
     let active = 0,
         maximum = 0;
     const pending = runDiscoveryQueue(
-        [0, 1, 2, 3, 4],
+        [
+            0,
+            1,
+            2,
+            3,
+            4,
+        ],
         (id) => {
-            starts.push([id, Date.now()]);
+            starts.push([
+                id,
+                Date.now(),
+            ]);
             maximum = Math.max(maximum, ++active);
             return new Promise((resolve) => {
                 completions[id] = () => {
@@ -576,9 +750,18 @@ test("the discovery queue staggers starts and never exceeds three active probes"
         await flush();
     }
     assert.deepEqual(starts, [
-        [0, 500],
-        [1, 1000],
-        [2, 1500],
+        [
+            0,
+            500,
+        ],
+        [
+            1,
+            1000,
+        ],
+        [
+            2,
+            1500,
+        ],
     ]);
     t.mock.timers.tick(500);
     await flush();
@@ -591,14 +774,39 @@ test("the discovery queue staggers starts and never exceeds three active probes"
     await flush();
     t.mock.timers.tick(500);
     await flush();
-    for (const id of [2, 3, 4]) completions[id]();
-    assert.deepEqual(await pending, [0, 1, 2, 3, 4]);
+    for (const id of [
+        2,
+        3,
+        4,
+    ])
+        completions[id]();
+    assert.deepEqual(
+        await pending,
+        [
+            0,
+            1,
+            2,
+            3,
+            4,
+        ],
+    );
     assert.equal(maximum, 3);
 });
 
 test("queued endpoints are not started after authentication failure", async (t) => {
-    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
-    const h = harness([model("bad-auth"), model("queued-1"), model("queued-2"), model("queued-3")]);
+    t.mock.timers.enable({
+        apis: [
+            "setTimeout",
+            "Date",
+        ],
+        now: 0,
+    });
+    const h = harness([
+        model("bad-auth"),
+        model("queued-1"),
+        model("queued-2"),
+        model("queued-3"),
+    ]);
     h.dispatcher.discoveryStartDelayMs = () => 500;
     const requests = [];
     h.add("anthropic", async (id) => {
@@ -614,10 +822,26 @@ test("queued endpoints are not started after authentication failure", async (t) 
     assert.deepEqual(requests, ["bad-auth"]);
 });
 
-for (const [vendor, Provider, version] of [
-    ["anthropic", VertexAnthropicProvider, "claude-opus-5-5"],
-    ["google", VertexGoogleProvider, "gemini-3.8-flash"],
-    ["grok", VertexGrokProvider, "xai/grok-4.6"],
+for (const [
+    vendor,
+    Provider,
+    version,
+] of [
+    [
+        "anthropic",
+        VertexAnthropicProvider,
+        "claude-opus-5-5",
+    ],
+    [
+        "google",
+        VertexGoogleProvider,
+        "gemini-3.8-flash",
+    ],
+    [
+        "grok",
+        VertexGrokProvider,
+        "xai/grok-4.6",
+    ],
 ]) {
     function providerWith(request) {
         const provider = new Provider();
@@ -629,7 +853,13 @@ for (const [vendor, Provider, version] of [
     }
 
     test(`${vendor} discovery rejects transport failures and preserves rate-limit/auth handling`, async () => {
-        for (const error of [new Error("network timeout"), { code: "ETIMEDOUT" }, { status: 502 }, { status: 503 }, new Error("fetch failed")]) {
+        for (const error of [
+            new Error("network timeout"),
+            { code: "ETIMEDOUT" },
+            { status: 502 },
+            { status: 503 },
+            new Error("fetch failed"),
+        ]) {
             const provider = providerWith(async () => {
                 throw error;
             });
@@ -647,7 +877,11 @@ for (const [vendor, Provider, version] of [
             }).pingModel(version),
             VertexAuthenticationError,
         );
-        for (const status of [400, 403, 404]) {
+        for (const status of [
+            400,
+            403,
+            404,
+        ]) {
             assert.equal(
                 await providerWith(async () => {
                     throw { status };

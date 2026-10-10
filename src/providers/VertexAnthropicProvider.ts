@@ -202,7 +202,10 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         const systemParts: string[] = [];
         const mappedMessages: any[] = [];
 
-        for (const [i, msg] of messages.entries()) {
+        for (const [
+            i,
+            msg,
+        ] of messages.entries()) {
             const roleNum = msg.role;
             const roleName = this.roleName(roleNum);
             this.logger.log(`  ── Message [${i}] role=${roleName} (${roleNum}), ${msg.content.length} part(s)`);

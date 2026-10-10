@@ -24,11 +24,28 @@ export function resolveGcloudCommand(args: string[], platform = process.platform
         const script = winPath.join(root, "lib", "gcloud.py");
         if (exists(python) && exists(script)) {
             const isolated = !env.CLOUDSDK_PYTHON_SITEPACKAGES && !env.VIRTUAL_ENV ? ["-S"] : [];
-            return { executable: python, args: [...isolated, script, ...args], direct: true };
+            return {
+                executable: python,
+                args: [
+                    ...isolated,
+                    script,
+                    ...args,
+                ],
+                direct: true,
+            };
         }
     }
     // Callers supply only fixed CLI arguments, never user input.
-    return { executable: env.ComSpec || "cmd.exe", args: ["/d", "/s", "/c", `gcloud.cmd ${args.join(" ")}`], direct: false };
+    return {
+        executable: env.ComSpec || "cmd.exe",
+        args: [
+            "/d",
+            "/s",
+            "/c",
+            `gcloud.cmd ${args.join(" ")}`,
+        ],
+        direct: false,
+    };
 }
 
 export function runGcloud(args: string[], timeoutMs = 20_000): Promise<{ stdout: string; stderr: string }> {
@@ -51,7 +68,17 @@ export function runGcloud(args: string[], timeoutMs = 20_000): Promise<{ stdout:
             const error = Object.assign(new Error("gcloud timed out"), { code: "GCLOUD_TIMEOUT", killed: true });
             if (process.platform === "win32" && !command.direct && child?.pid) {
                 // Killing cmd.exe alone leaves Python holding the output pipes open.
-                childProcess.execFile("taskkill.exe", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true, timeout: 2_000 }, () => reject(error));
+                childProcess.execFile(
+                    "taskkill.exe",
+                    [
+                        "/pid",
+                        String(child.pid),
+                        "/T",
+                        "/F",
+                    ],
+                    { windowsHide: true, timeout: 2_000 },
+                    () => reject(error),
+                );
             } else {
                 child?.kill("SIGKILL");
                 reject(error);

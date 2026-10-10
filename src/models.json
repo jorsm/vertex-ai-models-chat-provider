@@ -19,7 +19,11 @@
                 "cache_create": 5.0
             },
             "effort": {
-                "values": ["medium", "high", "max"],
+                "values": [
+                    "medium",
+                    "high",
+                    "max"
+                ],
                 "default": "medium"
             }
         },
@@ -42,7 +46,10 @@
                 "cache_create": 6.25
             },
             "effort": {
-                "values": ["high", "max"],
+                "values": [
+                    "high",
+                    "max"
+                ],
                 "default": "high"
             }
         },
@@ -65,7 +72,10 @@
                 "cache_create": 6.25
             },
             "effort": {
-                "values": ["high", "max"],
+                "values": [
+                    "high",
+                    "max"
+                ],
                 "default": "high"
             }
         },
@@ -88,7 +98,10 @@
                 "cache_create": 12.5
             },
             "effort": {
-                "values": ["high", "max"],
+                "values": [
+                    "high",
+                    "max"
+                ],
                 "default": "high"
             }
         },
@@ -111,7 +124,10 @@
                 "cache_create": 12.5
             },
             "effort": {
-                "values": ["high", "max"],
+                "values": [
+                    "high",
+                    "max"
+                ],
                 "default": "high"
             }
         },
@@ -134,7 +150,11 @@
                 "cache_create": 2.5
             },
             "effort": {
-                "values": ["high", "medium", "max"],
+                "values": [
+                    "high",
+                    "medium",
+                    "max"
+                ],
                 "default": "high"
             }
         },
@@ -157,7 +177,10 @@
                 "cache_create": 3.75
             },
             "effort": {
-                "values": ["high", "max"],
+                "values": [
+                    "high",
+                    "max"
+                ],
                 "default": "high"
             }
         },
@@ -206,7 +229,11 @@
                 }
             },
             "effort": {
-                "values": ["medium", "high", "max"],
+                "values": [
+                    "medium",
+                    "high",
+                    "max"
+                ],
                 "default": "medium"
             }
         },
@@ -248,7 +275,10 @@
                 "cache_create": 0.0
             },
             "effort": {
-                "values": ["medium", "high"],
+                "values": [
+                    "medium",
+                    "high"
+                ],
                 "default": "medium"
             }
         },
@@ -271,7 +301,10 @@
                 "cache_create": 0.0
             },
             "effort": {
-                "values": ["medium", "high"],
+                "values": [
+                    "medium",
+                    "high"
+                ],
                 "default": "medium"
             }
         },
@@ -350,10 +383,19 @@
                 }
             },
             "effort": {
-                "values": ["high", "low", "medium"],
+                "values": [
+                    "high",
+                    "low",
+                    "medium"
+                ],
                 "default": "high"
             }
         }
     ],
-    "regionPriority": ["global", "us-east5", "europe-west1", "asia-southeast1"]
+    "regionPriority": [
+        "global",
+        "us-east5",
+        "europe-west1",
+        "asia-southeast1"
+    ]
 }

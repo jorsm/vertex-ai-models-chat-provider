@@ -51,7 +51,10 @@ export async function probeWithDeadline(probe: (options: DiscoveryProbeOptions) 
     });
 
     try {
-        return await Promise.race([Promise.resolve().then(() => (controller.signal.aborted ? false : probe({ signal: controller.signal, timeoutMs }))), stopped]);
+        return await Promise.race([
+            Promise.resolve().then(() => (controller.signal.aborted ? false : probe({ signal: controller.signal, timeoutMs }))),
+            stopped,
+        ]);
     } finally {
         clearTimeout(timer);
         parentSignal.removeEventListener("abort", cancel);
@@ -67,7 +70,15 @@ export function isDiscoveryRateLimitError(error: any): boolean {
 export function getDiscoveryRetryableError(error: any): DiscoveryRetryableError | undefined {
     const status = Number(error?.status ?? error?.code ?? error?.error?.code ?? error?.response?.status);
     // Explicit client errors must not be retried because their text mentions quota.
-    if (status >= 400 && status < 500 && ![408, 409, 429].includes(status)) {
+    if (
+        status >= 400 &&
+        status < 500 &&
+        ![
+            408,
+            409,
+            429,
+        ].includes(status)
+    ) {
         return undefined;
     }
     const reachable = isDiscoveryRateLimitError(error);

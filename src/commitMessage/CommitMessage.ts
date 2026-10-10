@@ -174,7 +174,10 @@ export async function generateCommitMessage(provider: Pick<VertexChatModelDispat
 
     const userMessage = vscode.LanguageModelChatMessage.User(getUserPrompt(combinedDiff));
 
-    const messages: vscode.LanguageModelChatRequestMessage[] = [systemMessage, userMessage];
+    const messages: vscode.LanguageModelChatRequestMessage[] = [
+        systemMessage,
+        userMessage,
+    ];
     const options: vscode.ProvideLanguageModelChatResponseOptions = {
         tools: [],
         toolMode: vscode.LanguageModelChatToolMode.Auto,

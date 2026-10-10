@@ -80,7 +80,12 @@ export class AuthManager {
                     }
                     const attemptStartedAt = Date.now();
                     try {
-                        const result = await runGcloud(["auth", "print-identity-token", "--quiet", "--verbosity=error"]);
+                        const result = await runGcloud([
+                            "auth",
+                            "print-identity-token",
+                            "--quiet",
+                            "--verbosity=error",
+                        ]);
                         this.logger.log(`Personal proxy ID token acquired in ${Date.now() - attemptStartedAt} ms (attempt ${attempt}).`);
                         return result;
                     } catch (error: any) {
@@ -429,7 +434,13 @@ export class AuthManager {
         // the subprocess fails transiently; an explicit unset/invalid account clears it.
         const previousIdentity = this.identityCache?.value;
         try {
-            const { stdout } = await this.runGcloudOperation(() => runGcloud(["config", "get-value", "account"]));
+            const { stdout } = await this.runGcloudOperation(() =>
+                runGcloud([
+                    "config",
+                    "get-value",
+                    "account",
+                ]),
+            );
             const email = stdout.split(/\r?\n/, 1)[0]?.trim();
             if (email && email !== "(unset)" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
                 if (revision === this.identityRevision) {
@@ -499,7 +510,10 @@ export class AuthManager {
 
         await this.context.secrets.store(SECRETS_PREFIX + name, json);
         if (!names.includes(name)) {
-            await this.context.globalState.update(GLOBAL_INDEX_KEY, [...names, name]);
+            await this.context.globalState.update(GLOBAL_INDEX_KEY, [
+                ...names,
+                name,
+            ]);
         }
         await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "secret", value: name });
         this.notifyAuthUpdated();
@@ -509,7 +523,11 @@ export class AuthManager {
     }
 
     private getGcloudLoginArgs(projectId: string): string[] {
-        const args = ["auth", "application-default", "login"];
+        const args = [
+            "auth",
+            "application-default",
+            "login",
+        ];
         if (projectId) {
             args.push("--project", projectId);
         }
@@ -524,7 +542,10 @@ export class AuthManager {
         });
 
         const args = this.getGcloudLoginArgs(projectId);
-        const command = ["gcloud", ...args.map((arg) => this.quoteShellArgument(arg))].join(" ");
+        const command = [
+            "gcloud",
+            ...args.map((arg) => this.quoteShellArgument(arg)),
+        ].join(" ");
         let completed = false;
         const cleanup = () => {
             endListener.dispose();

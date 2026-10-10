@@ -78,7 +78,10 @@ const vscode = {
         }
     },
     workspace: {
-        workspaceFolders: [{}, {}],
+        workspaceFolders: [
+            {},
+            {},
+        ],
         getConfiguration: (_section, resource) => {
             assert.equal(resource, undefined);
             return {
@@ -143,7 +146,10 @@ test.beforeEach(() => {
     errors.length = 0;
     writes.length = 0;
     states.length = 0;
-    vscode.workspace.workspaceFolders = [{}, {}];
+    vscode.workspace.workspaceFolders = [
+        {},
+        {},
+    ];
 });
 async function open(h) {
     const running = h.command.run();
@@ -166,7 +172,11 @@ test("explicit model step uses discovered policy, remembers last configured and 
     assert.equal(p.activeItems[0].value, "high");
     assert.deepEqual(
         p.items.filter((i) => i.value).map((i) => i.value),
-        ["medium", "high", "max"],
+        [
+            "medium",
+            "high",
+            "max",
+        ],
     );
     await p.accept(p.items.find((i) => i.value === "max"));
     await running;
@@ -185,11 +195,23 @@ test("existing Workspace key sets scope; default choice saves its actual named l
     const { running, p } = await open(h);
     assert.match(p.title, /Workspace/);
     assert.deepEqual(
-        p.items.map((i) => [i.label, i.description]),
+        p.items.map((i) => [
+            i.label,
+            i.description,
+        ]),
         [
-            ["Medium", "Default"],
-            ["High", undefined],
-            ["Max", undefined],
+            [
+                "Medium",
+                "Default",
+            ],
+            [
+                "High",
+                undefined,
+            ],
+            [
+                "Max",
+                undefined,
+            ],
         ],
     );
     await p.accept(p.items.find((i) => i.value === "medium"));
@@ -276,7 +298,10 @@ test("invalid saved value stays visible and can be reset rather than silently su
     assert.equal(user["claude-opus-5-5"], "medium");
 });
 test("empty catalogs and models without effort offer no fabricated choices", async () => {
-    for (const selection of [[], models.filter((m) => !m.effort)]) {
+    for (const selection of [
+        [],
+        models.filter((m) => !m.effort),
+    ]) {
         const h = harness(selection);
         await h.command.run();
         assert.equal(pickers.length, 0);
@@ -315,11 +340,25 @@ test("named default is one choice, highlights an existing value and saves the de
     const h = harness([model]);
     const { running, p } = await open(h);
     assert.deepEqual(
-        p.items.filter((i) => i.value).map((i) => [i.label, i.value]),
+        p.items
+            .filter((i) => i.value)
+            .map((i) => [
+                i.label,
+                i.value,
+            ]),
         [
-            ["Medium", "medium"],
-            ["High", "high"],
-            ["Max", "max"],
+            [
+                "Medium",
+                "medium",
+            ],
+            [
+                "High",
+                "high",
+            ],
+            [
+                "Max",
+                "max",
+            ],
         ],
     );
     assert.equal(p.activeItems[0].label, "Medium");

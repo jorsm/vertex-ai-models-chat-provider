@@ -60,7 +60,11 @@ export function validateProxyUrl(value: string): string {
     } catch {
         throw new GatewayError("Proxy URL must be an absolute HTTPS URL.");
     }
-    const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+    const local = [
+        "localhost",
+        "127.0.0.1",
+        "[::1]",
+    ].includes(url.hostname);
     if ((url.protocol !== "https:" && !(local && url.protocol === "http:")) || url.username || url.password || url.search || url.hash) {
         throw new GatewayError("Proxy URL must use HTTPS (HTTP only on loopback), without credentials, query or fragment.");
     }

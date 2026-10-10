@@ -20,7 +20,10 @@ test("custom vendors, literal backends and effort levels are accepted without ca
         vendor: "future-provider",
         version: "organization/reasoner-high",
         effort: {
-            values: ["quiet", "ultra"],
+            values: [
+                "quiet",
+                "ultra",
+            ],
             default: "quiet",
         },
     };
@@ -39,37 +42,129 @@ test("parsed catalogs are detached from the input, without coercing or mutating 
     assert.equal(invalid.candidateModels[0].maxOutputTokens, "100");
 });
 
-for (const [name, mutate, field] of [
-    ["empty effort values", (m) => (m.effort.values = []), "effort/values"],
-    ["duplicate effort values", (m) => (m.effort.values = ["high", "high"]), "effort/values"],
-    ["empty effort value", (m) => (m.effort.values = [""]), "effort/values/0"],
-    ["blank effort value", (m) => (m.effort.values = [" "]), "effort/values/0"],
-    ["non-string effort value", (m) => (m.effort.values = [3]), "effort/values/0"],
-    ["effort values as a string", (m) => (m.effort.values = "high"), "effort/values"],
-    ["default outside choices", (m) => (m.effort.default = "low"), "default must belong"],
-    ["missing default", (m) => delete m.effort.default, "default"],
-    ["missing values", (m) => delete m.effort.values, "values"],
-    ["null effort", (m) => (m.effort = null), "effort"],
-    ["array effort", (m) => (m.effort = []), "effort"],
-    ["missing pricing", (m) => delete m.pricing, "pricing"],
-    ["invalid price", (m) => (m.pricing.input = -1), "pricing/input"],
-    ["infinite price", (m) => (m.pricing.input = Infinity), "pricing/input"],
-    ["missing capability", (m) => delete m.capabilities.imageInput, "imageInput"],
-    ["invalid token limit", (m) => (m.maxOutputTokens = 0), "maxOutputTokens"],
-    ["unsafe token limit", (m) => (m.maxOutputTokens = Number.MAX_SAFE_INTEGER + 1), "maxOutputTokens"],
-    ["unknown model field", (m) => (m.unexpected = true), "unexpected"],
+for (const [
+    name,
+    mutate,
+    field,
+] of [
+    [
+        "empty effort values",
+        (m) => (m.effort.values = []),
+        "effort/values",
+    ],
+    [
+        "duplicate effort values",
+        (m) =>
+            (m.effort.values = [
+                "high",
+                "high",
+            ]),
+        "effort/values",
+    ],
+    [
+        "empty effort value",
+        (m) => (m.effort.values = [""]),
+        "effort/values/0",
+    ],
+    [
+        "blank effort value",
+        (m) => (m.effort.values = [" "]),
+        "effort/values/0",
+    ],
+    [
+        "non-string effort value",
+        (m) => (m.effort.values = [3]),
+        "effort/values/0",
+    ],
+    [
+        "effort values as a string",
+        (m) => (m.effort.values = "high"),
+        "effort/values",
+    ],
+    [
+        "default outside choices",
+        (m) => (m.effort.default = "low"),
+        "default must belong",
+    ],
+    [
+        "missing default",
+        (m) => delete m.effort.default,
+        "default",
+    ],
+    [
+        "missing values",
+        (m) => delete m.effort.values,
+        "values",
+    ],
+    [
+        "null effort",
+        (m) => (m.effort = null),
+        "effort",
+    ],
+    [
+        "array effort",
+        (m) => (m.effort = []),
+        "effort",
+    ],
+    [
+        "missing pricing",
+        (m) => delete m.pricing,
+        "pricing",
+    ],
+    [
+        "invalid price",
+        (m) => (m.pricing.input = -1),
+        "pricing/input",
+    ],
+    [
+        "infinite price",
+        (m) => (m.pricing.input = Infinity),
+        "pricing/input",
+    ],
+    [
+        "missing capability",
+        (m) => delete m.capabilities.imageInput,
+        "imageInput",
+    ],
+    [
+        "invalid token limit",
+        (m) => (m.maxOutputTokens = 0),
+        "maxOutputTokens",
+    ],
+    [
+        "unsafe token limit",
+        (m) => (m.maxOutputTokens = Number.MAX_SAFE_INTEGER + 1),
+        "maxOutputTokens",
+    ],
+    [
+        "unknown model field",
+        (m) => (m.unexpected = true),
+        "unexpected",
+    ],
 ]) {
     test(`${name} fails strict ingestion and excludes only that local definition`, () => {
         const bad = structuredClone(model);
         mutate(bad);
         const good = bundled.candidateModels.at(-1);
         assert.throws(
-            () => parseModelCatalog(catalog([bad, good])),
+            () =>
+                parseModelCatalog(
+                    catalog([
+                        bad,
+                        good,
+                    ]),
+                ),
             (error) => error instanceof ModelCatalogError && error.message.includes(field),
         );
         const errors = [];
         assert.deepEqual(
-            parseModelCatalog(catalog([bad, good]), (message) => errors.push(message)),
+            parseModelCatalog(
+                catalog([
+                    bad,
+                    good,
+                ]),
+                (message) => errors.push(message),
+            ),
             catalog([good]),
         );
         assert.equal(errors.length, 1);
@@ -80,16 +175,39 @@ for (const [name, mutate, field] of [
 test("duplicate IDs fail strict ingestion and exclude every ambiguous local definition", () => {
     const duplicate = { ...model, version: "different-backend" };
     const good = bundled.candidateModels.at(-1);
-    assert.throws(() => parseModelCatalog(catalog([model, duplicate])), /Duplicate model ID/);
+    assert.throws(
+        () =>
+            parseModelCatalog(
+                catalog([
+                    model,
+                    duplicate,
+                ]),
+            ),
+        /Duplicate model ID/,
+    );
     const errors = [];
     assert.deepEqual(
-        parseModelCatalog(catalog([model, duplicate, good]), (message) => errors.push(message)),
+        parseModelCatalog(
+            catalog([
+                model,
+                duplicate,
+                good,
+            ]),
+            (message) => errors.push(message),
+        ),
         catalog([good]),
     );
     assert.equal(errors.length, 1);
     duplicate.effort = { values: ["high"], default: "outside" };
     assert.deepEqual(
-        parseModelCatalog(catalog([model, duplicate, good]), () => {}),
+        parseModelCatalog(
+            catalog([
+                model,
+                duplicate,
+                good,
+            ]),
+            () => {},
+        ),
         catalog([good]),
     );
 });

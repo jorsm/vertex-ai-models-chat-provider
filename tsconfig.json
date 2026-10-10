@@ -3,7 +3,10 @@
         "module": "Node16",
         "target": "ES2022",
         "outDir": "out",
-        "lib": ["ES2022", "DOM"],
+        "lib": [
+            "ES2022",
+            "DOM"
+        ],
         "sourceMap": true,
         "rootDir": "src",
         "resolveJsonModule": true,
@@ -16,5 +19,8 @@
         "noUncheckedIndexedAccess": true,
         "exactOptionalPropertyTypes": true
     },
-    "exclude": ["playground/**", "node_modules/**"]
+    "exclude": [
+        "playground/**",
+        "node_modules/**"
+    ]
 }

@@ -19,7 +19,12 @@ export function captureEffortPreferences(): EffortPreferenceSnapshot {
     const workspace = object(inspected?.workspaceValue);
     const effective = object(config.get(KEY, {}));
     const preferences = { ...effective, ...user, ...workspace };
-    const sourceByModel: Record<string, "user" | "workspace"> = Object.fromEntries(Object.keys(preferences).map((id) => [id, Object.hasOwn(workspace, id) ? "workspace" : "user"]));
+    const sourceByModel: Record<string, "user" | "workspace"> = Object.fromEntries(
+        Object.keys(preferences).map((id) => [
+            id,
+            Object.hasOwn(workspace, id) ? "workspace" : "user",
+        ]),
+    );
     return snapshot({ preferences, sourceByModel });
 }
 export function defaultEffortTarget(id: string): vscode.ConfigurationTarget {

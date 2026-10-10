@@ -56,10 +56,17 @@ const vscode = {
     },
     workspace: {
         getConfiguration: (section, resource) => {
-            configurations.push([section, resource]);
+            configurations.push([
+                section,
+                resource,
+            ]);
             return {
                 get: (key) => {
-                    for (const scope of [folderSettings.get(resource), workspaceSettings, userSettings]) {
+                    for (const scope of [
+                        folderSettings.get(resource),
+                        workspaceSettings,
+                        userSettings,
+                    ]) {
                         if (scope?.[key] !== undefined) return scope[key];
                     }
                     return manifest.contributes.configuration.properties[`${section}.${key}`]?.default;
@@ -111,7 +118,10 @@ test.beforeEach(() => {
     pickerCalls = [];
     pickerSelection = undefined;
     vscode.window.activeTextEditor = { document: { uri: rootA } };
-    vscode.workspace.workspaceFolders = [{ uri: rootA }, { uri: rootB }];
+    vscode.workspace.workspaceFolders = [
+        { uri: rootA },
+        { uri: rootB },
+    ];
     vscode.workspace.workspaceFile = undefined;
     diffReads = 0;
     repo = {
@@ -151,7 +161,11 @@ test("resolves the repository URI from an SCM title command context", () => {
     assert.equal(resolveCommitMessageResourceUri(undefined), undefined);
 });
 
-for (const scope of ["user", "workspace", "folder"]) {
+for (const scope of [
+    "user",
+    "workspace",
+    "folder",
+]) {
     test(`commit generation uses the effective ${scope} model with repository settings`, async () => {
         userSettings.commitMessageModel = "user-model";
         if (scope !== "user") workspaceSettings.commitMessageModel = "workspace-model";
@@ -161,7 +175,12 @@ for (const scope of ["user", "workspace", "folder"]) {
         assert.equal(h.calls.length, 1);
         assert.equal(h.calls[0][0], `${scope}-model`);
         assert.equal(h.calls[0][5], rootB);
-        assert.deepEqual(configurations, [["vertexAiChat", rootB]]);
+        assert.deepEqual(configurations, [
+            [
+                "vertexAiChat",
+                rootB,
+            ],
+        ]);
         assert.equal(h.calls[0][1][0].content[0].value, DEFAULT_SYSTEM_PROMPT);
         assert.match(h.calls[0][1][1].content[0].value, /Git Diff:\n\+new code/);
         assert.equal(repo.inputBox.value, "feat: change");
@@ -177,7 +196,12 @@ test("commit generation honors a custom model ID and a custom prompt independent
     await generateCommitMessage(h, rootB);
     assert.equal(h.calls[0][0], "commit-company-model");
     assert.equal(h.calls[0][1][0].content[0].value, "My custom system prompt.");
-    assert.deepEqual(configurations, [["vertexAiChat", rootB]]);
+    assert.deepEqual(configurations, [
+        [
+            "vertexAiChat",
+            rootB,
+        ],
+    ]);
 });
 
 test("commit generation defaults to the catalog's Gemini 3 Flash ID", async () => {
@@ -191,7 +215,10 @@ test("commit generation defaults to the catalog's Gemini 3 Flash ID", async () =
     assert.deepEqual(updates, []);
 });
 
-for (const value of ["", "  "]) {
+for (const value of [
+    "",
+    "  ",
+]) {
     test(`an explicitly blank commit model (${JSON.stringify(value)}) reports configuration error without inference`, async () => {
         userSettings.commitMessageModel = value;
         const h = inferenceHarness();
@@ -246,14 +273,26 @@ test("the model picker shows the complete current catalog and puts the configure
     assert.equal(pickerCalls.length, 1);
     assert.deepEqual(
         pickerCalls[0].items.map((item) => item.modelId),
-        [modelSetting.default, "grok-test"],
+        [
+            modelSetting.default,
+            "grok-test",
+        ],
     );
     assert.match(pickerCalls[0].items[0].description, /Current/);
     assert.deepEqual(updates, [{ key: "commitMessageModel", value: "grok-test", target: 3, resource: rootB }]);
-    assert.deepEqual(configurations, [["vertexAiChat", rootB]]);
+    assert.deepEqual(configurations, [
+        [
+            "vertexAiChat",
+            rootB,
+        ],
+    ]);
 });
 
-for (const scope of ["user", "workspace", "folder"]) {
+for (const scope of [
+    "user",
+    "workspace",
+    "folder",
+]) {
     test(`the model picker preserves an existing ${scope} setting's scope`, async () => {
         userSettings.commitMessageModel = "user-model";
         if (scope !== "user") workspaceSettings.commitMessageModel = "workspace-model";
@@ -286,7 +325,10 @@ test("cancelling the picker leaves an unavailable saved model unchanged", async 
     await selectCommitMessageModel(discoveryHarness(), rootB);
     assert.deepEqual(
         pickerCalls[0].items.map((item) => item.modelId),
-        ["grok-test", modelSetting.default],
+        [
+            "grok-test",
+            modelSetting.default,
+        ],
     );
     assert.deepEqual(updates, []);
     assert.equal(userSettings.commitMessageModel, "previously-available-model");
@@ -321,7 +363,10 @@ test("an unavailable default reports an inference error without choosing another
 test("commit picker exposes every literal catalog model, including custom backend names", async () => {
     const regular = { id: "company-standard", version: "company-model-v1", displayName: "Company standard", vendor: "anthropic", family: "claude" };
     const custom = { ...regular, id: "company-special", version: "company-model-high", displayName: "Company special" };
-    const h = discoveryHarness([regular, custom]);
+    const h = discoveryHarness([
+        regular,
+        custom,
+    ]);
     pickerSelection = regular.id;
     await selectCommitMessageModel(h, { rootUri: rootB });
     assert.equal(pickerCalls[0].items.length, 2);

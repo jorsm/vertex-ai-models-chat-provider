@@ -26,7 +26,10 @@ exports.run = async function () {
         assert.ok(models.some((m) => m.family === "gemini") && models.some((m) => m.family === "claude"), "the configured server catalog must offer Gemini and Claude");
 
         checks.push("actual model picker exposes complete server catalog, including IDs absent locally");
-        for (const model of [models.find((m) => m.family === "gemini"), models.find((m) => m.family === "claude")]) {
+        for (const model of [
+            models.find((m) => m.family === "gemini"),
+            models.find((m) => m.family === "claude"),
+        ]) {
             const cancellation = new vscode.CancellationTokenSource();
             const timer = setTimeout(() => cancellation.cancel(), 60_000);
             let text = "",
@@ -50,7 +53,10 @@ exports.run = async function () {
             }
         }
 
-        for (const model of [models.find((m) => m.family === "gemini"), models.find((m) => m.family === "claude")]) {
+        for (const model of [
+            models.find((m) => m.family === "gemini"),
+            models.find((m) => m.family === "claude"),
+        ]) {
             const tools = [{ name: "proxy_probe", description: "Returns a fixed test result. You must call it.", inputSchema: { type: "object", properties: { value: { type: "integer" } }, required: ["value"] } }];
             const user = vscode.LanguageModelChatMessage.User("Call proxy_probe with value 42. Do not answer before calling it.");
             const firstResponse = await model.sendRequest([user], { tools, toolMode: vscode.LanguageModelChatToolMode.Required });
@@ -62,7 +68,15 @@ exports.run = async function () {
             const assistant = new vscode.LanguageModelChatMessage(vscode.LanguageModelChatMessageRole.Assistant, firstParts);
             const toolResult = new vscode.LanguageModelToolResultPart(call.callId, [new vscode.LanguageModelTextPart('{"value":42,"result":"PROXY_TOOL_OK"}')]);
             const resultMessage = new vscode.LanguageModelChatMessage(vscode.LanguageModelChatMessageRole.User, [toolResult]);
-            const finalResponse = await model.sendRequest([user, assistant, resultMessage, vscode.LanguageModelChatMessage.User("Now reply exactly PROXY_TOOL_OK.")], { tools });
+            const finalResponse = await model.sendRequest(
+                [
+                    user,
+                    assistant,
+                    resultMessage,
+                    vscode.LanguageModelChatMessage.User("Now reply exactly PROXY_TOOL_OK."),
+                ],
+                { tools },
+            );
             let text = "";
             for await (const part of finalResponse.stream) if (part instanceof vscode.LanguageModelTextPart) text += part.value;
             assert.match(text, /PROXY_TOOL_OK/);
@@ -117,7 +131,14 @@ exports.run = async function () {
         assert.ok(repo);
         const file = path.join(resource.fsPath, "proxy-test.txt");
         await fs.writeFile(file, "Local proxy integration fixture.\n");
-        await exec("git", ["add", "proxy-test.txt"], { cwd: resource.fsPath });
+        await exec(
+            "git",
+            [
+                "add",
+                "proxy-test.txt",
+            ],
+            { cwd: resource.fsPath },
+        );
         for (let i = 0; i < 50 && repo.state.indexChanges.length === 0; i++) await new Promise((r) => setTimeout(r, 100));
         assert.ok(repo.state.indexChanges.length > 0);
         const logsDir = path.join(userData, "User", "globalStorage", "jorsm.vertex-ai-models-chat-provider", "usage_logs");
@@ -128,7 +149,10 @@ exports.run = async function () {
         assert.ok(repo.inputBox.value.trim() && !repo.inputBox.value.includes("Generating"));
         const usage = await readUsage();
         assert.equal(usage.length, before + 1, "commit generation records exactly one usage entry");
-        for (const family of ["gemini", "claude"]) {
+        for (const family of [
+            "gemini",
+            "claude",
+        ]) {
             const model = models.find((m) => m.family === family);
             assert.ok(
                 usage.some((row) => row.model === model.id && row.cost > 0),

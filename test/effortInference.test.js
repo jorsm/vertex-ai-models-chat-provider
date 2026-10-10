@@ -85,7 +85,11 @@ function harness() {
     const d = new D("test-project", { recordUsage: async (...args) => records.push(args) }, { onAuthUpdated() {}, getResolvedAuthOptions: async () => undefined }, { getEffectiveCatalog: async () => ({ candidateModels: models, regionPriority: ["global"] }) });
     d.availableModels = models;
     d.discoveryDone = true;
-    for (const vendor of ["anthropic", "google", "grok"])
+    for (const vendor of [
+        "anthropic",
+        "google",
+        "grok",
+    ])
         d.activeProviders.set(vendor, {
             vendor,
             setLabels() {},
@@ -109,15 +113,24 @@ test("public callbacks capture preferences; internal infer keeps the catalog def
     await h.d.infer("claude-opus-5-5", messages, {}, progress, token());
     assert.deepEqual(
         h.requests.map((r) => r[7].effort.value),
-        ["max", "medium"],
+        [
+            "max",
+            "medium",
+        ],
     );
     assert.deepEqual(
         h.requests.map((r) => r[7].effort.source),
-        ["user", "catalog"],
+        [
+            "user",
+            "catalog",
+        ],
     );
     assert.deepEqual(
         h.records.map((r) => r[0]),
-        ["claude-opus-5-5", "claude-opus-5-5"],
+        [
+            "claude-opus-5-5",
+            "claude-opus-5-5",
+        ],
     );
     assert(h.records.every((r) => r.length === 3));
 });
@@ -133,10 +146,16 @@ test("settings change while waiting for labels does not alter the public snapsho
     prefs["claude-opus-5-5"] = "max";
     const second = h.d.provideLanguageModelChatResponse({ id: "claude-opus-5-5" }, messages, {}, progress, token());
     gate.resolve();
-    await Promise.all([first, second]);
+    await Promise.all([
+        first,
+        second,
+    ]);
     assert.deepEqual(
         h.requests.map((r) => r[7].effort.value),
-        ["high", "max"],
+        [
+            "high",
+            "max",
+        ],
     );
 });
 test("invalid policy fails before inference; exact dispatcher membership remains required", async () => {
@@ -199,7 +218,10 @@ function adapter(vendor, onRequest) {
 for (const model of models.filter((m) => m.effort))
     test(`${model.id} sends every named effort and the catalog default`, async () => {
         const h = adapter(model.vendor);
-        for (const value of [...model.effort.values, undefined]) {
+        for (const value of [
+            ...model.effort.values,
+            undefined,
+        ]) {
             const request = resolveEffort(catalog, model.id, value === undefined ? undefined : { preferences: { [model.id]: value }, sourceByModel: {} });
             await h.provider.provideLanguageModelChatResponse(model.id, messages, {}, progress, token(), {}, request.spec, request);
             const body = h.requests.at(-1);
@@ -212,7 +234,11 @@ for (const model of models.filter((m) => m.effort))
             else assert.equal(body.reasoning_effort, effective);
         }
     });
-for (const vendor of ["anthropic", "google", "grok"])
+for (const vendor of [
+    "anthropic",
+    "google",
+    "grok",
+])
     test(`${vendor} retries reuse the payload/client despite settings and provider reinitialization`, async (t) => {
         t.mock.timers.enable({ apis: ["setTimeout"] });
         const model = models.find((m) => m.vendor === vendor && m.effort);
@@ -250,7 +276,11 @@ test("custom Grok UI IDs and backend versions use the catalog literally", async 
     assert.equal(h.requests[1].model, "xai/company-reasoner-high");
 });
 
-for (const vendor of ["anthropic", "google", "grok"])
+for (const vendor of [
+    "anthropic",
+    "google",
+    "grok",
+])
     test(`${vendor} connection reset cancels direct backoff, sends no retry and records no success`, async (t) => {
         t.mock.timers.enable({ apis: ["setTimeout"] });
         const model = models.find((m) => m.vendor === vendor && m.effort),
@@ -271,7 +301,11 @@ for (const vendor of ["anthropic", "google", "grok"])
         assert.equal(h.records.length, 0);
     });
 
-for (const vendor of ["anthropic", "google", "grok"]) {
+for (const vendor of [
+    "anthropic",
+    "google",
+    "grok",
+]) {
     test(`${vendor} custom backend and effort reach the adapter, and API rejection is surfaced`, async () => {
         const model = { ...models.find((m) => m.vendor === vendor), id: "company-model", version: "company-model-high", effort: { values: ["custom-effort"], default: "custom-effort" } };
         const request = resolveEffort(new EffortCatalog([model]), model.id);

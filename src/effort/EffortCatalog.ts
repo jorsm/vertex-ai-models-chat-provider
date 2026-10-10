@@ -8,7 +8,12 @@ export class EffortCatalog {
 
     constructor(models: readonly ModelSpec[]) {
         this.models = snapshot(models);
-        this.byId = new Map(this.models.map((model) => [model.id, model]));
+        this.byId = new Map(
+            this.models.map((model) => [
+                model.id,
+                model,
+            ]),
+        );
     }
 
     get(id: string): ModelSpec | undefined {

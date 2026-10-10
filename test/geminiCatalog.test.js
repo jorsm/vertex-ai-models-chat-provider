@@ -9,7 +9,12 @@ test("bundles the focused Gemini coding catalog", () => {
 
     assert.deepEqual(
         googleModels.map((model) => model.id),
-        ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3-flash-preview", "gemini-3.1-pro-preview"],
+        [
+            "gemini-3.8-flash",
+            "gemini-3.7-flash",
+            "gemini-3-flash-preview",
+            "gemini-3.1-pro-preview",
+        ],
     );
 
     const pro = googleModels.find((model) => model.id === "gemini-3.1-pro-preview");

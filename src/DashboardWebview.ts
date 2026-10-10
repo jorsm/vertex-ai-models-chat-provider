@@ -3,8 +3,21 @@ import * as vscode from "vscode";
 import { UsageTrackerService } from "./UsageTrackerService";
 
 function parseLocalDate(value: string): Date {
-    const [year, month, day] = value.split("-").map(Number);
-    if (year === undefined || month === undefined || day === undefined || ![year, month, day].every(Number.isFinite)) {
+    const [
+        year,
+        month,
+        day,
+    ] = value.split("-").map(Number);
+    if (
+        year === undefined ||
+        month === undefined ||
+        day === undefined ||
+        ![
+            year,
+            month,
+            day,
+        ].every(Number.isFinite)
+    ) {
         throw new Error("Usage dates must include a year, month, and day.");
     }
     return new Date(year, month - 1, day, 0, 0, 0, 0);

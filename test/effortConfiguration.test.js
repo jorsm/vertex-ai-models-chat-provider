@@ -59,7 +59,10 @@ test("Workspace wins per key, named Workspace choice overrides User; removal rev
 test("targeted writes preserve raw scope keys and re-read for serialized concurrent writes", async () => {
     user = { a: "high", unknown: "max" };
     workspace = { b: "low" };
-    await Promise.all([api.writeEffortPreference("a", "max", 1), api.writeEffortPreference("c", "high", 1)]);
+    await Promise.all([
+        api.writeEffortPreference("a", "max", 1),
+        api.writeEffortPreference("c", "high", 1),
+    ]);
     assert.deepEqual(user, { a: "max", unknown: "max", c: "high" });
     assert.deepEqual(workspace, { b: "low" });
     await api.writeEffortPreference("a", "medium", 2);
@@ -76,7 +79,12 @@ test("invalid higher scope stays invalid; unrelated invalid values remain stored
     assert(Object.isFrozen(captured.preferences));
 });
 test("malformed shape reports configuration problem", () => {
-    for (const value of [[], null, "high", 42]) {
+    for (const value of [
+        [],
+        null,
+        "high",
+        42,
+    ]) {
         workspace = value;
         assert.throws(() => api.captureEffortPreferences(), /must be an object/);
     }

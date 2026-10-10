@@ -46,7 +46,10 @@ export function parseModelCatalog(value: unknown, reportInvalidModel?: (message:
     const models: ModelSpec[] = [];
     const seenIds = new Set<string>();
     const duplicateIds = new Set<string>();
-    for (const [index, entry] of value.candidateModels.entries()) {
+    for (const [
+        index,
+        entry,
+    ] of value.candidateModels.entries()) {
         if (!validateModel(entry)) {
             report(describeError(validateModel.errors, `/candidateModels/${index}`));
             continue;

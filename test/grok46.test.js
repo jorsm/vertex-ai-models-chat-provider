@@ -101,7 +101,27 @@ test("Grok 4.6 request sends image parts and asks for streaming usage", async ()
             usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120, prompt_tokens_details: { cached_tokens: 40 } },
         },
     ]);
-    const result = await h.provider.provideLanguageModelChatResponse(spec.id, [user([new TextPart("Describe this"), new DataPart(Uint8Array.from([1, 2, 3]), "image/png")])], {}, h.progress, token, undefined, spec);
+    const result = await h.provider.provideLanguageModelChatResponse(
+        spec.id,
+        [
+            user([
+                new TextPart("Describe this"),
+                new DataPart(
+                    Uint8Array.from([
+                        1,
+                        2,
+                        3,
+                    ]),
+                    "image/png",
+                ),
+            ]),
+        ],
+        {},
+        h.progress,
+        token,
+        undefined,
+        spec,
+    );
     const request = h.requests[0];
     assert.equal(request.model, "xai/grok-4.6");
     assert.equal(request.max_tokens, spec.maxOutputTokens);
@@ -153,7 +173,22 @@ test("Grok streams parallel tool calls and maps results for the next turn", asyn
     );
     assert.equal(h.requests[0].tool_choice, "auto");
     assert.deepEqual(h.requests[0].tools[0].function.parameters, options.tools[0].inputSchema);
-    await h.provider.provideLanguageModelChatResponse(spec.id, [...messages, { role: 2, content: calls }, user([new ToolResultPart("call-1", [new TextPart("one")]), new ToolResultPart("call-2", [new TextPart("two")])])], options, h.progress, token, undefined, spec);
+    await h.provider.provideLanguageModelChatResponse(
+        spec.id,
+        [
+            ...messages,
+            { role: 2, content: calls },
+            user([
+                new ToolResultPart("call-1", [new TextPart("one")]),
+                new ToolResultPart("call-2", [new TextPart("two")]),
+            ]),
+        ],
+        options,
+        h.progress,
+        token,
+        undefined,
+        spec,
+    );
     assert.deepEqual(h.requests[1].messages.slice(-2), [
         { role: "tool", tool_call_id: "call-1", content: "one" },
         { role: "tool", tool_call_id: "call-2", content: "two" },
@@ -182,7 +217,11 @@ test("Grok custom backends use their exact catalog path for discovery and infere
 });
 
 test("Grok 4.6 inference uses effort while discovery probes only the endpoint", async () => {
-    for (const effort of ["low", "medium", "high"]) {
+    for (const effort of [
+        "low",
+        "medium",
+        "high",
+    ]) {
         const h = harness();
         const model = { ...spec, effort: { values: [effort], default: effort } };
         await h.provider.provideLanguageModelChatResponse(model.id, [user([new TextPart("hi")])], {}, h.progress, token, undefined, model);
@@ -200,7 +239,18 @@ test("Grok 4.6 inference uses effort while discovery probes only the endpoint", 
 
 test("Grok keeps the system prompt first without inserting a spurious user message", async () => {
     const h = harness();
-    await h.provider.provideLanguageModelChatResponse(spec.id, [{ role: 0, content: [new TextPart("Be concise.")] }, user([new TextPart("hi")])], {}, h.progress, token, undefined, spec);
+    await h.provider.provideLanguageModelChatResponse(
+        spec.id,
+        [
+            { role: 0, content: [new TextPart("Be concise.")] },
+            user([new TextPart("hi")]),
+        ],
+        {},
+        h.progress,
+        token,
+        undefined,
+        spec,
+    );
     assert.deepEqual(h.requests[0].messages, [
         { role: "system", content: "Be concise." },
         { role: "user", content: [{ type: "text", text: "hi" }] },
@@ -254,7 +304,12 @@ test(
         h.provider.initialize(process.env.GROK46_LIVE_PROJECT, "global");
         const liveSpec = { ...spec, maxOutputTokens: 512 };
         const redPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKElEQVR4nO3NMQEAAAjDMMC/ZzDBvlRA01vZJvwHAAAAAAAAAAAAbx2jxAE/i2AjOgAAAABJRU5ErkJggg==", "base64");
-        const messages = [user([new TextPart("Call identify_color with the dominant color in this image. Wait for the tool result before answering."), new DataPart(redPng, "image/png")])];
+        const messages = [
+            user([
+                new TextPart("Call identify_color with the dominant color in this image. Wait for the tool result before answering."),
+                new DataPart(redPng, "image/png"),
+            ]),
+        ];
         const options = {
             tools: [
                 {
@@ -262,7 +317,16 @@ test(
                     description: "Verify the color seen in an image",
                     inputSchema: {
                         type: "object",
-                        properties: { color: { type: "string", enum: ["red", "green", "blue"] } },
+                        properties: {
+                            color: {
+                                type: "string",
+                                enum: [
+                                    "red",
+                                    "green",
+                                    "blue",
+                                ],
+                            },
+                        },
                         required: ["color"],
                     },
                 },
@@ -280,7 +344,19 @@ test(
             assert.deepEqual(calls[0].input, { color: "red" });
             assert.ok(first.usage.output > 0);
             h.parts.length = 0;
-            await h.provider.provideLanguageModelChatResponse(spec.id, [...messages, { role: 2, content: calls }, user([new ToolResultPart(calls[0].callId, [new TextPart("Verified: red. Tell the user the color.")])])], {}, h.progress, liveToken, undefined, liveSpec);
+            await h.provider.provideLanguageModelChatResponse(
+                spec.id,
+                [
+                    ...messages,
+                    { role: 2, content: calls },
+                    user([new ToolResultPart(calls[0].callId, [new TextPart("Verified: red. Tell the user the color.")])]),
+                ],
+                {},
+                h.progress,
+                liveToken,
+                undefined,
+                liveSpec,
+            );
             assert.match(
                 h.parts
                     .filter((part) => part instanceof TextPart)

@@ -51,7 +51,10 @@ exports.run = async () => {
         await d.infer("claude-opus-5-5", [], {}, { report() {} }, cancellation.token);
         assert.deepEqual(
             captured.map((r) => r.effort.value),
-            ["high", "medium"],
+            [
+                "high",
+                "medium",
+            ],
         );
         record("Public provider snapshot and named catalog default");
         assert.equal((await d.provideLanguageModelChatInformation({}, cancellation.token)).length, 15);

@@ -1,12 +1,20 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { resolveGcloudCommand } = require("../out/utils/gcloud.js");
-const args = ["config", "get-value", "account"];
+const args = [
+    "config",
+    "get-value",
+    "account",
+];
 
 test("invokes gcloud directly on POSIX platforms", () => {
     assert.deepEqual(resolveGcloudCommand(args, "linux"), {
         executable: "gcloud",
-        args: ["config", "get-value", "account"],
+        args: [
+            "config",
+            "get-value",
+            "account",
+        ],
         direct: true,
     });
 });
@@ -16,7 +24,12 @@ test("invokes the Windows gcloud launcher through cmd.exe", () => {
         resolveGcloudCommand(args, "win32", { ComSpec: "C:\\Windows\\System32\\cmd.exe" }, () => false),
         {
             executable: "C:\\Windows\\System32\\cmd.exe",
-            args: ["/d", "/s", "/c", "gcloud.cmd config get-value account"],
+            args: [
+                "/d",
+                "/s",
+                "/c",
+                "gcloud.cmd config get-value account",
+            ],
             direct: false,
         },
     );

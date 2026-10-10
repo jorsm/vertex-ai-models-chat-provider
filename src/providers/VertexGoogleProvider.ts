@@ -36,7 +36,16 @@ export class VertexGoogleProvider implements VertexModelProvider {
     private readonly textSignatureCache = new Map<string, string>();
 
     // Safe minimal start list for JSON schema properties supported by Google Cloud AI.
-    private allowedSchemaKeys = new Set<string>(["type", "format", "description", "nullable", "enum", "properties", "required", "items"]);
+    private allowedSchemaKeys = new Set<string>([
+        "type",
+        "format",
+        "description",
+        "nullable",
+        "enum",
+        "properties",
+        "required",
+        "items",
+    ]);
     private discoveryCompleted = false;
 
     private discoverVertexSchemaKeys() {
@@ -426,7 +435,10 @@ export class VertexGoogleProvider implements VertexModelProvider {
         }
 
         const result: any = {};
-        for (const [key, value] of Object.entries(schema)) {
+        for (const [
+            key,
+            value,
+        ] of Object.entries(schema)) {
             if (isPropertiesMap) {
                 // The keys here are tool argument names, keep them as is and sanitize their schemas
                 result[key] = this.sanitizeSchemaForVertex(value, false);
