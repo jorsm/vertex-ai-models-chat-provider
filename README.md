@@ -32,20 +32,20 @@ Before you start, make sure the target Google Cloud project is ready:
 1. **Install** **Google Agent Platform for Copilot Chat** from the VS Code Marketplace.
 2. **Authenticate** in the environment where the extension runs:
 
-   - **Standard ADC:** run `gcloud auth application-default login` in a terminal. This is for direct calls to Vertex; a proxy uses `gcloud auth login` instead (see [Which Google identity makes the call](#which-google-identity-makes-the-call)).
-   - **Service Account:** run **Google Agent Platform: Paste Service Account JSON Key** or **Google Agent Platform: Import Service Account JSON File** from the Command Palette.
+    - **Standard ADC:** run `gcloud auth application-default login` in a terminal. This is for direct calls to Vertex; a proxy uses `gcloud auth login` instead (see [Which Google identity makes the call](#which-google-identity-makes-the-call)).
+    - **Service Account:** run **Google Agent Platform: Paste Service Account JSON Key** or **Google Agent Platform: Import Service Account JSON File** from the Command Palette.
 
 3. **Set the project** (required) in VS Code Settings (`Ctrl+,`):
 
-   ```json
-   {
-     "vertexAiChat.projectId": "my-gcp-project-id"
-   }
-   ```
+    ```json
+    {
+        "vertexAiChat.projectId": "my-gcp-project-id"
+    }
+    ```
 
-   `projectId` is mandatory in every mode: it is the project on which the Vertex APIs are invoked and billed. Set it in workspace settings when different repositories should use different Google Cloud projects. Without it, no models are available.
+    `projectId` is mandatory in every mode: it is the project on which the Vertex APIs are invoked and billed. Set it in workspace settings when different repositories should use different Google Cloud projects. Without it, no models are available.
 
-   Optionally, add `vertexAiChat.proxyUrl` to go through an organization proxy (see [Direct or via proxy](#direct-or-via-proxy)). Leave it empty to call Vertex directly.
+    Optionally, add `vertexAiChat.proxyUrl` to go through an organization proxy (see [Direct or via proxy](#direct-or-via-proxy)). Leave it empty to call Vertex directly.
 
 4. **Start chatting:** Open VS Code Chat, select a **Google Agent Platform** model, and send a prompt. If the picker is empty, run **Google Agent Platform: Refresh Models**.
 
@@ -55,7 +55,7 @@ In direct mode, model discovery groups effort variants by their model endpoint a
 
 ```json
 {
-  "vertexAiChat.modelDiscoveryTimeoutSeconds": 90
+    "vertexAiChat.modelDiscoveryTimeoutSeconds": 90
 }
 ```
 
@@ -65,15 +65,15 @@ Run **Google Agent Platform: Refresh Models** to apply the new timeout. Discover
 
 `vertexAiChat.projectId` is always required. `vertexAiChat.proxyUrl` is optional and only changes the route:
 
-| `proxyUrl` | Route | Authentication | Project |
-| :--- | :--- | :--- | :--- |
-| Empty | Extension → Vertex | ADC or Service Account | `projectId` |
-| Set | Extension → proxy → Vertex | Personal `gcloud auth login` identity, verified by the proxy | `projectId`, sent to the proxy, which calls Vertex on it |
+| `proxyUrl` | Route                      | Authentication                                               | Project                                                  |
+| :--------- | :------------------------- | :----------------------------------------------------------- | :------------------------------------------------------- |
+| Empty      | Extension → Vertex         | ADC or Service Account                                       | `projectId`                                              |
+| Set        | Extension → proxy → Vertex | Personal `gcloud auth login` identity, verified by the proxy | `projectId`, sent to the proxy, which calls Vertex on it |
 
 ```json
 {
-  "vertexAiChat.projectId": "my-gcp-project-id",
-  "vertexAiChat.proxyUrl": "https://ai-proxy.example.com"
+    "vertexAiChat.projectId": "my-gcp-project-id",
+    "vertexAiChat.proxyUrl": "https://ai-proxy.example.com"
 }
 ```
 
@@ -81,12 +81,12 @@ Run **Google Agent Platform: Refresh Models** to apply the new timeout. Discover
 
 Google Cloud keeps two independent credential stores, and the extension uses a different one in each mode:
 
-| | Direct (`proxyUrl` empty) | Via proxy (`proxyUrl` set) |
-| :--- | :--- | :--- |
-| Credential store | **Application Default Credentials (ADC)** | **Standard `gcloud` accounts** |
-| Created with | `gcloud auth application-default login` | `gcloud auth login` |
-| Why | The Vertex SDKs (Gemini, Claude, Grok) look up the default credentials themselves | The extension runs `gcloud auth print-identity-token` and sends that token to the proxy |
-| Which account | The single ADC identity, or a stored Service Account | The **active** account in `gcloud auth list` |
+|                  | Direct (`proxyUrl` empty)                                                         | Via proxy (`proxyUrl` set)                                                              |
+| :--------------- | :-------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------- |
+| Credential store | **Application Default Credentials (ADC)**                                         | **Standard `gcloud` accounts**                                                          |
+| Created with     | `gcloud auth application-default login`                                           | `gcloud auth login`                                                                     |
+| Why              | The Vertex SDKs (Gemini, Claude, Grok) look up the default credentials themselves | The extension runs `gcloud auth print-identity-token` and sends that token to the proxy |
+| Which account    | The single ADC identity, or a stored Service Account                              | The **active** account in `gcloud auth list`                                            |
 
 The two stores do not follow each other. If `gcloud auth list` shows user A as active but `gcloud auth application-default login` was run as user B, direct calls to Vertex are made as **B** and calls through the proxy are authenticated as **A**. Switching `proxyUrl` on or off therefore changes the identity, and so the IAM permissions, quota and audit trail that apply. A Service Account selected in the extension is used only in direct mode and is never accepted by the proxy.
 
@@ -164,16 +164,22 @@ Labels are not forwarded to Billing for Provisioned Throughput. Prefer explicit,
 
 ## 📖 Guides and reference
 
-| Topic                                  | Where to go                                                                                                                                                                                                                                 |
-| :------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Enterprise proxy and centralized controls | [Setup and implementation contract](docs/proxy.md) · [Compatibility verification](docs/proxy-compatibility.md) |
-| Authentication and workspace settings  | [Setup & Configuration](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Setup-&-Configuration) · [Service Account Authentication](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Service-Account-Authentication) |
-| Usage dashboard and BigQuery reporting | [Usage & Billing](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Usage-&-Billing) · [Advanced Billing Reports](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Advanced-Billing-Reports)                         |
-| Custom model catalogs and discovery    | [Model Discovery & Project Switching](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-Discovery-&-Project-Switching)                                                                                                     |
-| AI commit-message generation           | [AI Commit Message Generator](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/AI-Commit-Message-Generator)                                                                                                                     |
-| Diagnostics                            | [Diagnostics & Troubleshooting](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Diagnostics-&-Troubleshooting)                                                                                                                 |
-| Architecture and provider behavior     | [Architecture](docs/architecture.md) · [Providers](docs/providers.md) · [Usage & Billing internals](docs/usage-and-billing.md)                                                                                                              |
-| Current Google Cloud pricing           | [Agent Platform generative AI pricing](https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing)                                                                                                                     |
+| Topic                                     | Where to go                                                                                                                                                                                                                                 |
+| :---------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Enterprise proxy and centralized controls | [Setup and implementation contract](docs/proxy.md) · [Compatibility verification](docs/proxy-compatibility.md)                                                                                                                              |
+| Authentication and workspace settings     | [Setup & Configuration](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Setup-&-Configuration) · [Service Account Authentication](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Service-Account-Authentication) |
+| Usage dashboard and BigQuery reporting    | [Usage & Billing](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Usage-&-Billing) · [Advanced Billing Reports](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Advanced-Billing-Reports)                         |
+| Custom model catalogs and discovery       | [Model Discovery & Project Switching](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Model-Discovery-&-Project-Switching)                                                                                                     |
+| AI commit-message generation              | [AI Commit Message Generator](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/AI-Commit-Message-Generator)                                                                                                                     |
+| Diagnostics                               | [Diagnostics & Troubleshooting](https://github.com/jorsm/vertex-ai-models-chat-provider/wiki/Diagnostics-&-Troubleshooting)                                                                                                                 |
+| Architecture and provider behavior        | [Architecture](docs/architecture.md) · [Providers](docs/providers.md) · [Usage & Billing internals](docs/usage-and-billing.md)                                                                                                              |
+| Current Google Cloud pricing              | [Agent Platform generative AI pricing](https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing)                                                                                                                     |
+
+## Development
+
+Install dependencies with `npm ci`. Run `npm run format` to format the repository and `npm run format:check` to check formatting without changing files. Prettier uses four-space indentation and a 300-column wrapping target; all other options use its defaults. Generated output, the npm lockfile, and the vendored chart library are excluded.
+
+VS Code recommends **Prettier - Code formatter** and formats supported files on save using the repository configuration. ESLint checks code quality separately with `npm run lint`; `npm test` compiles and runs the tests. The pre-commit hook, version checks, and CI workflows also check formatting.
 
 ## License
 

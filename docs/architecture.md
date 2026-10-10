@@ -4,24 +4,26 @@
 > This document describes the architecture and API surface of Google Agent Platform for Copilot Chat. The extension acts as a dispatcher between VS Code's Language Model API and the Google Gemini, Anthropic Claude, and xAI Grok backends on Vertex AI.
 
 ## Table of Contents
+
 - [docs/architecture.md](#docsarchitecturemd)
-  - [Table of Contents](#table-of-contents)
-  - [Core Concepts](#core-concepts)
-  - [API Reference](#api-reference)
-    - [VertexChatModelDispatcher](#vertexchatmodeldispatcher)
-    - [MissingProjectIdError](#missingprojectiderror)
-    - [ModelSpec](#modelspec)
-    - [ModelCatalog](#modelcatalog)
-    - [DiscoveryResult](#discoveryresult)
-    - [ModelCatalogResolver](#modelcatalogresolver)
-    - [activate](#activate)
-    - [runDiscovery](#rundiscovery)
-  - [Examples](#examples)
+    - [Table of Contents](#table-of-contents)
+    - [Core Concepts](#core-concepts)
+    - [API Reference](#api-reference)
+        - [VertexChatModelDispatcher](#vertexchatmodeldispatcher)
+        - [MissingProjectIdError](#missingprojectiderror)
+        - [ModelSpec](#modelspec)
+        - [ModelCatalog](#modelcatalog)
+        - [DiscoveryResult](#discoveryresult)
+        - [ModelCatalogResolver](#modelcatalogresolver)
+        - [activate](#activate)
+        - [runDiscovery](#rundiscovery)
+    - [Examples](#examples)
 
 ---
 
 ## Core Concepts
-The extension follows a provider-based architecture centered around the `VertexChatModelDispatcher`. 
+
+The extension follows a provider-based architecture centered around the `VertexChatModelDispatcher`.
 
 - **Multi-Vendor Support**: It manages a registry of specific vendor providers (`VertexAnthropicProvider`, `VertexGoogleProvider`, and `VertexGrokProvider`) that handle the nuances of different LLM protocols while exposing a unified interface to VS Code.
 - **Dynamic Discovery**: Instead of hardcoding endpoints, the extension performs region probing. It iterates through the effective catalog's `regionPriority` to identify where specific models are enabled for the user's project.
@@ -33,10 +35,12 @@ The extension follows a provider-based architecture centered around the `VertexC
 ## API Reference
 
 ### VertexChatModelDispatcher
+
 [source](../src/VertexChatModelDispatcher.ts)
 The central class that implements `vscode.LanguageModelChatProvider`. It manages model discovery, provider registration, authentication via `AuthManager`, and request dispatching. It registers vendor-specific providers, including configuring the `VertexGrokProvider` with the catalog resolver to ensure correct vendor-specific model identification.
 
 **Methods:**
+
 - `getConnectionRevision()`: [source](../src/VertexChatModelDispatcher.ts) Returns the current connection revision number, used to detect configuration changes during asynchronous discovery.
 - `dispose()`: [source](../src/VertexChatModelDispatcher.ts) Disposes of the proxy gateway, internal event emitters, and authentication subscriptions.
 - `onDidChangeLanguageModelChatInformation`: Event that fires when the available model list changes, prompting VS Code to refresh model information.
@@ -54,17 +58,21 @@ The central class that implements `vscode.LanguageModelChatProvider`. It manages
 - `getGoogleProvider()`: [source](../src/VertexChatModelDispatcher.ts) Returns the registered `VertexGoogleProvider` instance.
 
 ### MissingProjectIdError
+
 [source](../src/VertexChatModelDispatcher.ts)
 Raised before any network or credential access when `vertexAiChat.projectId` is unset.
 
 **Properties:**
+
 - `viaProxy`: Boolean indicating if the error occurred while a proxy was configured.
 
 ### ModelSpec
+
 [source](../src/providers/VertexModelProvider.ts)
 Interface defining the metadata and capabilities for a supported model.
 
 **Properties:**
+
 - `id`: Unique identifier for the model.
 - `vendor`: The provider route: `"google"`, `"anthropic"`, or `"grok"`.
 - `displayName`: Human-readable name shown in the UI.
@@ -81,26 +89,32 @@ Interface defining the metadata and capabilities for a supported model.
     - `longContext` (optional): Replacement rate card for requests whose total uncached and cached input exceeds `inputThresholdTokens`. The whole request is costed with these rates.
 
 ### ModelCatalog
+
 [source](../src/providers/VertexModelProvider.ts)
 Interface for the `models.json` structure containing the list of potential models and region priorities.
 
 **Properties:**
+
 - `candidateModels`: Array of `ModelSpec` objects representing supported model versions.
 - `regionPriority`: Ordered list of strings representing GCP regions to probe (e.g., `global`, `us-east5`).
 
 ### DiscoveryResult
+
 [source](../src/VertexChatModelDispatcher.ts)
 The result of a region discovery operation, containing the successful `region` and the list of `availableModels`.
 
 **Properties:**
+
 - `region`: The selected GCP region, from direct probing or the server catalog; `undefined` when no region is selected.
 - `availableModels`: Array of `ModelSpec` objects discovered in direct mode or advertised by the proxy.
 
 ### ModelCatalogResolver
+
 [source](../src/ModelCatalogResolver.ts)
-In direct mode, resolves the effective model catalog at runtime, enabling user- and workspace-level overrides of the bundled `models.json`. Resolution precedence is **Workspace (`.vscode/models.json`) > User (extension `globalStorageUri/models.json`) > Bundled (`src/models.json`)**. A custom file fully *replaces* the bundled catalog (it is not merged); the bundled catalog is used only as the seed template when a custom file is first created, and as the final fallback when no custom file exists or one fails to parse. In proxy mode, the server catalog takes precedence over all local sources, including when empty; failed discovery cannot restore a local catalog.
+In direct mode, resolves the effective model catalog at runtime, enabling user- and workspace-level overrides of the bundled `models.json`. Resolution precedence is **Workspace (`.vscode/models.json`) > User (extension `globalStorageUri/models.json`) > Bundled (`src/models.json`)**. A custom file fully _replaces_ the bundled catalog (it is not merged); the bundled catalog is used only as the seed template when a custom file is first created, and as the final fallback when no custom file exists or one fails to parse. In proxy mode, the server catalog takes precedence over all local sources, including when empty; failed discovery cannot restore a local catalog.
 
 **Methods:**
+
 - `setProxyCatalog(catalog)`: Retains the complete server `ModelCatalog`, including `regionPriority`. An empty catalog stays authoritative; `undefined` restores local catalog resolution.
 - `getEffectiveCatalog()`: Returns the effective `ModelCatalog` following the precedence above. Results are cached until `invalidateCache()` is called. On a parse error in a custom file, logs the error, shows a one-shot error message, and falls back to the next tier (never throws — callers always get a usable catalog).
 - `getWorkspaceCatalogUri()`: Returns the URI of the workspace-level catalog for the first workspace folder, or `undefined` when no workspace folder is open. Does not create the file.
@@ -112,8 +126,10 @@ In direct mode, resolves the effective model catalog at runtime, enabling user- 
 The extension registers two palette commands backed by this resolver: `vertexAiChat.openUserModelsFile` and `vertexAiChat.openWorkspaceModelsFile`. Both custom file paths are covered by `contributes.jsonValidation` globs in `package.json`, providing JSON schema validation and autocomplete in the editor. A `FileSystemWatcher` on both files invalidates the cache and re-runs discovery on save (debounced ~300ms), refreshing the Copilot Chat model picker.
 
 ### activate
+
 [source](../src/extension.ts)
 The main entry point for the VS Code extension. It handles:
+
 - Initializing the global `Logger` for structured logging and diagnostics.
 - Configuration migration from legacy settings (`vertexAnthropic` to `vertexAiChat`), including Project ID and billing warning preferences.
 - Initializing the `AuthManager`, `UsageTrackerService`, `CostStatusBar`, and `ModelCatalogResolver`.
@@ -136,6 +152,7 @@ The main entry point for the VS Code extension. It handles:
 - Performing a background discovery run on activation if a `projectId` is already configured.
 
 ### runDiscovery
+
 [source](../src/extension.ts)
 A helper function that triggers the model discovery process on the dispatcher and provides UI feedback (Information, Warning, or Error messages) to the user based on the results. It tracks connection revisions to ensure that outdated discovery attempts do not overwrite current state if a configuration change happens mid-discovery.
 
@@ -149,7 +166,9 @@ In the event of a failure (networking, project errors, or authentication), it cl
 ---
 
 ## Examples
-*(High-level explanation of the architecture, dependencies, or primary design patterns used in this code).*
+
+_(High-level explanation of the architecture, dependencies, or primary design patterns used in this code)._
+
 ## Thinking effort resolution
 
 The dispatcher builds an immutable `EffortCatalog` indexed by model ID. Chat and commit-message selectors expose the catalog's models directly. Discovery groups by vendor and literal backend `version`; effort does not change the endpoint or availability probe.

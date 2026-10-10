@@ -4,90 +4,90 @@ import type { ProxyGateway } from "../ProxyGateway";
 import type { ModelEffortSpec, ResolvedModelRequest } from "../effort/EffortTypes";
 
 export interface ModelUsageTokens {
-  input: number;
-  output: number;
-  cache_read: number;
-  cache_create: number;
+    input: number;
+    output: number;
+    cache_read: number;
+    cache_create: number;
 }
 
 export interface CharacterCounts {
-  system: number;
-  user_text: number;
-  assistant_text: number;
-  image: number;
-  tool_use: number;
-  tool_result: number;
+    system: number;
+    user_text: number;
+    assistant_text: number;
+    image: number;
+    tool_use: number;
+    tool_result: number;
 }
 
 export interface ChatInferenceResult {
-  usage: ModelUsageTokens;
-  charCount: CharacterCounts;
+    usage: ModelUsageTokens;
+    charCount: CharacterCounts;
 }
 
 export interface ModelSpec {
-  effort?: ModelEffortSpec;
-  id: string;
-  vendor: string;
-  displayName: string;
-  family: string;
-  version: string;
-  maxInputTokens: number;
-  maxOutputTokens: number;
-  capabilities: { imageInput: boolean; toolCalling: boolean };
-  pricing: {
-    input: number;
-    output: number;
-    cache_read?: number;
-    cache_create?: number;
-    /**
-     * Optional rate card selected when a request's complete input context is
-     * larger than inputThresholdTokens. Google bills every token in such a
-     * request at these rates, rather than only the tokens above the threshold.
-     */
-    longContext?: {
-      inputThresholdTokens: number;
-      input: number;
-      output: number;
-      cache_read?: number;
-      cache_create?: number;
+    effort?: ModelEffortSpec;
+    id: string;
+    vendor: string;
+    displayName: string;
+    family: string;
+    version: string;
+    maxInputTokens: number;
+    maxOutputTokens: number;
+    capabilities: { imageInput: boolean; toolCalling: boolean };
+    pricing: {
+        input: number;
+        output: number;
+        cache_read?: number;
+        cache_create?: number;
+        /**
+         * Optional rate card selected when a request's complete input context is
+         * larger than inputThresholdTokens. Google bills every token in such a
+         * request at these rates, rather than only the tokens above the threshold.
+         */
+        longContext?: {
+            inputThresholdTokens: number;
+            input: number;
+            output: number;
+            cache_read?: number;
+            cache_create?: number;
+        };
     };
-  };
 }
 
 export interface ModelCatalog {
-  candidateModels: ModelSpec[];
-  regionPriority: string[];
+    candidateModels: ModelSpec[];
+    regionPriority: string[];
 }
 
 export interface VertexModelProvider {
-  /** The vendor identifier used in models.json (e.g., 'anthropic', 'gemini') */
-  vendor: string;
+    /** The vendor identifier used in models.json (e.g., 'anthropic', 'gemini') */
+    vendor: string;
 
-  /** Configure the provider with project and region */
-  initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void;
+    /** Configure the provider with project and region */
+    initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void;
 
-  /** Update labels to be sent with every request */
-  setLabels(labels: Record<string, string>): void;
+    /** Update labels to be sent with every request */
+    setLabels(labels: Record<string, string>): void;
 
-  /** Ping without effort parameters; transient failures throw DiscoveryRetryableError. */
-  pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean>;
+    /** Ping without effort parameters; transient failures throw DiscoveryRetryableError. */
+    pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean>;
 
-  /**
-   * Execute a chat request, map inputs/outputs, and report parts to VS Code.
-   */
-  provideLanguageModelChatResponse(
-    modelId: string,
-    messages: readonly vscode.LanguageModelChatRequestMessage[],
-    options: vscode.ProvideLanguageModelChatResponseOptions,
-    progress: vscode.Progress<vscode.LanguageModelResponsePart>,
-    token: vscode.CancellationToken,
-    labels?: Record<string, string>,
-    spec?: ModelSpec,
-    request?: ResolvedModelRequest,
-  ): Promise<ChatInferenceResult>;
+    /**
+     * Execute a chat request, map inputs/outputs, and report parts to VS Code.
+     */
+    provideLanguageModelChatResponse(
+        modelId: string,
+        messages: readonly vscode.LanguageModelChatRequestMessage[],
+        options: vscode.ProvideLanguageModelChatResponseOptions,
+        progress: vscode.Progress<vscode.LanguageModelResponsePart>,
+        token: vscode.CancellationToken,
+        labels?: Record<string, string>,
+        spec?: ModelSpec,
+        request?: ResolvedModelRequest,
+    ): Promise<ChatInferenceResult>;
 
-  /**
-   * Optional token counting heuristic, defaults to char-count based in dispatcher if not provided
-   */
-  provideTokenCount?(text: string | vscode.LanguageModelChatRequestMessage, token: vscode.CancellationToken): Promise<number>;
+    /**
+     * Optional token counting heuristic, defaults to char-count based in dispatcher if not provided
+     */
+    provideTokenCount?(text: string | vscode.LanguageModelChatRequestMessage, token: vscode.CancellationToken): Promise<number>;
 }

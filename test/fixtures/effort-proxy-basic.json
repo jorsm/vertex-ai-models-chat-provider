@@ -1,26 +1,24 @@
 {
-  "candidateModels": [
-    {
-      "id": "gemini-3.8-flash",
-      "vendor": "google",
-      "displayName": "Gemini 3.8 Flash",
-      "family": "gemini",
-      "version": "gemini-3.8-flash",
-      "maxInputTokens": 1048576,
-      "maxOutputTokens": 65536,
-      "capabilities": {
-        "imageInput": true,
-        "toolCalling": true
-      },
-      "pricing": {
-        "input": 0.75,
-        "output": 3.75,
-        "cache_read": 0.075,
-        "cache_create": 0.0
-      }
-    }
-  ],
-  "regionPriority": [
-    "global"
-  ]
+    "candidateModels": [
+        {
+            "id": "gemini-3.8-flash",
+            "vendor": "google",
+            "displayName": "Gemini 3.8 Flash",
+            "family": "gemini",
+            "version": "gemini-3.8-flash",
+            "maxInputTokens": 1048576,
+            "maxOutputTokens": 65536,
+            "capabilities": {
+                "imageInput": true,
+                "toolCalling": true
+            },
+            "pricing": {
+                "input": 0.75,
+                "output": 3.75,
+                "cache_read": 0.075,
+                "cache_create": 0.0
+            }
+        }
+    ],
+    "regionPriority": ["global"]
 }

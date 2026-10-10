@@ -25,19 +25,19 @@ The inspected checkout is on `codex/cloud-function-proxy`, at HEAD `d4867a5`, wi
 
 Current code references, with symbol names to survive line-number changes:
 
-| Code | Relevance |
-| --- | --- |
-| [package.json](../package.json) | `contributes.languageModelChatProviders` registers vendor `google-vertex`; provider-level configuration points to the Refresh Models management command. It does not declare an effort setting. The engine floor and `@types/vscode` dependency are `^1.110.0`. |
-| [src/extension.ts](../src/extension.ts) | `activate()` registers `vscode.lm.registerLanguageModelChatProvider("google-vertex", provider)`, currently around line 61. No effort-preview commands are registered in this checkout. |
-| [src/models.json](../src/models.json) | Bundled model definitions, each with a literal backend version and optional named effort choices/default. |
-| [src/VertexChatModelDispatcher.ts](../src/VertexChatModelDispatcher.ts) | `mapModels()` around line 407 creates one Chat model per catalog entry. `provideLanguageModelChatResponse()` around line 513 calls `infer()`, and `inferWithLabels()` around line 620 resolves the selected catalog entry and provider. |
-| [src/providers/ClaudeThinking.ts](../src/providers/ClaudeThinking.ts) | Builds adaptive-thinking request configuration and preserves signed thinking content across tool continuations. |
-| [src/providers/VertexAnthropicProvider.ts](../src/providers/VertexAnthropicProvider.ts) | Around lines 101/134, resolves `spec?.version ?? modelId` and spreads the resulting effort configuration into the Anthropic request. Also owns signed thinking replay behavior that must remain intact. |
-| [src/providers/VertexGoogleProvider.ts](../src/providers/VertexGoogleProvider.ts) | `resolveModelId()` around line 112 maps `-high` to `thinkingConfig.thinkingLevel = "HIGH"`. Inference resolves `spec?.version ?? modelId` around line 479. |
-| [src/providers/VertexGrokProvider.ts](../src/providers/VertexGrokProvider.ts) | Maps independent effort to `reasoning_effort` and uses the literal catalog version. |
-| [src/ModelCatalogResolver.ts](../src/ModelCatalogResolver.ts) | Custom workspace/user catalogs can replace the bundled catalog. In proxy mode, the server-provided catalog is authoritative, including an empty catalog. |
-| [src/CostStatusBar.ts](../src/CostStatusBar.ts) | Existing cost item, created around line 21. Illustrates a supported, dynamically updateable status bar surface. |
-| [src/DashboardWebview.ts](../src/DashboardWebview.ts) | Existing editor-area webview, created around line 20, with message handling around line 39. Illustrates a surface where the extension controls HTML and receives UI events. |
+| Code                                                                                    | Relevance                                                                                                                                                                                                                                                       |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [package.json](../package.json)                                                         | `contributes.languageModelChatProviders` registers vendor `google-vertex`; provider-level configuration points to the Refresh Models management command. It does not declare an effort setting. The engine floor and `@types/vscode` dependency are `^1.110.0`. |
+| [src/extension.ts](../src/extension.ts)                                                 | `activate()` registers `vscode.lm.registerLanguageModelChatProvider("google-vertex", provider)`, currently around line 61. No effort-preview commands are registered in this checkout.                                                                          |
+| [src/models.json](../src/models.json)                                                   | Bundled model definitions, each with a literal backend version and optional named effort choices/default.                                                                                                                                                       |
+| [src/VertexChatModelDispatcher.ts](../src/VertexChatModelDispatcher.ts)                 | `mapModels()` around line 407 creates one Chat model per catalog entry. `provideLanguageModelChatResponse()` around line 513 calls `infer()`, and `inferWithLabels()` around line 620 resolves the selected catalog entry and provider.                         |
+| [src/providers/ClaudeThinking.ts](../src/providers/ClaudeThinking.ts)                   | Builds adaptive-thinking request configuration and preserves signed thinking content across tool continuations.                                                                                                                                                 |
+| [src/providers/VertexAnthropicProvider.ts](../src/providers/VertexAnthropicProvider.ts) | Around lines 101/134, resolves `spec?.version ?? modelId` and spreads the resulting effort configuration into the Anthropic request. Also owns signed thinking replay behavior that must remain intact.                                                         |
+| [src/providers/VertexGoogleProvider.ts](../src/providers/VertexGoogleProvider.ts)       | `resolveModelId()` around line 112 maps `-high` to `thinkingConfig.thinkingLevel = "HIGH"`. Inference resolves `spec?.version ?? modelId` around line 479.                                                                                                      |
+| [src/providers/VertexGrokProvider.ts](../src/providers/VertexGrokProvider.ts)           | Maps independent effort to `reasoning_effort` and uses the literal catalog version.                                                                                                                                                                             |
+| [src/ModelCatalogResolver.ts](../src/ModelCatalogResolver.ts)                           | Custom workspace/user catalogs can replace the bundled catalog. In proxy mode, the server-provided catalog is authoritative, including an empty catalog.                                                                                                        |
+| [src/CostStatusBar.ts](../src/CostStatusBar.ts)                                         | Existing cost item, created around line 21. Illustrates a supported, dynamically updateable status bar surface.                                                                                                                                                 |
+| [src/DashboardWebview.ts](../src/DashboardWebview.ts)                                   | Existing editor-area webview, created around line 20, with message handling around line 39. Illustrates a surface where the extension controls HTML and receives UI events.                                                                                     |
 
 The dispatcher groups discovery by vendor and literal catalog backend version. Entries sharing that version share availability without changing inference effort.
 
@@ -102,10 +102,10 @@ Its command declaration used `title: "Thinking Effort"` and `icon: "$(settings-g
 
 On 5 October, a separate extension with a fresh user-data directory and extension directory was tested. It registered one command, `chatToolbarCheck.showPicker`, whose callback accepted no arguments and only called `vscode.window.showQuickPick()` with five dummy values. The exact same command was contributed to the Chat header and Chat input status toolbar and was available in the Command Palette. The Vertex provider was not part of this minimal fixture.
 
-| Invocation | Observed outcome |
-| --- | --- |
-| Command Palette | The five-item picker opened. |
-| Chat header (`view/title`) | The same picker opened. |
+| Invocation                               | Observed outcome                                               |
+| ---------------------------------------- | -------------------------------------------------------------- |
+| Command Palette                          | The five-item picker opened.                                   |
+| Chat header (`view/title`)               | The same picker opened.                                        |
 | Beneath Chat input (`chat/input/status`) | No picker opened; debugger captured a circular JSON exception. |
 
 Tested environment: **code-server 4.139.1 / VS Code 1.139.1**, build `53c2f3253bcf32886706fc023e794bbeb253c90f`.
@@ -129,10 +129,10 @@ Inspection at the serialization frame returned:
 
 ```json
 {
-  "command": "chatToolbarCheck.showPicker",
-  "argumentCount": 1,
-  "argumentKeys": ["widget"],
-  "widgetClass": "Hb"
+    "command": "chatToolbarCheck.showPicker",
+    "argumentCount": 1,
+    "argumentKeys": ["widget"],
+    "widgetClass": "Hb"
 }
 ```
 
@@ -198,17 +198,17 @@ There is no supported setter to mutate a manifest-contributed command's title/ic
 
 ## 9. Alternatives and why none completely meets the goal today
 
-| Approach | What it provides | Main limitation for this user | Evidence level |
-| --- | --- | --- | --- |
-| Native per-model configuration schema | VS Code owns the effort UI and passes selected configuration to the provider. | Third-party hook remains proposed; a build-specific untyped workaround lacks a stable Marketplace contract. | Current declarations/converter inspected; not newly prototyped here. |
-| Chat input gear → QuickPick | The user-preferred placement with a small native selection interaction. | Contributed command failed before its handler in the tested runtime. | Minimal live reproduction and debugger capture. |
-| Chat header gear → submenu or QuickPick | A supported Chat-adjacent action that worked in the preview. | Worse proximity/current-value visibility; active-model and persistence semantics still require design. | Live preview verified. |
-| Status bar → QuickPick | Supported action with dynamically updateable icon, text, and tooltip. | Uses already crowded bottom-screen space; not naturally scoped to a Chat/model. | Stable API and existing cost-item pattern; no effort-specific implementation. |
-| Command Palette / optional keybinding → QuickPick | Small implementation, no permanent UI space, suitable for infrequent changes. | Less discoverable and no persistent on-screen indication of effort. | Palette invocation verified in the fixture. |
-| Extension Settings UI | Persisted user/workspace preferences, without adding a toolbar item. | Away from Chat; per-model maps may need JSON or a custom command; changing settings does not automatically modify requests. | Available stable contribution mechanism; not implemented for effort. |
-| Dedicated TreeView in a sidebar/view container | Native extension-controlled model rows and configuration commands. | A second model-management surface and layout cost for a small preference. | Supported alternative, not prototyped. |
-| Webview view/panel or configuration section in the existing dashboard | Full dropdown/text layout and an explicit message channel to the extension. | Navigation/layout overhead; active Chat model association and request integration remain extension responsibilities. | Existing dashboard demonstrates the mechanism; effort UI not implemented. |
-| Workbench HTML/CSS injection or Copilot/workbench patching | Potentially arbitrary placement/presentation. | Outside the supported extension boundary, coupled to host internals and distribution/update behavior. | Not implemented or verified. |
+| Approach                                                              | What it provides                                                              | Main limitation for this user                                                                                               | Evidence level                                                                |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Native per-model configuration schema                                 | VS Code owns the effort UI and passes selected configuration to the provider. | Third-party hook remains proposed; a build-specific untyped workaround lacks a stable Marketplace contract.                 | Current declarations/converter inspected; not newly prototyped here.          |
+| Chat input gear → QuickPick                                           | The user-preferred placement with a small native selection interaction.       | Contributed command failed before its handler in the tested runtime.                                                        | Minimal live reproduction and debugger capture.                               |
+| Chat header gear → submenu or QuickPick                               | A supported Chat-adjacent action that worked in the preview.                  | Worse proximity/current-value visibility; active-model and persistence semantics still require design.                      | Live preview verified.                                                        |
+| Status bar → QuickPick                                                | Supported action with dynamically updateable icon, text, and tooltip.         | Uses already crowded bottom-screen space; not naturally scoped to a Chat/model.                                             | Stable API and existing cost-item pattern; no effort-specific implementation. |
+| Command Palette / optional keybinding → QuickPick                     | Small implementation, no permanent UI space, suitable for infrequent changes. | Less discoverable and no persistent on-screen indication of effort.                                                         | Palette invocation verified in the fixture.                                   |
+| Extension Settings UI                                                 | Persisted user/workspace preferences, without adding a toolbar item.          | Away from Chat; per-model maps may need JSON or a custom command; changing settings does not automatically modify requests. | Available stable contribution mechanism; not implemented for effort.          |
+| Dedicated TreeView in a sidebar/view container                        | Native extension-controlled model rows and configuration commands.            | A second model-management surface and layout cost for a small preference.                                                   | Supported alternative, not prototyped.                                        |
+| Webview view/panel or configuration section in the existing dashboard | Full dropdown/text layout and an explicit message channel to the extension.   | Navigation/layout overhead; active Chat model association and request integration remain extension responsibilities.        | Existing dashboard demonstrates the mechanism; effort UI not implemented.     |
+| Workbench HTML/CSS injection or Copilot/workbench patching            | Potentially arbitrary placement/presentation.                                 | Outside the supported extension boundary, coupled to host internals and distribution/update behavior.                       | Not implemented or verified.                                                  |
 
 The supported surfaces are documented in [contribution points](https://code.visualstudio.com/api/references/contribution-points), [QuickPick guidance](https://code.visualstudio.com/api/ux-guidelines/quick-picks), [status bar guidance](https://code.visualstudio.com/api/ux-guidelines/status-bar), [TreeView API](https://code.visualstudio.com/api/extension-guides/tree-view), and [Webview API](https://code.visualstudio.com/api/extension-guides/webview).
 
@@ -248,12 +248,12 @@ The current providers do not consume a new user-selected effort preference. A se
 
 GitHub state was checked on 8 October 2026. A limited search of issue/PR titles and bodies containing `chat/input/status`, and Chat/circular-serialization terms, did not identify a report specifically tracking this exact toolbar reproduction. This does not prove no issue exists; references may occur only in comments or use other terminology. No upstream issue was filed during this work.
 
-| Reference | Checked state | Relationship to this investigation |
-| --- | --- | --- |
-| [VS Code #322280](https://github.com/microsoft/vscode/issues/322280) | Closed/completed; milestone 1.126.0; verified label. | A real third-party model-configuration persistence/delivery bug. It is not an unresolved reason to reject the native hook today, and its closure does not graduate the proposed API. |
-| [VS Code #265631](https://github.com/microsoft/vscode/issues/265631) | Closed/not planned on 11 December 2025. | Chat cancellation produced a related circular-serialization error. It is not a tracked fix for this status-toolbar command. |
-| [VS Code #161294](https://github.com/microsoft/vscode/issues/161294) | Closed/completed in September 2022. | Historical contributed Ports-menu command failure with circular arguments; useful precedent, not confirmation that the Chat toolbar was fixed. |
-| [VS Code PR #338857](https://github.com/microsoft/vscode/pull/338857) | Merged 30 September 2026; milestone 1.141.0. | Changed unexpected-error forwarding in `extensionHostMain.ts` to serialize the error. It did not change the Chat toolbar context or command-argument serializer. |
+| Reference                                                             | Checked state                                        | Relationship to this investigation                                                                                                                                                   |
+| --------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [VS Code #322280](https://github.com/microsoft/vscode/issues/322280)  | Closed/completed; milestone 1.126.0; verified label. | A real third-party model-configuration persistence/delivery bug. It is not an unresolved reason to reject the native hook today, and its closure does not graduate the proposed API. |
+| [VS Code #265631](https://github.com/microsoft/vscode/issues/265631)  | Closed/not planned on 11 December 2025.              | Chat cancellation produced a related circular-serialization error. It is not a tracked fix for this status-toolbar command.                                                          |
+| [VS Code #161294](https://github.com/microsoft/vscode/issues/161294)  | Closed/completed in September 2022.                  | Historical contributed Ports-menu command failure with circular arguments; useful precedent, not confirmation that the Chat toolbar was fixed.                                       |
+| [VS Code PR #338857](https://github.com/microsoft/vscode/pull/338857) | Merged 30 September 2026; milestone 1.141.0.         | Changed unexpected-error forwarding in `extensionHostMain.ts` to serialize the error. It did not change the Chat toolbar context or command-argument serializer.                     |
 
 Do not treat the shared error text as proof that two reports have the same cause, or that an error-reporting fix resolves command argument delivery. There is no confirmed release target for the exact input-toolbar problem in the evidence collected here.
 

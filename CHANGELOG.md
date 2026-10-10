@@ -61,9 +61,8 @@ Verification and remaining real-host/live-service checks are recorded in [thinki
 
 ### Added
 
-- Claude Sonnet 5.5 
+- Claude Sonnet 5.5
 - A Google Cloud spend-cap recommendation that explains how to alert on rising Agent Platform costs and pause new usage at the configured monthly limit.
-
 
 ## [0.6.5] — 2026-09-23
 
@@ -257,7 +256,6 @@ Verification and remaining real-host/live-service checks are recorded in [thinki
 
 - **Unified Logger** — Centralized all diagnostic output into a unified `Logger` utility for better troubleshooting and cleaner output channel management.
 - **Project ID Resolution** — Enhanced the logic for Project ID enforcement and auto-discovery to ensure consistent billing across multi-root workspaces.
-
 
 ## [0.4.5] — 2026-05-27
 
@@ -492,12 +490,12 @@ Verification and remaining real-host/live-service checks are recorded in [thinki
 - **Refresh Models command** — `Vertex AI Models Chat Provider: Refresh Models` (Ctrl+Shift+P) re-runs discovery on demand.
 - **Config change listeners** — re-runs discovery automatically when `vertexAiChat.projectId` settings change.
 - **Comprehensive diagnostics** — "Vertex AI Models Chat Provider" output channel with detailed logging:
-  - Remote catalog fetch timing and diff against bundled catalog (new/removed models)
-  - Per-region ping results for every candidate model
-  - Full message dump before inference: role, part type, content preview (tail-truncated), tool call details
-  - Mapped messages summary showing what is actually sent to the API
-  - Token usage from stream events (input, output, cache read/create)
-  - Stream lifecycle (creation, chunk count, cancellation, errors)
+    - Remote catalog fetch timing and diff against bundled catalog (new/removed models)
+    - Per-region ping results for every candidate model
+    - Full message dump before inference: role, part type, content preview (tail-truncated), tool call details
+    - Mapped messages summary showing what is actually sent to the API
+    - Token usage from stream events (input, output, cache read/create)
+    - Stream lifecycle (creation, chunk count, cancellation, errors)
 - **Heuristic token counting** — instant `Math.ceil(length / 4)` estimate, replacing the previous API-based approach that caused VS Code to hang.
 - **Multi-model catalog** — bundled `models.json` with 3 candidate Claude models (Opus 4.6, Sonnet 4.6, Haiku 4.5).
 

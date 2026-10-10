@@ -35,11 +35,11 @@ The public callback captures preferences before waiting for labels/discovery. Ca
 
 Adapters use the literal `spec.version` and serialize effort as follows:
 
-| Adapter | Named effort field |
-| --- | --- |
-| Claude | `output_config.effort`, with adaptive thinking and hidden display |
-| Gemini | `thinkingConfig.thinkingLevel`, uppercased |
-| Grok | `reasoning_effort` |
+| Adapter | Named effort field                                                |
+| ------- | ----------------------------------------------------------------- |
+| Claude  | `output_config.effort`, with adaptive thinking and hidden display |
+| Gemini  | `thinkingConfig.thinkingLevel`, uppercased                        |
+| Grok    | `reasoning_effort`                                                |
 
 No explicit named value is silently replaced. Backend errors reach the caller. Claude signed/redacted thinking blocks and Gemini thought signatures remain intact on valid tool continuations. Existing cancellation, labels, pricing and transport semantics remain in force. Grok proxy transport is unsupported and fails before client creation.
 

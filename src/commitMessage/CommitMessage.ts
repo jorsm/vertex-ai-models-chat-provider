@@ -72,31 +72,31 @@ ${diffString}`;
 const logger = new Logger("CommitMessage");
 
 async function getGitAPI(): Promise<any> {
-  const gitExtension = vscode.extensions.getExtension<any>("vscode.git");
-  if (!gitExtension) {
-    return null;
-  }
+    const gitExtension = vscode.extensions.getExtension<any>("vscode.git");
+    if (!gitExtension) {
+        return null;
+    }
 
-  try {
-    const gitExports = gitExtension.isActive ? gitExtension.exports : await gitExtension.activate();
-    return gitExports?.getAPI(1) ?? null;
-  } catch (error) {
-    logger.log(`Git extension API activation failed: ${error}`);
-    return null;
-  }
+    try {
+        const gitExports = gitExtension.isActive ? gitExtension.exports : await gitExtension.activate();
+        return gitExports?.getAPI(1) ?? null;
+    } catch (error) {
+        logger.log(`Git extension API activation failed: ${error}`);
+        return null;
+    }
 }
 
 function resolveRepository(git: any, resourceUri?: vscode.Uri): any {
-  if (resourceUri) {
-    return git.getRepository(resourceUri) ?? git.repositories?.[0] ?? null;
-  }
-  return git.repositories?.[0] ?? null;
+    if (resourceUri) {
+        return git.getRepository(resourceUri) ?? git.repositories?.[0] ?? null;
+    }
+    return git.repositories?.[0] ?? null;
 }
 
 export type CommitMessageCommandContext = vscode.Uri | vscode.SourceControl;
 
 export function resolveCommitMessageResourceUri(context?: CommitMessageCommandContext): vscode.Uri | undefined {
-  return context && "rootUri" in context ? context.rootUri : context;
+    return context && "rootUri" in context ? context.rootUri : context;
 }
 
 /**
@@ -106,113 +106,116 @@ export function resolveCommitMessageResourceUri(context?: CommitMessageCommandCo
  * commit message into the SCM input box.
  */
 export async function generateCommitMessage(provider: Pick<VertexChatModelDispatcher, "infer">, context?: CommitMessageCommandContext): Promise<void> {
-  const git = await getGitAPI();
-  if (!git) {
-    const remoteContext = vscode.env.remoteName ? ` in this ${vscode.env.remoteName} remote window` : " in this extension host";
-    vscode.window.showWarningMessage(`Vertex AI Models Chat Provider: Commit-message generation is unavailable${remoteContext} because the Git extension API cannot be reached.`);
-    return;
-  }
-
-  const resourceUri = resolveCommitMessageResourceUri(context);
-  const repo = resolveRepository(git, resourceUri);
-  if (!repo) {
-    vscode.window.showWarningMessage("Vertex AI Models Chat Provider: No Git repository found.");
-    return;
-  }
-
-  const stagedChanges: any[] = repo.state.indexChanges;
-  if (stagedChanges.length === 0) {
-    vscode.window.showInformationMessage("Vertex AI Models Chat Provider: No staged changes found. Please stage files before generating a commit message.");
-    return;
-  }
-
-  const config = vscode.workspace.getConfiguration("vertexAiChat", repo.rootUri ?? resourceUri);
-  const modelId = config.get<string>("commitMessageModel")?.trim();
-  if (!modelId) {
-    vscode.window.showErrorMessage("Vertex AI Models Chat Provider: Set 'vertexAiChat.commitMessageModel' in user, workspace, or folder settings before generating a commit message.");
-    return;
-  }
-
-  const workspaceRoot: string = repo.rootUri.fsPath;
-  const stagedPaths = stagedChanges.map((change: any) => {
-    const fullPath: string = change.uri.fsPath;
-    return fullPath.startsWith(workspaceRoot) ? fullPath.slice(workspaceRoot.length).replace(/^[\\/]/, "") : fullPath;
-  });
-
-  logger.log(`▶ generateCommitMessage — ${stagedChanges.length} staged file(s): ${stagedPaths.join(", ")}`);
-
-  // Collect all staged diffs
-  const diffParts: string[] = [];
-  for (let i = 0; i < stagedChanges.length; i++) {
-    logger.log(`── [${i + 1}/${stagedChanges.length}] ${stagedPaths[i]}`);
-    try {
-      const diff: string = await repo.diffIndexWithHEAD(stagedChanges[i].uri.fsPath);
-      if (diff.length > 0) {
-        diffParts.push(diff);
-      } else {
-        logger.log(`   (empty diff — skipped)`);
-      }
-    } catch (e) {
-      logger.log(`   ⚠️  Failed to get diff: ${e}`);
+    const git = await getGitAPI();
+    if (!git) {
+        const remoteContext = vscode.env.remoteName ? ` in this ${vscode.env.remoteName} remote window` : " in this extension host";
+        vscode.window.showWarningMessage(`Vertex AI Models Chat Provider: Commit-message generation is unavailable${remoteContext} because the Git extension API cannot be reached.`);
+        return;
     }
-  }
 
-  if (diffParts.length === 0) {
-    vscode.window.showInformationMessage("Vertex AI Models Chat Provider: All staged diffs are empty.");
-    return;
-  }
+    const resourceUri = resolveCommitMessageResourceUri(context);
+    const repo = resolveRepository(git, resourceUri);
+    if (!repo) {
+        vscode.window.showWarningMessage("Vertex AI Models Chat Provider: No Git repository found.");
+        return;
+    }
 
-  const combinedDiff = diffParts.join("\n");
-  logger.log(`── Sending ${combinedDiff.length} chars of diff to configured model '${modelId}'…`);
+    const stagedChanges: any[] = repo.state.indexChanges;
+    if (stagedChanges.length === 0) {
+        vscode.window.showInformationMessage("Vertex AI Models Chat Provider: No staged changes found. Please stage files before generating a commit message.");
+        return;
+    }
 
-  const customPrompt = config.get<string>("commitMessagePrompt")?.trim();
-  const systemPrompt = customPrompt || DEFAULT_SYSTEM_PROMPT;
+    const config = vscode.workspace.getConfiguration("vertexAiChat", repo.rootUri ?? resourceUri);
+    const modelId = config.get<string>("commitMessageModel")?.trim();
+    if (!modelId) {
+        vscode.window.showErrorMessage("Vertex AI Models Chat Provider: Set 'vertexAiChat.commitMessageModel' in user, workspace, or folder settings before generating a commit message.");
+        return;
+    }
 
-  // Build the VS Code LLM message objects.
-  // Role 0 is neither User (1) nor Assistant (2), so VertexAnthropicProvider treats it as a system prompt.
-  const systemMessage = new vscode.LanguageModelChatMessage(0 as vscode.LanguageModelChatMessageRole, systemPrompt);
-
-  const userMessage = vscode.LanguageModelChatMessage.User(getUserPrompt(combinedDiff));
-
-  const messages: vscode.LanguageModelChatRequestMessage[] = [systemMessage, userMessage];
-  const options: vscode.ProvideLanguageModelChatResponseOptions = {
-    tools: [],
-    toolMode: vscode.LanguageModelChatToolMode.Auto,
-  };
-  const cancellation = new vscode.CancellationTokenSource();
-  const token = cancellation.token;
-
-  repo.inputBox.value = "⏳ Generating commit message…";
-
-  // Accumulate streamed text parts
-  let commitMessage = "";
-  const progress: vscode.Progress<vscode.LanguageModelResponsePart> = {
-    report(part) {
-      if (part instanceof vscode.LanguageModelTextPart) {
-        commitMessage += part.value;
-      }
-    },
-  };
-
-  try {
-    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Generating commit message", cancellable: true }, async (_progress, progressToken) => {
-      const subscription = progressToken.onCancellationRequested(() => cancellation.cancel());
-      try {
-        if (progressToken.isCancellationRequested) { cancellation.cancel(); }
-        await provider.infer(modelId, messages, options, progress, token, repo.rootUri);
-      } finally { subscription.dispose(); }
+    const workspaceRoot: string = repo.rootUri.fsPath;
+    const stagedPaths = stagedChanges.map((change: any) => {
+        const fullPath: string = change.uri.fsPath;
+        return fullPath.startsWith(workspaceRoot) ? fullPath.slice(workspaceRoot.length).replace(/^[\\/]/, "") : fullPath;
     });
-    commitMessage = commitMessage.trim();
-    logger.log(`✅ Generated: ${commitMessage}`);
-    repo.inputBox.value = commitMessage;
 
-  } catch (e) {
-    logger.log(`❌ LLM call failed: ${e}`);
-    repo.inputBox.value = "";
-    if (!(e instanceof vscode.CancellationError)) {
-      vscode.window.showErrorMessage(`Vertex AI Models Chat Provider: Failed to generate commit message — ${e}`);
+    logger.log(`▶ generateCommitMessage — ${stagedChanges.length} staged file(s): ${stagedPaths.join(", ")}`);
+
+    // Collect all staged diffs
+    const diffParts: string[] = [];
+    for (let i = 0; i < stagedChanges.length; i++) {
+        logger.log(`── [${i + 1}/${stagedChanges.length}] ${stagedPaths[i]}`);
+        try {
+            const diff: string = await repo.diffIndexWithHEAD(stagedChanges[i].uri.fsPath);
+            if (diff.length > 0) {
+                diffParts.push(diff);
+            } else {
+                logger.log(`   (empty diff — skipped)`);
+            }
+        } catch (e) {
+            logger.log(`   ⚠️  Failed to get diff: ${e}`);
+        }
     }
-  } finally {
-    cancellation.dispose();
-  }
+
+    if (diffParts.length === 0) {
+        vscode.window.showInformationMessage("Vertex AI Models Chat Provider: All staged diffs are empty.");
+        return;
+    }
+
+    const combinedDiff = diffParts.join("\n");
+    logger.log(`── Sending ${combinedDiff.length} chars of diff to configured model '${modelId}'…`);
+
+    const customPrompt = config.get<string>("commitMessagePrompt")?.trim();
+    const systemPrompt = customPrompt || DEFAULT_SYSTEM_PROMPT;
+
+    // Build the VS Code LLM message objects.
+    // Role 0 is neither User (1) nor Assistant (2), so VertexAnthropicProvider treats it as a system prompt.
+    const systemMessage = new vscode.LanguageModelChatMessage(0 as vscode.LanguageModelChatMessageRole, systemPrompt);
+
+    const userMessage = vscode.LanguageModelChatMessage.User(getUserPrompt(combinedDiff));
+
+    const messages: vscode.LanguageModelChatRequestMessage[] = [systemMessage, userMessage];
+    const options: vscode.ProvideLanguageModelChatResponseOptions = {
+        tools: [],
+        toolMode: vscode.LanguageModelChatToolMode.Auto,
+    };
+    const cancellation = new vscode.CancellationTokenSource();
+    const token = cancellation.token;
+
+    repo.inputBox.value = "⏳ Generating commit message…";
+
+    // Accumulate streamed text parts
+    let commitMessage = "";
+    const progress: vscode.Progress<vscode.LanguageModelResponsePart> = {
+        report(part) {
+            if (part instanceof vscode.LanguageModelTextPart) {
+                commitMessage += part.value;
+            }
+        },
+    };
+
+    try {
+        await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Generating commit message", cancellable: true }, async (_progress, progressToken) => {
+            const subscription = progressToken.onCancellationRequested(() => cancellation.cancel());
+            try {
+                if (progressToken.isCancellationRequested) {
+                    cancellation.cancel();
+                }
+                await provider.infer(modelId, messages, options, progress, token, repo.rootUri);
+            } finally {
+                subscription.dispose();
+            }
+        });
+        commitMessage = commitMessage.trim();
+        logger.log(`✅ Generated: ${commitMessage}`);
+        repo.inputBox.value = commitMessage;
+    } catch (e) {
+        logger.log(`❌ LLM call failed: ${e}`);
+        repo.inputBox.value = "";
+        if (!(e instanceof vscode.CancellationError)) {
+            vscode.window.showErrorMessage(`Vertex AI Models Chat Provider: Failed to generate commit message — ${e}`);
+        }
+    } finally {
+        cancellation.dispose();
+    }
 }
