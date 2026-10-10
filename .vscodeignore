@@ -23,4 +23,6 @@ CHANGELOG.md
 eslint.config.mjs
 .prettierrc.json
 .prettierignore
+.editorconfig
+.gitattributes
 tsconfig.json
