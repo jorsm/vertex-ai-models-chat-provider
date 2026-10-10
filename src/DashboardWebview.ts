@@ -2,117 +2,135 @@ import * as vscode from "vscode";
 
 import { UsageTrackerService } from "./UsageTrackerService";
 
+function parseLocalDate(value: string): Date {
+    const [
+        year,
+        month,
+        day,
+    ] = value.split("-").map(Number);
+    if (
+        year === undefined ||
+        month === undefined ||
+        day === undefined ||
+        ![
+            year,
+            month,
+            day,
+        ].every(Number.isFinite)
+    ) {
+        throw new Error("Usage dates must include a year, month, and day.");
+    }
+    return new Date(year, month - 1, day, 0, 0, 0, 0);
+}
+
 export class DashboardWebview {
-  public static currentPanel: DashboardWebview | undefined;
-  private readonly _panel: vscode.WebviewPanel;
-  private readonly _extensionUri: vscode.Uri;
-  private readonly _usageTracker: UsageTrackerService;
-  private readonly _disposables: vscode.Disposable[] = [];
+    public static currentPanel: DashboardWebview | undefined;
+    private readonly _panel: vscode.WebviewPanel;
+    private readonly _extensionUri: vscode.Uri;
+    private readonly _usageTracker: UsageTrackerService;
+    private readonly _disposables: vscode.Disposable[] = [];
 
-  public static createOrShow(extensionUri: vscode.Uri, usageTracker: UsageTrackerService) {
-    const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined;
+    public static createOrShow(extensionUri: vscode.Uri, usageTracker: UsageTrackerService) {
+        const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined;
 
-    if (DashboardWebview.currentPanel) {
-      DashboardWebview.currentPanel._panel.reveal(column);
-      return;
+        if (DashboardWebview.currentPanel) {
+            DashboardWebview.currentPanel._panel.reveal(column);
+            return;
+        }
+
+        const panel = vscode.window.createWebviewPanel("claudeBillingDashboard", "Google Agent Platform Usage & Costs", column || vscode.ViewColumn.One, {
+            enableScripts: true,
+            localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media")],
+        });
+
+        DashboardWebview.currentPanel = new DashboardWebview(panel, extensionUri, usageTracker);
     }
 
-    const panel = vscode.window.createWebviewPanel("claudeBillingDashboard", "Google Agent Platform Usage & Costs", column || vscode.ViewColumn.One, {
-      enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media")],
-    });
+    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, usageTracker: UsageTrackerService) {
+        this._panel = panel;
+        this._extensionUri = extensionUri;
+        this._usageTracker = usageTracker;
 
-    DashboardWebview.currentPanel = new DashboardWebview(panel, extensionUri, usageTracker);
-  }
+        this._update();
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, usageTracker: UsageTrackerService) {
-    this._panel = panel;
-    this._extensionUri = extensionUri;
-    this._usageTracker = usageTracker;
+        // Listeners for cleanup
+        this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
-    this._update();
+        // Receive messages from the Webview UI
+        this._panel.webview.onDidReceiveMessage(
+            (message) => {
+                if (message.command === "fetchData") {
+                    this._fetchData(message.startDate, message.endDate).catch((err) => console.error(err));
+                    return;
+                }
+                if (message.command === "getMinDate") {
+                    this._sendMinDate().catch((err) => console.error(err));
+                    return;
+                }
+                if (message.command === "dismissWarning") {
+                    console.log("[VertexAiModels] Received dismissWarning command from Dashboard.");
+                    vscode.workspace
+                        .getConfiguration("vertexAiChat")
+                        .update("hideBillingWarning", true, vscode.ConfigurationTarget.Global)
+                        .then(
+                            () => console.log("[VertexAiModels] hideBillingWarning saved securely to global settings."),
+                            (err) => console.error("[VertexAiModels] Error saving global settings:", err),
+                        );
+                    return;
+                }
+            },
+            null,
+            this._disposables,
+        );
 
-    // Listeners for cleanup
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
-
-    // Receive messages from the Webview UI
-    this._panel.webview.onDidReceiveMessage(
-      (message) => {
-        if (message.command === "fetchData") {
-          this._fetchData(message.startDate, message.endDate).catch((err) => console.error(err));
-          return;
-        }
-        if (message.command === "getMinDate") {
-          this._sendMinDate().catch((err) => console.error(err));
-          return;
-        }
-        if (message.command === "dismissWarning") {
-          console.log("[VertexAiModels] Received dismissWarning command from Dashboard.");
-          vscode.workspace
-            .getConfiguration("vertexAiChat")
-            .update("hideBillingWarning", true, vscode.ConfigurationTarget.Global)
-            .then(
-              () => console.log("[VertexAiModels] hideBillingWarning saved securely to global settings."),
-              (err) => console.error("[VertexAiModels] Error saving global settings:", err),
-            );
-          return;
-        }
-      },
-      null,
-      this._disposables,
-    );
-
-    // Notify Webview to refresh if new usage happens while dashboard is open
-    this._usageTracker.onUsageUpdated(() => {
-      this._panel.webview.postMessage({ type: "UPDATE_SIGNAL" });
-    });
-  }
-
-  private async _fetchData(startDateStr: string, endDateStr: string) {
-    // e.g. "2026-03-20" -> parse to local midnight explicitly
-    const [sy, sm, sd] = startDateStr.split("-").map(Number);
-    const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
-
-    const [ey, em, ed] = endDateStr.split("-").map(Number);
-    const end = new Date(ey, em - 1, ed, 0, 0, 0, 0);
-
-    const logs = await this._usageTracker.getUsageInRange(start, end);
-    this._panel.webview.postMessage({ type: "RENDER_DATA", payload: logs });
-  }
-
-  private async _sendMinDate() {
-    const minDate = await this._usageTracker.getMinDateFromLogs();
-    this._panel.webview.postMessage({ type: "MIN_DATE", payload: minDate });
-  }
-
-  public dispose() {
-    DashboardWebview.currentPanel = undefined;
-    this._panel.dispose();
-    while (this._disposables.length) {
-      const x = this._disposables.pop();
-      if (x) {
-        x.dispose();
-      }
+        // Notify Webview to refresh if new usage happens while dashboard is open
+        this._usageTracker.onUsageUpdated(() => {
+            void this._panel.webview.postMessage({ type: "UPDATE_SIGNAL" });
+        });
     }
-  }
 
-  private _update() {
-    this._panel.webview.html = this._getHtmlForWebview(this._panel.webview);
-  }
+    private async _fetchData(startDateStr: string, endDateStr: string) {
+        // e.g. "2026-03-20" -> parse to local midnight explicitly
+        const start = parseLocalDate(startDateStr);
+        const end = parseLocalDate(endDateStr);
 
-  private _getHtmlForWebview(webview: vscode.Webview) {
-    // Compute URIs to load scripts/styles from 'media' directory
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "media", "dashboard.js"));
-    const echartsUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "media", "echarts.min.js"));
-    const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "media", "dashboard.css"));
+        const logs = await this._usageTracker.getUsageInRange(start, end);
+        void this._panel.webview.postMessage({ type: "RENDER_DATA", payload: logs });
+    }
 
-    const projectId = vscode.workspace.getConfiguration("vertexAiChat").get<string>("projectId", "UNKNOWN_PROJECT");
-    const billingUrl = `https://console.cloud.google.com/billing?project=${projectId}`;
-    const hideWarning = vscode.workspace.getConfiguration("vertexAiChat").get<boolean>("hideBillingWarning", false);
+    private async _sendMinDate() {
+        const minDate = await this._usageTracker.getMinDateFromLogs();
+        void this._panel.webview.postMessage({ type: "MIN_DATE", payload: minDate });
+    }
 
-    const nonce = getNonce();
+    public dispose() {
+        DashboardWebview.currentPanel = undefined;
+        this._panel.dispose();
+        while (this._disposables.length) {
+            const x = this._disposables.pop();
+            if (x) {
+                x.dispose();
+            }
+        }
+    }
 
-    return `<!DOCTYPE html>
+    private _update() {
+        this._panel.webview.html = this._getHtmlForWebview(this._panel.webview);
+    }
+
+    private _getHtmlForWebview(webview: vscode.Webview) {
+        // Compute URIs to load scripts/styles from 'media' directory
+        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "media", "dashboard.js"));
+        const echartsUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "media", "echarts.min.js"));
+        const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "media", "dashboard.css"));
+
+        const projectId = vscode.workspace.getConfiguration("vertexAiChat").get<string>("projectId", "UNKNOWN_PROJECT");
+        const billingUrl = `https://console.cloud.google.com/billing?project=${projectId}`;
+        const hideWarning = vscode.workspace.getConfiguration("vertexAiChat").get<boolean>("hideBillingWarning", false);
+
+        const nonce = getNonce();
+
+        return `<!DOCTYPE html>
             <html lang="en">
             <head>
                 <meta charset="UTF-8">
@@ -125,9 +143,9 @@ export class DashboardWebview {
             </head>
             <body>
                 ${
-                  hideWarning
-                    ? ""
-                    : `
+                    hideWarning
+                        ? ""
+                        : `
                 <div id="billing-warning" class="billing-warning">
                     <div class="warning-icon">⚠️</div>
                     <div class="warning-content">
@@ -221,14 +239,14 @@ export class DashboardWebview {
                 <script nonce="${nonce}" src="${scriptUri}"></script>
             </body>
             </html>`;
-  }
+    }
 }
 
 function getNonce() {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
+    let text = "";
+    const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    for (let i = 0; i < 32; i++) {
+        text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
 }

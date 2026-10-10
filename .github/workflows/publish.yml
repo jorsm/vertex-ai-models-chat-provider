@@ -2,58 +2,65 @@ name: Publish to VS Marketplace
 
 # Only trigger this workflow when a new tag is pushed that starts with 'v' (e.g., v1.0.0).
 on:
-  push:
-    tags:
-      - "v*"
-  workflow_dispatch:
-    inputs:
-      source_ref:
-        description: "Tag to publish (for example, v0.6.4)"
-        required: true
-        type: string
+    push:
+        tags:
+            - "v*"
+    workflow_dispatch:
+        inputs:
+            source_ref:
+                description: "Tag to publish (for example, v0.6.4)"
+                required: true
+                type: string
 
 jobs:
-  build-and-publish:
-    runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.source_ref || github.ref }}
-
-      # Lock the build to a LTS Node version and caches NPM modules to make the pipeline run faster.
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: "npm"
-
-      # Strict Installation: 'npm ci' (clean install) is safer than 'npm i' for CI/CD.
-      - name: Install Dependencies
-        run: npm ci
-
-      - name: Compile Extension
-        run: npm run compile
-
-      - name: Install Marketplace Publisher
-        run: npm install --no-save --package-lock=false @vscode/vsce@4.0.0
-
-      - name: Publish to Marketplace
+    build-and-publish:
+        runs-on: ubuntu-latest
         env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: |
-          for attempt in 1 2 3; do
-            if npx --no-install vsce publish --skip-duplicate; then
-              exit 0
-            fi
+            FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.source_ref || github.ref }}
 
-            if [ "$attempt" -eq 3 ]; then
-              exit 1
-            fi
+            # Lock the build to a LTS Node version and caches NPM modules to make the pipeline run faster.
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "24"
+                  cache: "npm"
 
-            delay=$((attempt * 15))
-            echo "Marketplace publish failed on attempt $attempt; retrying in ${delay}s."
-            sleep "$delay"
-          done
+            # Strict Installation: 'npm ci' (clean install) is safer than 'npm i' for CI/CD.
+            - name: Install Dependencies
+              run: npm ci
+
+            - name: Check Formatting
+              run: npm run format:check
+
+            - name: Compile Extension
+              run: npm run compile
+
+            - name: Install Marketplace Publisher
+              run: npm install --no-save --package-lock=false @vscode/vsce@4.0.0
+
+            - name: Publish to Marketplace
+              env:
+                  VSCE_PAT: ${{ secrets.VSCE_PAT }}
+              run: |
+                  for attempt in 1 2 3; do
+                    if npx --no-install vsce publish --skip-duplicate; then
+                      exit 0
+                    fi
+
+                    if [ "$attempt" -eq 3 ]; then
+                      exit 1
+                    fi
+
+                    delay=$((attempt * 15))
+                    echo "Marketplace publish failed on attempt $attempt; retrying in ${delay}s."
+                    sleep "$delay"
+                  done
+
+            - name: Wait for Marketplace download availability
+              timeout-minutes: 12
+              uses: ./.github/actions/wait-for-marketplace

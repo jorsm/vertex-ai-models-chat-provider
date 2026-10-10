@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- Thinking Effort command and Chat header contribution using stable APIs, with per-model User/Workspace preferences, named catalog defaults, current-value metadata, and cancellation/stale-policy handling.
+- Optional named effort configuration in local catalogs and negotiated `effort-v1` proxy catalogs. Invalid definitions cannot grant bundled permissions.
+
+### Changed
+
+- Use 15 model definitions with independent effort choices and explicit named defaults.
+- Simplify the Thinking Effort model list to one line per model and show each effort value once, with gray Default text on the catalog default.
+- Custom catalogs accept nonempty effort strings; backend APIs validate model support.
+- Public provider invocations capture effort once; retries preserve that snapshot. Internal commit generation uses catalog defaults. All providers route by the literal catalog version.
+- Refresh effort metadata without resetting connections or probing availability. Put the existing Refresh Models management command at the provider contribution's top level.
+
+Verification and remaining real-host/live-service checks are recorded in [thinking-effort-verification.md](docs/thinking-effort-verification.md). No version bump, publication or external proxy deployment is included.
+
+## [0.7.4] — 2026-10-07 (Pre-release)
+
+### Added
+
+- Claude Haiku 5.5 with its default Medium effort plus explicit High and Max effort choices, a 1M-token input context, a 128K-token output limit, vision, and tool calling.
+- Google Cloud global pricing for Claude Haiku 5.5, including prompt caching and higher rates when the complete input context exceeds 100K tokens.
+
+## [0.7.3] — 2026-10-05
+
+### Added
+
+- Optional `vertexAiChat.proxyUrl` for an enterprise HTTP gateway where organizations can implement centralized metrics, policies, and business logic. Uses personal Google CLI ID tokens, a complete server catalog (variants, capabilities, limits and prices), and no direct fallback. Gemini and Claude only in proxy mode.
+- Share chat/commit routing, repository-scoped project labels and usage accounting. Connect cancellation to both SDK transports and preserve native streaming/tool signatures.
+- Consolidated [proxy setup and implementation contract](docs/proxy.md) and [compatibility verification](docs/proxy-compatibility.md), replacing development plans, branch reviews, and recorded demonstration results.
+- Configurable model discovery timeout via `vertexAiChat.modelDiscoveryTimeoutSeconds`, with a default of 45 seconds per endpoint probe in each region.
+
+### Changed
+
+- `vertexAiChat.projectId` is required with or without `vertexAiChat.proxyUrl` and is now listed first in the settings; `proxyUrl` is optional. The two are no longer mutually exclusive: the project is sent to the proxy in the request path instead of the `gateway` placeholder.
+- Probe each distinct model endpoint once per region during discovery, sharing availability across its effort variants and omitting effort parameters from discovery requests.
+- Stagger endpoint discovery starts, limit concurrency to three, and retry transient failures up to three times with randomized backoff within the configured timeout. Keep all catalog effort variants available after a 429 response even when retries are exhausted.
+
 ## [0.6.8] — 2026-10-01
 
 ### Fixed
@@ -18,15 +55,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
-- Replaced Claude Sonnet 5.5's unsuffixed entry with explicit High effort and added a Max effort choice alongside Medium.
+- Updated Claude Sonnet 5.5 effort choices to High, Medium and Max.
 
 ## [0.6.6] — 2026-09-29
 
 ### Added
 
-- Claude Sonnet 5.5 
+- Claude Sonnet 5.5
 - A Google Cloud spend-cap recommendation that explains how to alert on rising Agent Platform costs and pause new usage at the configured monthly limit.
-
 
 ## [0.6.5] — 2026-09-23
 
@@ -86,7 +122,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- **Claude Generation 5 Max Effort** — Added `-max` variants for Claude Opus 5, Sonnet 5, Fable 5, and Fable 5.1. Custom Claude catalogs can use any supported `-low`, `-medium`, `-high`, `-xhigh`, or `-max` effort suffix.
+- **Claude Generation 5 Max Effort** — Added Max effort support for Claude Opus 5, Sonnet 5, Fable 5, and Fable 5.1.
 
 ### Fixed
 
@@ -96,7 +132,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- **Gemini 3.8 and 3.7 Flash High Reasoning** — Added support for the high-reasoning variants `gemini-3.8-flash-high` and `gemini-3.7-flash-high`.
+- **Gemini 3.8 and 3.7 Flash High Reasoning** — Added High thinking-level support for Gemini 3.8 and 3.7 Flash.
 
 ## [0.5.11] — 2026-09-02
 
@@ -221,12 +257,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Unified Logger** — Centralized all diagnostic output into a unified `Logger` utility for better troubleshooting and cleaner output channel management.
 - **Project ID Resolution** — Enhanced the logic for Project ID enforcement and auto-discovery to ensure consistent billing across multi-root workspaces.
 
-
 ## [0.4.5] — 2026-05-27
 
 ### Fixed
 
-- **Gemini 3.5 Thought Signature Leak** — Fixed an issue where Gemini 3.5 models (especially `gemini-3.5-flash-high`) would leak internal thought signatures (e.g. `gemini-3.5-flash-high\5R+S41tN...`) into the chat output. The provider now automatically detects and strips these headers while preserving the clean answer text.
+- **Gemini 3.5 Thought Signature Leak** — Prevented internal thought signatures from leaking into chat output while preserving clean answer text.
 
 ### Added
 
@@ -264,7 +299,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- **Gemini 3.5 Flash Support** — Added support for the new `gemini-3.5-flash` model and its high-reasoning variant `gemini-3.5-flash-high`.
+- **Gemini 3.5 Flash Support** — Added support for the `gemini-3.5-flash` model.
 - **In-UI Pricing Display** — Added live pricing information directly to the model picker details and tooltips, allowing users to see token costs ($/1M) before selecting a model.
 
 ## [0.4.1] — 2026-05-19
@@ -455,12 +490,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Refresh Models command** — `Vertex AI Models Chat Provider: Refresh Models` (Ctrl+Shift+P) re-runs discovery on demand.
 - **Config change listeners** — re-runs discovery automatically when `vertexAiChat.projectId` settings change.
 - **Comprehensive diagnostics** — "Vertex AI Models Chat Provider" output channel with detailed logging:
-  - Remote catalog fetch timing and diff against bundled catalog (new/removed models)
-  - Per-region ping results for every candidate model
-  - Full message dump before inference: role, part type, content preview (tail-truncated), tool call details
-  - Mapped messages summary showing what is actually sent to the API
-  - Token usage from stream events (input, output, cache read/create)
-  - Stream lifecycle (creation, chunk count, cancellation, errors)
+    - Remote catalog fetch timing and diff against bundled catalog (new/removed models)
+    - Per-region ping results for every candidate model
+    - Full message dump before inference: role, part type, content preview (tail-truncated), tool call details
+    - Mapped messages summary showing what is actually sent to the API
+    - Token usage from stream events (input, output, cache read/create)
+    - Stream lifecycle (creation, chunk count, cancellation, errors)
 - **Heuristic token counting** — instant `Math.ceil(length / 4)` estimate, replacing the previous API-based approach that caused VS Code to hang.
 - **Multi-model catalog** — bundled `models.json` with 3 candidate Claude models (Opus 4.6, Sonnet 4.6, Haiku 4.5).
 

@@ -4,6 +4,7 @@
 > This module contains the provider implementations that bridge VS Code's Language Model API with Vertex AI backend services. It handles authentication via Application Default Credentials or stored Service Account credentials, model discovery, and the transformation of VS Code's chat protocol into provider-specific payloads (Anthropic/Google).
 
 ## Table of Contents
+
 - [Table of Contents](#table-of-contents)
 - [Core Concepts](#core-concepts)
 - [API Reference](#api-reference)
@@ -23,6 +24,7 @@
         - [provideLanguageModelChatResponse](#providelanguagemodelchatresponse-1)
     - [VertexGrokProvider](#vertexgrokprovider)
         - [initialize](#initialize-2)
+        - [setCatalogResolver](#setcatalogresolver)
         - [setLabels](#setlabels-2)
         - [pingModel](#pingmodel-2)
         - [provideTokenCount](#providetokencount-2)
@@ -32,158 +34,202 @@
 ---
 
 ## Core Concepts
-The provider architecture uses a unified `VertexModelProvider` interface to support multiple model families. 
+
+The provider architecture uses a unified `VertexModelProvider` interface to support multiple model families.
+
+The dispatcher groups models by vendor and literal catalog `version`, then schedules one discovery operation per backend in each region, with at most three concurrent endpoints and staggered starts. Each operation calls `pingModel()` without effort settings and retries transient failures within the endpoint deadline. A 429 preserves reachability. Entries sharing the same vendor/version share availability; each request resolves its effort independently.
 
 - **Google Gemini Integration**: Managed by `VertexGoogleProvider`, supporting Gemini 3 Flash Preview, Gemini 3.7 and 3.8 Flash, and Gemini 3.1 Pro Preview.
 - **Anthropic Claude Integration**: Managed by `VertexAnthropicProvider`, supporting Claude Opus, Fable, Sonnet, and Haiku variants from the active model catalog.
 - **xAI Grok Integration**: Managed by `VertexGrokProvider`, providing access to Grok 4.6 at High (Default), Low, and Medium effort through Vertex AI's OpenAI-compatible endpoint.
-- **Thinking Models**: Gemini `-high` aliases select high thinking. Claude effort aliases (`-low`, `-medium`, `-high`, `-xhigh`, and `-max`) enable adaptive thinking and set `output_config.effort`; the bundled catalog includes only generation-5 `-max` aliases.
+- **Thinking Models**: Bundled models use independent effort configuration: Gemini sends `thinkingConfig.thinkingLevel` and Claude sends adaptive thinking with `output_config.effort`.
 - **Thought Signatures**: Provider-specific mechanisms maintain reasoning continuity across tool calls by caching and re-injecting Gemini signatures or Claude signed thinking/redacted-thinking blocks.
 - **Parallel Tool Execution**: Implementation of tool call buffering and message merging to satisfy Gemini's requirements for grouped function responses.
 - **Prompt Caching (Ephemeral)**: Automated caching strategy for Anthropic models to reduce latency and costs for long conversations by marking system prompts, tools, and long conversation histories for ephemeral caching.
 - **Billing labels**: Gemini requests use the `labels` generation configuration and Anthropic requests use the documented base64 JSON `X-Vertex-AI-Labels` header. These labels are forwarded to Cloud Billing only for PayGo usage. Grok currently logs resolved labels but does not attach them to its OpenAI-compatible request.
+- **Enterprise Proxy Mode**: Gemini and Claude support the [enterprise proxy contract](proxy.md), using personal Google ID-token authentication. The configured `projectId` is sent in the request path and the proxy decides whether to forward it to Vertex. A `ProxyGateway` routes inference through the configured URL while preserving native Vertex JSON and SSE, tools, signatures, and usage. The dispatcher fetches the complete catalog without provider pings or vendor filtering. Temporary pre-stream 429/503 failures receive at most two retries; partial streams are never restarted. Grok currently supports direct inference only; its adapter accepts gateway initialization and reports an explicit unsupported-transport error before any direct credential lookup or request when invoked in proxy mode.
 
 ## API Reference
 
 ### VertexAnthropicProvider
+
 [source](../src/providers/VertexAnthropicProvider.ts)
 The `VertexAnthropicProvider` class implements the `VertexModelProvider` interface for Anthropic Claude models on Vertex AI. It utilizes the `@anthropic-ai/vertex-sdk` and includes sophisticated logic for automated prompt caching and multimodal message transformation.
 
 #### initialize
-[source](../src/providers/VertexAnthropicProvider.ts)
-`initialize(projectId: string, region: string, authOptions?: any): void`
 
-Sets the GCP Project ID and regional endpoint for the Anthropic Vertex client. If provided, `authOptions` are used to configure the underlying `GoogleAuth` instance with the necessary cloud-platform scopes.
+[source](../src/providers/VertexAnthropicProvider.ts)
+`initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void`
+
+Sets the GCP Project ID and regional endpoint for the Anthropic Vertex client. If provided, `authOptions` are used to configure the underlying `GoogleAuth` instance with the necessary cloud-platform scopes. If a `gateway` is provided, the client is configured to route all requests through the proxy URL using the gateway's authentication client and fetch implementation, disabling SDK-level retries in favor of the shared provider retry logic.
 
 #### setLabels
+
 [source](../src/providers/VertexAnthropicProvider.ts)
 `setLabels(labels: Record<string, string>): void`
 
 Updates the internal labels mapping. For non-empty request labels, the provider serializes the mapping as base64 JSON in the documented `X-Vertex-AI-Labels` header passed through the Anthropic Vertex SDK. This supports Cloud Billing attribution for Anthropic PayGo requests.
 
 #### pingModel
-[source](../src/providers/VertexAnthropicProvider.ts)
-`pingModel(modelId: string): Promise<boolean>`
 
-Sends a minimal "ping" message with `max_tokens: 1` to verify the availability of the specified Claude model in the configured project and region. It handles transient rate-limiting errors (429) gracefully, treating them as confirmation that the model is reachable and available.
+[source](../src/providers/VertexAnthropicProvider.ts)
+`pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean>`
+
+Sends a minimal "ping" message with `max_tokens: 1` to verify the availability of the specified Claude model in the configured project and region. It uses the provided `DiscoveryProbeOptions` for timeout and cancellation. Transient errors are surfaced as `DiscoveryRetryableError` for the shared discovery retry policy; a 429 carries evidence that the endpoint is reachable.
 
 #### provideTokenCount
+
 [source](../src/providers/VertexAnthropicProvider.ts)
 `provideTokenCount(text: string | vscode.LanguageModelChatRequestMessage, _token: vscode.CancellationToken): Promise<number>`
 
 Estimates token usage using a 4-characters-per-token heuristic for text strings or message objects via the `estimateTokens` utility.
 
 #### provideLanguageModelChatResponse
+
 [source](../src/providers/VertexAnthropicProvider.ts)
-`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>): Promise<ChatInferenceResult>`
+`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>, spec?: ModelSpec): Promise<ChatInferenceResult>`
 
 Handles chat inference for Anthropic models. This method:
+
 1. Maps VS Code messages to the Anthropic `messages` format, supporting `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart` (normalizing array-based content into a single newline-delimited string), and `LanguageModelDataPart`. For `LanguageModelDataPart`, it automatically encodes `image/*` mimetypes as base64 and attempts to decode other data types as UTF-8 text. It ensures the conversation history starts with a user message by inserting a placeholder if necessary.
 2. Extracts system instructions from the message history to pass as top-level `system` blocks. Tool definitions are also accounted for in the system-level character consumption metrics.
 3. Automatically applies cache control strategies:
     - **Static Prefix Caching**: Applies `ephemeral` caching to the system blocks or tool definitions.
     - **Chat History Caching**: Applies `ephemeral` caching to the second-to-last message in the history if the estimated total history exceeds 1024 tokens.
-4. Executes the request using a robust retry mechanism for transient API failures (such as 429 or 503) with a configurable maximum duration to ensure request resilience.
+4. Executes the request using a robust retry mechanism for transient API failures (such as 429 or 503) with a configurable maximum duration to ensure request resilience. Requests are wrapped in a `cancellableRequest` that merges the VS Code cancellation token with the gateway's signal if available. The `maxOutputTokens` is derived from the optional `spec`.
 5. Manages streaming responses, reporting text deltas and tool call progress to VS Code after parsing partial JSON tool inputs. Signed `thinking`, `signature_delta`, and `redacted_thinking` data remains hidden, but complete content-block sequences are retained in a bounded in-memory cache and restored unchanged when VS Code returns tool results. Models that emit no thinking blocks use the same stream path without creating replay state.
 6. Captures and returns detailed usage statistics, including `input`, `output`, `cache_read`, and `cache_create` token metrics. It also reports these statistics back to VS Code via a `LanguageModelDataPart` (MIME type `usage`) containing `prompt_tokens`, `completion_tokens`, `total_tokens`, and `cached_tokens` to update the native Copilot Chat usage indicator.
 7. Attaches metadata labels (provided via the `labels` parameter or the provider's internal state) through `X-Vertex-AI-Labels`, enabling Google Cloud Billing attribution for Anthropic PayGo requests. The SDK request options preserve this custom header.
-8. Resolves recognized effort suffixes to the underlying Vertex model ID and sends adaptive thinking with `display: "omitted"`. Availability probes include the same configuration so unsupported custom model/effort combinations are filtered out.
+8. Uses the literal catalog version and sends the selected effort with adaptive thinking and `display: "omitted"`. Availability probes omit effort settings.
 
 ### VertexGoogleProvider
+
 [source](../src/providers/VertexGoogleProvider.ts)
 The `VertexGoogleProvider` class implements the `VertexModelProvider` interface for Google Gemini models hosted on Vertex AI. It manages the lifecycle of the `@google/genai` client and handles the complexities of Gemini-specific features like thinking signatures and parallel tool calls.
 
 #### initialize
-[source](../src/providers/VertexGoogleProvider.ts)
-`initialize(projectId: string, region: string, authOptions?: any): void`
 
-Sets the GCP Project ID and regional endpoint (e.g., `us-central1`) for the provider. It also initiates a dynamic schema discovery process to fetch the latest supported OpenAPI 3.0 schema keys from the Vertex AI Discovery API, ensuring tool definitions remain compatible with API updates. If provided, `authOptions` are stored and passed to the `GoogleGenAI` client during lazy initialization.
+[source](../src/providers/VertexGoogleProvider.ts)
+`initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void`
+
+Sets the GCP Project ID and regional endpoint (e.g., `us-central1`) for the provider. It also initiates a dynamic schema discovery process to fetch the latest supported OpenAPI 3.0 schema keys from the Vertex AI Discovery API, ensuring tool definitions remain compatible with API updates. If provided, `authOptions` are stored and passed to the `GoogleGenAI` client during lazy initialization. When initialized with a `gateway`, the provider configures the Gen AI client to route requests through the proxy gateway and skips direct schema discovery.
 
 #### setLabels
+
 [source](../src/providers/VertexGoogleProvider.ts)
 `setLabels(labels: Record<string, string>): void`
 
 Configures the provider with a set of labels to be attached to Gemini generation requests. Google Cloud can forward these labels to Billing for PayGo cost attribution.
 
 #### pingModel
-[source](../src/providers/VertexGoogleProvider.ts)
-`pingModel(modelId: string): Promise<boolean>`
 
-Attempts a minimal request to the specified model ID to verify availability and permissions in the current GCP project. It automatically resolves high-thinking model IDs to their base counterparts and handles transient rate-limiting errors gracefully during discovery.
+[source](../src/providers/VertexGoogleProvider.ts)
+`pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean>`
+
+Attempts a minimal request to the specified model ID to verify availability and permissions in the current GCP project using the provided `DiscoveryProbeOptions`. The dispatcher supplies the literal catalog backend version. The ping omits thinking settings and surfaces transient failures as `DiscoveryRetryableError` for the shared retry policy.
 
 #### provideTokenCount
+
 [source](../src/providers/VertexGoogleProvider.ts)
 `provideTokenCount(text: string | vscode.LanguageModelChatRequestMessage, _token: vscode.CancellationToken): Promise<number>`
 
 Provides a rough estimation of token usage. For text or message objects, it computes the count based on a 4-characters-per-token heuristic.
 
 #### isLeakedReasoningHeader
+
 [source](../src/providers/VertexGoogleProvider.ts)
 `isLeakedReasoningHeader(text: string, modelId: string, actualId: string): boolean`
 
-Detects if a given text segment is the starting chunk of a leaked reasoning block (e.g., `gemini-3.5-flash-high\5R+S41tN...`). It checks if the text starts with the configured or resolved model ID followed by a path separator.
+Detects if a given text segment is the starting chunk of a leaked reasoning block (e.g., `gemini-3.5-flash\5R+S41tN...`). It checks if the text starts with the configured or resolved model ID followed by a path separator.
 
 #### stripLeakedReasoningHeader
+
 [source](../src/providers/VertexGoogleProvider.ts)
 `stripLeakedReasoningHeader(text: string): string`
 
 Strips the leaked signature prefix from a reasoning header text block, returning only the clean answer text that follows the first newline.
 
 #### provideLanguageModelChatResponse
+
 [source](../src/providers/VertexGoogleProvider.ts)
-`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>): Promise<ChatInferenceResult>`
+`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>, spec?: ModelSpec): Promise<ChatInferenceResult>`
 
 Main entry point for chat inference. This method:
+
 1. Maps VS Code messages to the Gemini `contents` format, including support for multimodal `LanguageModelDataPart` (images and non-image data decoding), and ensures the conversation starts with a user message as required by the Gemini API.
 2. **Sanitizes tool input schemas** using a deep-recursive positive filter to ensure compatibility with Vertex AI's OpenAPI 3.0 requirements. It preserves only schema properties that are explicitly supported by the Google Cloud AI Platform (e.g., `type`, `properties`, `required`), stripping out arbitrary or non-standard metadata keys like `$comment` or `enumDescriptions` that would otherwise trigger `400 INVALID_ARGUMENT` responses.
 3. Re-injects cached thought signatures into the conversation history for both **assistant text parts** and **tool call parts** to preserve reasoning quality. It also proactively sanitizes leaked reasoning headers from model turns in history.
 4. Merges consecutive tool result messages into a single user turn to satisfy Gemini API requirements for parallel tool calls.
 5. **Normalizes tool results** into JSON objects, wrapping primitive return values to comply with Gemini's `google.protobuf.Struct` requirement for function responses, and ensuring the function name is correctly associated with the response.
-6. Handles streaming responses with **automatic retries**, using a stateful `StreamPartProcessor` to isolate and strip multi-chunk leaked reasoning/thinking blocks while capturing text, tool calls, and `thoughtSignature` metadata.
+6. Handles streaming responses with **automatic retries**, incorporating proxy-specific retry and cancellation logic when available. It uses a stateful `StreamPartProcessor` to isolate and strip multi-chunk leaked reasoning/thinking blocks while capturing text, tool calls, and `thoughtSignature` metadata. `maxOutputTokens` is applied from the `spec` if available.
 7. Buffers parallel tool calls across the stream to ensure they are emitted to VS Code as a single atomic step, preventing turn-mismatch errors.
 8. Updates internal signature caches for both text reasoning (using a text-prefix key based on the first 120 characters) and tool calls (using unique call IDs).
 9. Tracks and returns detailed usage statistics including character counts and token usage metadata (input, output, and cache metrics). For Gemini, it correctly adjusts input tokens by subtracting cached content tokens to ensure accurate usage tracking, and reports the resulting payload to VS Code via `LanguageModelDataPart` (MIME `usage`).
 10. Attaches metadata labels (preferring the `labels` argument over instance-level labels) as `config.labels` on the generation request, enabling granular PayGo cost attribution in Google Cloud Billing.
 
 ### VertexGrokProvider
+
 [source](../src/providers/VertexGrokProvider.ts)
 The `VertexGrokProvider` class implements the `VertexModelProvider` interface specifically for xAI Grok 4.6 on Vertex AI. It uses Vertex AI's OpenAI-compatible endpoint and does not provide generic routing for other partner models.
 
 #### initialize
-[source](../src/providers/VertexGrokProvider.ts)
-`initialize(projectId: string, region: string, authOptions?: any): void`
 
-Sets the GCP Project ID and regional endpoint. It configures the OpenAI SDK to use the Vertex AI OpenAI-compatible `baseURL`. It supports standard Application Default Credentials and Service Account credentials imported into VS Code `SecretStorage`; legacy workspace configurations that link a key file remain readable. The provider dynamically respects the project ID from active VS Code settings to support workspace-specific billing.
+[source](../src/providers/VertexGrokProvider.ts)
+`initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void`
+
+Sets the GCP Project ID and regional endpoint. It configures the OpenAI SDK to use the Vertex AI OpenAI-compatible `baseURL`. It supports standard Application Default Credentials and Service Account credentials imported into VS Code `SecretStorage`; legacy workspace configurations that link a key file remain readable. The provider dynamically respects the project ID from active VS Code settings to support workspace-specific billing. A supplied gateway marks proxy mode; discovery probes, inference, and direct-client creation then fail with an explicit unsupported-transport error. Reinitializing without a gateway restores direct mode.
+
+#### setCatalogResolver
+
+[source](../src/providers/VertexGrokProvider.ts)
+`setCatalogResolver(resolver: ModelCatalogResolver): void`
+
+Injects the catalog resolver so model specifications (such as token limits) are read from the effective (custom or bundled) catalog when not provided directly in a request.
 
 #### setLabels
+
 [source](../src/providers/VertexGrokProvider.ts)
 `setLabels(labels: Record<string, string>): void`
 
 Updates internal labels for request logging only. The Grok OpenAI-compatible request path does not currently attach these labels to Google Cloud Billing metadata.
 
 #### pingModel
-[source](../src/providers/VertexGrokProvider.ts)
-`pingModel(modelVersion: string): Promise<boolean>`
 
-Verifies the availability of the model path (e.g., `xai/grok-4.6`) by sending a minimal OpenAI-format chat completion request. It rejects unsupported model paths and non-global regions before making requests. It handles 429 rate-limiting responses as confirmation of availability.
+[source](../src/providers/VertexGrokProvider.ts)
+`pingModel(modelVersion: string, options?: DiscoveryProbeOptions): Promise<boolean>`
+
+Verifies the availability of the model path (e.g., `xai/grok-4.6`) in the catalog-selected region by sending a minimal OpenAI-format chat completion request using the provided `DiscoveryProbeOptions`. It rejects unsupported model paths before making requests; regional availability is determined by the probe response. It surfaces transient failures as `DiscoveryRetryableError`; 429 responses carry evidence of reachability for the shared retry policy.
 
 #### provideTokenCount
+
 [source](../src/providers/VertexGrokProvider.ts)
 `provideTokenCount(text: string | vscode.LanguageModelChatRequestMessage, _token: vscode.CancellationToken): Promise<number>`
 
 Estimates token usage using a 4-characters-per-token heuristic.
 
 #### provideLanguageModelChatResponse
+
 [source](../src/providers/VertexGrokProvider.ts)
-`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>): Promise<ChatInferenceResult>`
+`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>, spec?: ModelSpec): Promise<ChatInferenceResult>`
 
 Handles Grok 4.6 chat inference using an OpenAI client. This method:
+
 1. Maps VS Code messages to OpenAI chat completion parameters. It supports `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart` (transformed into discrete `tool` role messages), and `LanguageModelDataPart` (including base64 image conversion or UTF-8 decoding for other data types).
-2. Looks up the output budget from the effective model catalog and requests streaming usage.
-3. Resolves Low, Medium, and High aliases to the base Grok 4.6 path and sends `reasoning_effort`; other model families are rejected.
+2. Looks up the output budget from the provided `spec` or the effective model catalog and requests streaming usage.
+3. Uses the literal catalog backend path and sends the selected `reasoning_effort`.
 4. Preserves a leading system prompt and inserts a placeholder user turn only if the first conversation turn is missing or is not a user turn.
 5. Executes requests using a retry mechanism to handle transient failures.
-6. Streams final text and accumulates incremental tool call deltas until `finish_reason` is received.
-7. Reports token usage back to VS Code, including separately reported reasoning tokens, and separates cache hits from uncached input for cost estimates.
+6. Streams final text and accumulates incremental tool call deltas until `finish_reason` is received. It implements a custom stream transformer to filter out malformed `data: : keepalive` heartbeat events occasionally sent by the Vertex Grok endpoint, which are not valid JSON and would otherwise cause the OpenAI SDK parser to fail.
+7. Reports token usage back to VS Code via `LanguageModelDataPart` (MIME `usage`), including separately reported reasoning tokens, and separates cache hits from uncached input for cost estimates.
 
 ## Examples
+
+## Effort policy and internal request context
+
+`ModelSpec` optionally declares `effort: { values, default }`. Values are unique, nonempty strings; the named default must belong to that list. The [schema](../schemas/models.schema.json) supplies editing validation and is executed by [ModelCatalogParser](../src/ModelCatalogParser.ts) at catalog ingestion, with separate checks for unique model IDs and default membership. [Effort.ts](../src/effort/Effort.ts) contains the shared types, immutable model index and pure request resolution without repeating catalog validation. Backend APIs decide which model/effort combinations they support. A malformed definition in a readable local catalog is excluded and reported while that catalog remains authoritative. Invalid JSON/root-shape fallback behavior is unchanged; proxy catalogs fail as a whole.
+
+Adapters accept `request?: ResolvedModelRequest` after `spec`, carrying a frozen spec/price snapshot and optional effort. They use `spec.version` literally: Claude sends adaptive thinking plus `output_config.effort`, Google sends `thinkingConfig.thinkingLevel`, and Grok sends `reasoning_effort`. Calls without a request snapshot use the supplied spec's named default. A model without effort metadata sends no override.
+
+Custom model IDs and backend names are independent. Grok backend paths, including the `xai/` namespace, are specified in the catalog rather than inferred. Grok proxy transport remains unsupported and fails before creating a direct client. API errors are surfaced without selecting a different model or effort.
+
+The bundle keeps its existing explicit choices and adds each documented default where necessary. Signed Claude blocks and Gemini thought signatures remain on tool-continuation payloads, and retries retain their invocation's snapshot. See [verification](thinking-effort-verification.md) for local and live evidence.

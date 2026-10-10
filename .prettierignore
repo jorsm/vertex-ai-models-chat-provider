@@ -1,0 +1,11 @@
+# Dependencies, generated output, and local test workspaces
+node_modules/
+out/
+dist/
+.vscode-test/
+playground/
+*.vsix
+
+# Machine-maintained and vendored files
+package-lock.json
+media/echarts.min.js
