@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { AuthManager } from "./AuthManager";
+import { AuthManager } from "./auth/AuthManager";
 import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { UsageTrackerService } from "./UsageTrackerService";
 import { Logger } from "./utils/Logger";

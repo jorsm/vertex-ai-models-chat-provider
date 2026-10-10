@@ -1,6 +1,6 @@
 import { setMaxListeners } from "events";
 import * as vscode from "vscode";
-import { AuthManager } from "./AuthManager";
+import { AuthManager } from "./auth/AuthManager";
 import { ProxyGateway, GatewayError } from "./ProxyGateway";
 import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { VertexAnthropicProvider } from "./providers/VertexAnthropicProvider";

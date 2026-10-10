@@ -1,23 +1,49 @@
 import * as fs from "fs";
 import * as vscode from "vscode";
-import { Logger } from "./utils/Logger";
-import { GatewayError } from "./ProxyGateway";
-import { runGcloud } from "./utils/gcloud";
+import type { Logger } from "../utils/Logger";
 
+/** Supported sources for authenticating Vertex AI requests. */
 export type AuthMethodType = "secret" | "file" | "adc";
 
+/**
+ * Describes the authentication source selected for the current workspace.
+ *
+ * @remarks
+ * `value` is a stored Service Account name for `secret`, a credential path for
+ * `file`, and unused for `adc`.
+ */
 export interface AuthMethod {
     type: AuthMethodType;
     value?: string;
 }
 
+/**
+ * Google authentication options passed to the Vertex AI client.
+ *
+ * @remarks
+ * An undefined result from {@link DirectGcpAuth.getResolvedAuthOptions} means to use ADC.
+ */
 export interface AuthOptions {
+    /** Parsed Service Account JSON credentials, when using a key. */
     credentials?: any;
+    /** Path to a Service Account JSON key file, when credentials are read from disk. */
     keyFilename?: string;
+    /** Project associated with the selected credentials, when available. */
     projectId?: string;
 }
 
+/**
+ * Raised when a workspace's explicitly selected credential is unavailable or invalid.
+ *
+ * @remarks
+ * This error preserves explicit credential selection instead of allowing fallback to ambient ADC.
+ */
 export class AuthConfigurationError extends Error {
+    /**
+     * Creates an error for a credential that cannot be resolved as selected.
+     *
+     * @param message - User-facing explanation of the authentication configuration problem.
+     */
     constructor(message: string) {
         super(message);
         this.name = "AuthConfigurationError";
@@ -25,9 +51,12 @@ export class AuthConfigurationError extends Error {
 }
 
 const SECRETS_PREFIX = "sa_key_";
+
 const GLOBAL_INDEX_KEY = "vertexAiChat.serviceAccountNames";
+
 const WORKSPACE_AUTH_METHOD_KEY = "vertexAiChat.activeAuthMethod";
 
+/** Required identity and key fields validated before a credential is stored. */
 interface ServiceAccountCredentials {
     type: "service_account";
     project_id: string;
@@ -36,129 +65,43 @@ interface ServiceAccountCredentials {
     [key: string]: unknown;
 }
 
-export class AuthManager {
-    private proxyToken: { token: string; expires: number } | undefined;
-    private proxyTokenPromise: Promise<string> | undefined;
-    private proxyTokenRevision = 0;
-    private identityCache: { value: string; expires: number } | undefined;
-    private identityPromise: Promise<string | undefined> | undefined;
-    private identityRevision = 0;
-    private gcloudOperationQueue: Promise<void> = Promise.resolve();
-
-    public clearProxyToken(): void {
-        this.proxyToken = undefined;
-        this.proxyTokenRevision++;
-        this.proxyTokenPromise = undefined;
-    }
-
-    /** Developer POC: explicitly uses the personal CLI identity, separately from Vertex ADC/SA. */
-    public getProxyIdToken(): Promise<string> {
-        if (this.proxyToken && this.proxyToken.expires > Date.now()) {
-            return Promise.resolve(this.proxyToken.token);
-        }
-        if (!this.proxyTokenPromise) {
-            const promise = this.acquireProxyIdToken(this.proxyTokenRevision);
-            this.proxyTokenPromise = promise;
-            void promise
-                .finally(() => {
-                    if (this.proxyTokenPromise === promise) {
-                        this.proxyTokenPromise = undefined;
-                    }
-                })
-                .catch(() => {});
-        }
-        return this.proxyTokenPromise;
-    }
-
-    private async acquireProxyIdToken(revision: number): Promise<string> {
-        const startedAt = Date.now();
-        try {
-            const result = await this.runGcloudOperation(async () => {
-                for (let attempt = 1; ; attempt++) {
-                    if (revision !== this.proxyTokenRevision) {
-                        throw new Error("Token request superseded");
-                    }
-                    const attemptStartedAt = Date.now();
-                    try {
-                        const result = await runGcloud([
-                            "auth",
-                            "print-identity-token",
-                            "--quiet",
-                            "--verbosity=error",
-                        ]);
-                        this.logger.log(`Personal proxy ID token acquired in ${Date.now() - attemptStartedAt} ms (attempt ${attempt}).`);
-                        return result;
-                    } catch (error: any) {
-                        if (error?.code !== "GCLOUD_TIMEOUT" || attempt !== 1 || revision !== this.proxyTokenRevision) {
-                            throw error;
-                        }
-                        this.logger.log("gcloud token command timed out; process terminated, retrying once.");
-                    }
-                }
-            });
-            const token = result.stdout.trim();
-            const parts = token.split(".");
-            const encodedClaims = parts[1];
-            if (parts.length !== 3 || !encodedClaims) {
-                throw new Error();
-            }
-            // Local shape checks only. Signature/authorization are verified by the gateway.
-            const claims = JSON.parse(Buffer.from(encodedClaims, "base64url").toString("utf8"));
-            if (revision !== this.proxyTokenRevision || typeof claims.email !== "string" || claims.email.toLowerCase().endsWith(".gserviceaccount.com") || claims.email_verified !== true || typeof claims.exp !== "number" || claims.exp * 1000 <= Date.now() + 60_000) {
-                throw new Error();
-            }
-            // Reuse the CLI token for its actual lifetime. Refresh one minute before
-            // expiry instead of invoking gcloud again after every minute.
-            this.proxyToken = { token, expires: claims.exp * 1000 - 60_000 };
-            return token;
-        } catch (error: any) {
-            // Never surface subprocess stderr: it can contain bearer tokens or credential paths.
-            const reason = error?.killed || error?.signal ? "gcloud timed out" : error?.code === "ENOENT" ? "gcloud executable not found" : "gcloud returned an invalid or unavailable personal token";
-            this.logger.log(`Personal proxy ID token acquisition failed after ${Date.now() - startedAt} ms (${reason}).`);
-            if (error?.killed || error?.signal) {
-                throw new GatewayError("The gcloud token command timed out. This does not mean your Google login expired. Check the Google Agent Platform output and your network, then Refresh Models.", 503);
-            }
-            if (error?.code === "ENOENT") {
-                throw new GatewayError("Google Cloud CLI was not found in the VS Code extension host PATH. Install gcloud or restart VS Code after updating PATH, then Refresh Models.", 503);
-            }
-            throw new GatewayError("Cannot obtain a personal Google ID token for the proxy. Run 'gcloud auth login' with your user account (without service-account impersonation), then Refresh Models.", 401);
-        }
-    }
-
-    /** Cloud SDK commands share configuration files and must not overlap on Windows. */
-    private runGcloudOperation<T>(operation: () => Promise<T>): Promise<T> {
-        const result = this.gcloudOperationQueue.then(operation, operation);
-        this.gcloudOperationQueue = result.then(
-            () => undefined,
-            () => undefined,
-        );
-        return result;
-    }
-
-    private readonly logger = new Logger("AuthManager");
-    private readonly _onAuthUpdated = new vscode.EventEmitter<void>();
-    public readonly onAuthUpdated = this._onAuthUpdated.event;
-
-    private notifyAuthUpdated(): void {
-        this.identityCache = undefined;
-        this.identityPromise = undefined;
-        this.identityRevision++;
-        this._onAuthUpdated.fire();
-    }
-
-    constructor(private readonly context: vscode.ExtensionContext) {
-        // No output channel creation needed
-    }
+/**
+ * Manages direct Vertex authentication selection and Service Account credentials.
+ * Secrets are stored in VS Code SecretStorage, while the selected method is
+ * stored per workspace. Explicitly selected credentials fail closed instead
+ * of silently falling back to ambient ADC.
+ *
+ * @remarks
+ * When no method is selected, credential resolution tries
+ * `GOOGLE_APPLICATION_CREDENTIALS` and uses it when the file can be read and
+ * parsed; otherwise it uses ADC. See {@link DirectGcpAuth.getResolvedAuthOptions}.
+ */
+export class DirectGcpAuth {
+    constructor(
+        private readonly context: vscode.ExtensionContext,
+        private readonly notifyAuthUpdated: () => void,
+        private readonly logger: Logger,
+    ) {}
 
     /**
      * Returns the raw authentication method configuration for the current workspace.
+     *
+     * @returns The selected method, or `undefined` if this workspace has no saved selection.
      */
     public getActiveMethod(): AuthMethod | undefined {
         return this.context.workspaceState.get<AuthMethod>(WORKSPACE_AUTH_METHOD_KEY);
     }
 
     /**
-     * Resolves the current authentication options based on workspace selection.
+     * Resolves the selected workspace credential, or the default credential
+     * source when no explicit method is selected. Returns undefined for ADC;
+     * missing or invalid selected secrets, and unavailable or unparseable
+     * selected files, throw AuthConfigurationError.
+     *
+     * @returns Credential options, or `undefined` when ADC should be used.
+     * @throws {@link AuthConfigurationError}
+     * If a selected secret is missing or invalid, or a selected file is
+     *     unavailable or cannot be parsed.
      */
     public async getResolvedAuthOptions(): Promise<AuthOptions | undefined> {
         const authMethod = this.context.workspaceState.get<AuthMethod>(WORKSPACE_AUTH_METHOD_KEY);
@@ -217,22 +160,10 @@ export class AuthManager {
         return undefined;
     }
 
-    /** Legacy support for workspaces that stored a linked credential path. */
-    private resolveFromFile(filePath: string): AuthOptions | undefined {
-        if (fs.existsSync(filePath)) {
-            try {
-                const content = fs.readFileSync(filePath, "utf8");
-                const credentials = JSON.parse(content);
-                return { keyFilename: filePath, credentials, projectId: credentials.project_id };
-            } catch (e) {
-                this.logger.log(`Error reading/parsing file '${filePath}': ${e}`);
-            }
-        }
-        return undefined;
-    }
-
     /**
-     * Command: Paste a new Service Account JSON key.
+     * Prompts for a Service Account JSON key, stores it securely, and activates it for this workspace.
+     *
+     * @returns `true` if the key was stored and activated; otherwise `false` if a prompt was canceled or replacement was declined.
      */
     public async setServiceAccountKey(): Promise<boolean> {
         const json = await vscode.window.showInputBox({
@@ -261,6 +192,10 @@ export class AuthManager {
     /**
      * Command: Import a Service Account JSON file into VS Code SecretStorage.
      * The selected file is a snapshot; subsequent file edits require re-importing it.
+     * A successful import is stored and activated for the current workspace.
+     *
+     * @returns `true` if the credential was imported and activated; otherwise
+     * `false` if a prompt was canceled, replacement was declined, or import failed.
      */
     public async importServiceAccountFile(): Promise<boolean> {
         const uris = await vscode.window.showOpenDialog({
@@ -289,13 +224,25 @@ export class AuthManager {
         }
     }
 
-    /** Backwards-compatible method name for callers using the previous API. */
+    /**
+     * Backwards-compatible method name for callers using the previous API.
+     *
+     * @returns Whether the import succeeded and activated a credential.
+     * @see {@link DirectGcpAuth.importServiceAccountFile}
+     */
     public async setServiceAccountPath(): Promise<boolean> {
         return this.importServiceAccountFile();
     }
 
     /**
-     * Command: Remove a stored Service Account secret.
+     * Prompts to remove a stored Service Account secret from this extension.
+     *
+     * @returns `true` if the removed credential was active in this workspace;
+     * `false` if removal was canceled or the removed credential was inactive.
+     * @remarks
+     * Removal deletes only the extension's stored copy and name entry.
+     * It does not change Google Cloud keys or resources. If the credential was
+     * active in this workspace, this workspace is reset to ADC.
      */
     public async removeServiceAccount(): Promise<boolean> {
         const names = this.context.globalState.get<string[]>(GLOBAL_INDEX_KEY) || [];
@@ -335,7 +282,10 @@ export class AuthManager {
     }
 
     /**
-     * Command: Pick from known secrets, files, or ADC.
+     * Prompts for a workspace authentication method and persists the selection.
+     *
+     * @returns `true` if a method was selected or the active credential was removed;
+     * `false` if canceled or a delegated import/removal operation returns false.
      */
     public async selectAuthMethod(): Promise<boolean> {
         const names = this.context.globalState.get<string[]>(GLOBAL_INDEX_KEY) || [];
@@ -391,7 +341,10 @@ export class AuthManager {
     }
 
     /**
-     * Command: Clear any custom auth and return to ADC.
+     * Resets this workspace's authentication selection to Application Default Credentials.
+     *
+     * @remarks
+     * Stored Service Account credentials remain available for later selection.
      */
     public async clearAuthMethod(): Promise<void> {
         await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "adc" });
@@ -400,70 +353,55 @@ export class AuthManager {
     }
 
     /**
-     * Extracts the user email/identity from the active method.
+     * Opens a terminal for `gcloud auth application-default login` in the
+     * workspace extension host. Resolves after starting the terminal; an
+     * optional callback runs after shell integration reports successful login.
+     *
+     * @param projectId - Project ID to pass to the gcloud login command, if non-empty.
+     * @param onSuccess - Optional callback run after successful login activates ADC.
+     * @returns Resolves after the terminal command is started, not after login completes.
      */
-    public getIdentity(): Promise<string | undefined> {
-        if (this.identityCache && this.identityCache.expires > Date.now()) {
-            return Promise.resolve(this.identityCache.value);
-        }
-        if (!this.identityPromise) {
-            const promise = this.resolveIdentity(this.identityRevision);
-            this.identityPromise = promise;
-            void promise
-                .finally(() => {
-                    if (this.identityPromise === promise) {
-                        this.identityPromise = undefined;
-                    }
-                })
-                .catch(() => {});
-        }
-        return this.identityPromise;
-    }
-
-    private async resolveIdentity(revision: number): Promise<string | undefined> {
-        const authOptions = await this.getResolvedAuthOptions();
-        if (authOptions?.credentials?.client_email) {
-            const identity = authOptions.credentials.client_email;
-            if (revision === this.identityRevision) {
-                this.identityCache = { value: identity, expires: Date.now() + 60_000 };
-            }
-            return revision === this.identityRevision ? identity : undefined;
-        }
-
-        // Fallback to gcloud if using ADC. Keep the last valid identity only when
-        // the subprocess fails transiently; an explicit unset/invalid account clears it.
-        const previousIdentity = this.identityCache?.value;
-        try {
-            const { stdout } = await this.runGcloudOperation(() =>
-                runGcloud([
-                    "config",
-                    "get-value",
-                    "account",
-                ]),
-            );
-            const email = stdout.split(/\r?\n/, 1)[0]?.trim();
-            if (email && email !== "(unset)" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                if (revision === this.identityRevision) {
-                    this.identityCache = { value: email, expires: Date.now() + 60_000 };
-                }
-                return revision === this.identityRevision ? email : undefined;
-            }
-            if (revision === this.identityRevision) {
-                this.identityCache = undefined;
-            }
-            this.logger.log("Could not extract email from gcloud account output.");
-        } catch (e) {
-            this.logger.log(`Failed to refresh gcloud account email${previousIdentity ? "; keeping the last valid identity" : ""}.`);
-            return revision === this.identityRevision ? previousIdentity : undefined;
-        }
-        return undefined;
-    }
-
-    /** Runs gcloud authentication in the workspace extension host's terminal. */
     public async reauthenticate(projectId: string, onSuccess?: () => void | Promise<void>): Promise<void> {
         this.openGcloudLoginTerminal(projectId, onSuccess);
     }
 
+    /**
+     * Returns the label used for the gcloud sign-in action in authentication UI.
+     *
+     * @returns The label shown for the gcloud sign-in action.
+     */
+    public getGcloudLoginActionLabel(): string {
+        return "Login with gcloud";
+    }
+
+    /**
+     * Resolves a credential file reference used by a legacy selection or the
+     * `GOOGLE_APPLICATION_CREDENTIALS` environment variable.
+     *
+     * @param filePath - Path to the Service Account JSON file.
+     * @returns Credential options when the file exists and contains parseable JSON; otherwise `undefined`.
+     */
+    private resolveFromFile(filePath: string): AuthOptions | undefined {
+        if (fs.existsSync(filePath)) {
+            try {
+                const content = fs.readFileSync(filePath, "utf8");
+                const credentials = JSON.parse(content);
+                return { keyFilename: filePath, credentials, projectId: credentials.project_id };
+            } catch (e) {
+                this.logger.log(`Error reading/parsing file '${filePath}': ${e}`);
+            }
+        }
+        return undefined;
+    }
+
+    /**
+     * Parses Service Account JSON and checks its required identity and key fields.
+     *
+     * @param json - Raw Service Account JSON text.
+     * @returns Parsed credentials containing the project, client email, and private key.
+     * @throws {@link Error}
+     * If the JSON is malformed or required Service Account fields are missing.
+     */
     private parseServiceAccount(json: string): ServiceAccountCredentials {
         let parsed: unknown;
         try {
@@ -483,10 +421,14 @@ export class AuthManager {
         return credentials;
     }
 
-    public getGcloudLoginActionLabel(): string {
-        return "Login with gcloud";
-    }
-
+    /**
+     * Stores a Service Account credential and activates it for the current workspace.
+     *
+     * @param json - Validated Service Account JSON to store in SecretStorage.
+     * @param suggestedName - Initial display name shown in the name prompt.
+     * @param importedFromFile - Whether to tell the user that the source file remains unchanged.
+     * @returns `true` if stored and activated; otherwise `false` if canceled or replacement declined.
+     */
     private async storeServiceAccount(json: string, suggestedName: string, importedFromFile = false): Promise<boolean> {
         const enteredName = await vscode.window.showInputBox({
             prompt: "Enter a friendly name for this Service Account",
@@ -522,6 +464,12 @@ export class AuthManager {
         return true;
     }
 
+    /**
+     * Builds arguments for `gcloud auth application-default login`.
+     *
+     * @param projectId - Optional project ID to include in the command.
+     * @returns The command arguments, including `--quiet` and `--project` when applicable.
+     */
     private getGcloudLoginArgs(projectId: string): string[] {
         const args = [
             "auth",
@@ -535,6 +483,15 @@ export class AuthManager {
         return args;
     }
 
+    /**
+     * Starts ADC login in a dedicated VS Code terminal and observes shell integration events.
+     *
+     * @param projectId - Project ID to pass to the login command, if non-empty.
+     * @param onSuccess - Optional callback to run after successful login and ADC activation.
+     * @remarks
+     * If shell integration does not report completion, the user must refresh models manually.
+     * @see {@link DirectGcpAuth.reauthenticate}
+     */
     private openGcloudLoginTerminal(projectId: string, onSuccess?: () => void | Promise<void>): void {
         const terminal = vscode.window.createTerminal({
             name: "Vertex AI: Authentication",
@@ -579,6 +536,13 @@ export class AuthManager {
         void vscode.window.showInformationMessage("Vertex AI: Complete gcloud authentication in the terminal. Models will refresh automatically when shell integration reports success; otherwise run Refresh Models.");
     }
 
+    /**
+     * Formats one argument for inclusion in the gcloud terminal command.
+     *
+     * @param value - Argument value to format.
+     * @returns The original value when it contains only whitelisted characters,
+     *     or a single-quoted form with embedded single quotes escaped otherwise.
+     */
     private quoteShellArgument(value: string): string {
         if (/^[A-Za-z0-9._:/=-]+$/.test(value)) {
             return value;
@@ -586,6 +550,7 @@ export class AuthManager {
         return `'${value.replace(/'/g, `'\\''`)}'`;
     }
 
+    /** Selects ADC for this workspace and invalidates cached identity data. */
     private async activateAdc(): Promise<void> {
         await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "adc" });
         this.notifyAuthUpdated();

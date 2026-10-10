@@ -148,7 +148,7 @@ try {
         }
         return originalLoad.call(this, request, parent, main);
     };
-    ({ AuthManager } = require("../out/AuthManager.js"));
+    ({ AuthManager } = require("../out/auth/AuthManager.js"));
     ({ ProxyGateway, GatewayError, validateProxyUrl, parseProxyCatalog, isGatewayRetryable } = require("../out/ProxyGateway.js"));
     ({ ModelCatalogResolver } = require("../out/ModelCatalogResolver.js"));
     ({ UsageTrackerService } = require("../out/UsageTrackerService.js"));

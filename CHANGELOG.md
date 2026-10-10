@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
+- Separate direct credential management and proxy token authentication under `src/auth/`, preserving the public authentication API, shared client identity, and serialized CLI operations.
 - Use 15 model definitions with independent effort choices and explicit named defaults.
 - Simplify the Thinking Effort model list to one line per model and show each effort value once, with gray Default text on the catalog default.
 - Custom catalogs accept nonempty effort strings; backend APIs validate model support.

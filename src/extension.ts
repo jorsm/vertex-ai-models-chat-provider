@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { AuthConfigurationError, AuthManager } from "./AuthManager";
+import { AuthConfigurationError, AuthManager } from "./auth/AuthManager";
 import { generateCommitMessage } from "./commitMessage/CommitMessage";
 import { selectCommitMessageModel } from "./commitMessage/CommitMessageModelSelection";
 import { CostStatusBar } from "./CostStatusBar";

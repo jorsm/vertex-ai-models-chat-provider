@@ -355,7 +355,7 @@ Other statuses are not automatically retried by the proxy inference policy. Do n
 | Tools or later turns fail                              | Preserve signatures, native tool payloads, and complete provider event sequences.                                                                                                                   |
 | Upstream authentication failure                        | Repair the proxy runtime's credentials and Vertex permissions.                                                                                                                                      |
 
-Use the [compatibility verification guide](proxy-compatibility.md) to validate your implementation. The contract is implemented by [ProxyGateway](../src/ProxyGateway.ts), [AuthManager](../src/AuthManager.ts), [the dispatcher](../src/VertexChatModelDispatcher.ts), and the [Gemini](../src/providers/VertexGoogleProvider.ts) and [Claude](../src/providers/VertexAnthropicProvider.ts) providers.
+Use the [compatibility verification guide](proxy-compatibility.md) to validate your implementation. The contract is implemented by [ProxyGateway](../src/ProxyGateway.ts), [AuthManager](../src/auth/AuthManager.ts), [the dispatcher](../src/VertexChatModelDispatcher.ts), and the [Gemini](../src/providers/VertexGoogleProvider.ts) and [Claude](../src/providers/VertexAnthropicProvider.ts) providers.
 
 When an attribution checkbox is enabled, inference resolves its value using the
 request's workspace/folder configuration. An absent/empty value or a failed automatic lookup immediately raises a local

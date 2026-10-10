@@ -127,6 +127,12 @@ The extension registers two palette commands backed by this resolver: `vertexAiC
 
 [ModelCatalogParser](../src/ModelCatalogParser.ts) executes the same JSON schema at the local-file and proxy-response boundaries. It validates the envelope and each model, then checks ID uniqueness and effort-default membership. Local files report and exclude malformed definitions while preserving their valid models; proxy discovery rejects a malformed response as a whole. The bundled catalog is checked during automated tests. Internal consumers use the parsed catalog directly; `EffortCatalog` only provides an immutable index and does not revalidate it. Model and effort support remain the backend API's responsibility.
 
+### Authentication components
+
+The authentication implementation lives in `src/auth/`. [AuthManager](../src/auth/AuthManager.ts) retains the public API and coordinates [DirectGcpAuth](../src/auth/DirectGcpAuth.ts), which manages ADC and Service Account credentials, and [ProxyAuth](../src/auth/ProxyAuth.ts), which independently acquires and caches personal CLI ID tokens. Callers import the manager and its authentication types directly from `src/auth/AuthManager.ts`.
+
+Client identity metadata remains in the manager because user labels use the same resolver in both transports; it is independent of the proxy token's identity. Identity lookup and proxy token acquisition share one serialized CLI queue. Direct credential changes invalidate the manager's identity cache before firing `onAuthUpdated`; the dispatcher's existing subscription then resets the connection and invalidates proxy tokens, including acquisitions in progress. Endpoint routing and inference remain in the dispatcher, gateway, and vendor providers.
+
 ### activate
 
 [source](../src/extension.ts)
