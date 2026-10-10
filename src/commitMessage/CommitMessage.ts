@@ -109,27 +109,27 @@ export async function generateCommitMessage(provider: Pick<VertexChatModelDispat
     const git = await getGitAPI();
     if (!git) {
         const remoteContext = vscode.env.remoteName ? ` in this ${vscode.env.remoteName} remote window` : " in this extension host";
-        vscode.window.showWarningMessage(`Vertex AI Models Chat Provider: Commit-message generation is unavailable${remoteContext} because the Git extension API cannot be reached.`);
+        void vscode.window.showWarningMessage(`Vertex AI Models Chat Provider: Commit-message generation is unavailable${remoteContext} because the Git extension API cannot be reached.`);
         return;
     }
 
     const resourceUri = resolveCommitMessageResourceUri(context);
     const repo = resolveRepository(git, resourceUri);
     if (!repo) {
-        vscode.window.showWarningMessage("Vertex AI Models Chat Provider: No Git repository found.");
+        void vscode.window.showWarningMessage("Vertex AI Models Chat Provider: No Git repository found.");
         return;
     }
 
     const stagedChanges: any[] = repo.state.indexChanges;
     if (stagedChanges.length === 0) {
-        vscode.window.showInformationMessage("Vertex AI Models Chat Provider: No staged changes found. Please stage files before generating a commit message.");
+        void vscode.window.showInformationMessage("Vertex AI Models Chat Provider: No staged changes found. Please stage files before generating a commit message.");
         return;
     }
 
     const config = vscode.workspace.getConfiguration("vertexAiChat", repo.rootUri ?? resourceUri);
     const modelId = config.get<string>("commitMessageModel")?.trim();
     if (!modelId) {
-        vscode.window.showErrorMessage("Vertex AI Models Chat Provider: Set 'vertexAiChat.commitMessageModel' in user, workspace, or folder settings before generating a commit message.");
+        void vscode.window.showErrorMessage("Vertex AI Models Chat Provider: Set 'vertexAiChat.commitMessageModel' in user, workspace, or folder settings before generating a commit message.");
         return;
     }
 
@@ -158,7 +158,7 @@ export async function generateCommitMessage(provider: Pick<VertexChatModelDispat
     }
 
     if (diffParts.length === 0) {
-        vscode.window.showInformationMessage("Vertex AI Models Chat Provider: All staged diffs are empty.");
+        void vscode.window.showInformationMessage("Vertex AI Models Chat Provider: All staged diffs are empty.");
         return;
     }
 
@@ -213,7 +213,7 @@ export async function generateCommitMessage(provider: Pick<VertexChatModelDispat
         logger.log(`❌ LLM call failed: ${e}`);
         repo.inputBox.value = "";
         if (!(e instanceof vscode.CancellationError)) {
-            vscode.window.showErrorMessage(`Vertex AI Models Chat Provider: Failed to generate commit message — ${e}`);
+            void vscode.window.showErrorMessage(`Vertex AI Models Chat Provider: Failed to generate commit message — ${e}`);
         }
     } finally {
         cancellation.dispose();

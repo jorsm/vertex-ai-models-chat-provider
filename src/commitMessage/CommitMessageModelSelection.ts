@@ -17,7 +17,7 @@ export async function selectCommitMessageModel(provider: Pick<VertexChatModelDis
         );
         const availableModels = [...discovered.availableModels];
         if (availableModels.length === 0) {
-            vscode.window.showWarningMessage("Google Agent Platform: No model is available for commit-message generation.");
+            void vscode.window.showWarningMessage("Google Agent Platform: No model is available for commit-message generation.");
             return;
         }
 
@@ -60,8 +60,8 @@ export async function selectCommitMessageModel(provider: Pick<VertexChatModelDis
             target = vscode.ConfigurationTarget.Global;
         }
         await config.update("commitMessageModel", selection.modelId, target);
-        vscode.window.showInformationMessage(`Google Agent Platform: Commit messages will use ${selection.modelId}.`);
+        void vscode.window.showInformationMessage(`Google Agent Platform: Commit messages will use ${selection.modelId}.`);
     } catch (error) {
-        vscode.window.showErrorMessage(`Google Agent Platform: Could not select a commit-message model — ${error}`);
+        void vscode.window.showErrorMessage(`Google Agent Platform: Could not select a commit-message model — ${error}`);
     }
 }

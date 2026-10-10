@@ -20,7 +20,7 @@ export async function activate(context: vscode.ExtensionContext) {
     Logger.getLogger("extension").log(`Running in the ${extensionHostLocation} ${extensionHostKind} extension host.`);
 
     const authManager = new AuthManager(context);
-    let config = vscode.workspace.getConfiguration("vertexAiChat");
+    const config = vscode.workspace.getConfiguration("vertexAiChat");
     let projectId = config.get<string>("projectId") || "";
 
     // Migrate settings from old vertexAnthropic config if vertexAiChat is empty
@@ -126,9 +126,9 @@ export async function activate(context: vscode.ExtensionContext) {
             try {
                 const uri = await catalogResolver.ensureUserCatalogExists();
                 await vscode.window.showTextDocument(uri);
-                vscode.window.showInformationMessage("Google Agent Platform: Opened your user-level models.json. Edit and save to update available models.");
+                void vscode.window.showInformationMessage("Google Agent Platform: Opened your user-level models.json. Edit and save to update available models.");
             } catch (e: any) {
-                vscode.window.showErrorMessage(`Google Agent Platform: Could not open user models.json: ${e.message || e}`);
+                void vscode.window.showErrorMessage(`Google Agent Platform: Could not open user models.json: ${e.message || e}`);
             }
         }),
     );
@@ -136,19 +136,19 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand("vertexAiChat.openWorkspaceModelsFile", async () => {
             if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
-                vscode.window.showWarningMessage("Google Agent Platform: Open a workspace folder first to create a workspace models.json.");
+                void vscode.window.showWarningMessage("Google Agent Platform: Open a workspace folder first to create a workspace models.json.");
                 return;
             }
             try {
                 const uri = await catalogResolver.ensureWorkspaceCatalogExists();
                 if (!uri) {
-                    vscode.window.showWarningMessage("Google Agent Platform: Open a workspace folder first to create a workspace models.json.");
+                    void vscode.window.showWarningMessage("Google Agent Platform: Open a workspace folder first to create a workspace models.json.");
                     return;
                 }
                 await vscode.window.showTextDocument(uri);
-                vscode.window.showInformationMessage("Google Agent Platform: Opened .vscode/models.json. Commit it to share models with your team.");
+                void vscode.window.showInformationMessage("Google Agent Platform: Opened .vscode/models.json. Commit it to share models with your team.");
             } catch (e: any) {
-                vscode.window.showErrorMessage(`Google Agent Platform: Could not open workspace models.json: ${e.message || e}`);
+                void vscode.window.showErrorMessage(`Google Agent Platform: Could not open workspace models.json: ${e.message || e}`);
             }
         }),
     );
@@ -191,7 +191,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(userWatcher);
 
     // If projectId is present, run discovery in the background on activation
-    runDiscovery(provider, authManager);
+    runDiscovery(provider, authManager).catch((err) => Logger.getLogger("extension").log(`⚠️ Activation discovery failed: ${err}`));
 
     // Last effective values, to tell set/changed/cleared apart and ignore no-op events.
     let lastProjectId = projectId.trim();
@@ -221,7 +221,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 lastProxyUrl = newProxyUrl;
                 if (changes.length > 0) {
                     const suffix = newProjectId ? "Model refresh restarted." : "Model refresh restarted, but no models are available until a project is set.";
-                    vscode.window.showInformationMessage(`Google Agent Platform: ${changes.join(" ")} ${suffix}`);
+                    void vscode.window.showInformationMessage(`Google Agent Platform: ${changes.join(" ")} ${suffix}`);
                 }
                 provider.setProjectId(newProjectId);
 
@@ -259,10 +259,10 @@ async function runDiscovery(provider: VertexChatModelDispatcher, authManager: Au
         if (result.availableModels.length > 0) {
             // Success: notify user of available models and the selected region
             const names = result.availableModels.map((m) => m.displayName).join(", ");
-            vscode.window.showInformationMessage(`Google Agent Platform: ${result.availableModels.length} model(s) available via ${result.region}: ${names}`);
+            void vscode.window.showInformationMessage(`Google Agent Platform: ${result.availableModels.length} model(s) available via ${result.region}: ${names}`);
         } else {
             // No models found: warn user to check their project configuration
-            vscode.window.showWarningMessage(provider.getProxyUrl() ? "Vertex AI proxy: The server returned no available models. Check the proxy policy." : "Google Agent Platform: No models available. Check your Google Cloud Model Garden setup.");
+            void vscode.window.showWarningMessage(provider.getProxyUrl() ? "Vertex AI proxy: The server returned no available models. Check the proxy policy." : "Google Agent Platform: No models available. Check your Google Cloud Model Garden setup.");
         }
     } catch (e: any) {
         if (revision !== provider.getConnectionRevision()) {
@@ -278,7 +278,7 @@ async function runDiscovery(provider: VertexChatModelDispatcher, authManager: Au
                 await vscode.commands.executeCommand("workbench.action.openSettings", "vertexAiChat.projectId");
             }
         } else if (e instanceof GatewayError) {
-            vscode.window.showErrorMessage(`Vertex AI proxy: ${e.message}`);
+            void vscode.window.showErrorMessage(`Vertex AI proxy: ${e.message}`);
         } else if (e instanceof AuthConfigurationError) {
             const selectAction = "Select Authentication Method";
             const selection = await vscode.window.showErrorMessage(e.message, selectAction);
@@ -296,7 +296,7 @@ async function runDiscovery(provider: VertexChatModelDispatcher, authManager: Au
             }
         } else {
             // Generic fallback for other discovery failures (e.g., networking, project ID errors)
-            vscode.window.showErrorMessage(`Vertex AI Models Chat Provider: Discovery failed — ${e}`);
+            void vscode.window.showErrorMessage(`Vertex AI Models Chat Provider: Discovery failed — ${e}`);
         }
     }
 }

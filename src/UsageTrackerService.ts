@@ -179,7 +179,9 @@ export class UsageTrackerService {
                             if (logDate >= startDate && logDate <= inclusiveEndDate) {
                                 fileLogs.push(obj);
                             }
-                        } catch {}
+                        } catch {
+                            // Ignore incomplete or malformed log entries.
+                        }
                     }
                     return fileLogs;
                 }),

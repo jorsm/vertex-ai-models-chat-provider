@@ -214,7 +214,7 @@ export class ModelCatalogResolver implements vscode.Disposable {
         this.logger.log(`⚠️  Custom models.json parse error at ${filePath}: ${detail}. Falling back to next catalog tier.`);
         if (this.lastErroredPath !== filePath) {
             this.lastErroredPath = filePath;
-            vscode.window.showErrorMessage(`Google Agent Platform: Could not parse "${filePath}". ${detail} Using fallback models. Fix the file and save to retry.`);
+            void vscode.window.showErrorMessage(`Google Agent Platform: Could not parse "${filePath}". ${detail} Using fallback models. Fix the file and save to retry.`);
         }
     }
 }

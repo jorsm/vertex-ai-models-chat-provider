@@ -104,7 +104,6 @@ export class VertexGoogleProvider implements VertexModelProvider {
             }
 
             this.client = new genai.GoogleGenAI({
-                // @ts-ignore - type definition restricts vertexai to boolean, but project/location are top-level
                 vertexai: true,
                 project: this.projectId,
                 location: this.region,
@@ -485,10 +484,10 @@ export class VertexGoogleProvider implements VertexModelProvider {
             this.logger.log(`  🏷️  Labels: ${JSON.stringify(requestLabels)}`);
         }
         const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
+        const cacheCreate = 0;
         let inputTokens = 0,
             outputTokens = 0,
-            cacheRead = 0,
-            cacheCreate = 0;
+            cacheRead = 0;
 
         try {
             const { mappedContents, systemInstruction } = this.extractMessages(messages, charCount, modelId, actualId);

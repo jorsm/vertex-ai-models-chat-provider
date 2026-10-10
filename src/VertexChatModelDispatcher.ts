@@ -323,7 +323,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         if (authOptions?.projectId && authOptions.projectId !== effectiveProjectId) {
             const msg = `Configuration Note: Settings specify project '${effectiveProjectId}', but Service Account belongs to '${authOptions.projectId}'. Proceeding assuming cross-project IAM permissions.`;
             this.logger.log(`⚠️ ${msg}`);
-            vscode.window.showWarningMessage(`Vertex AI: ${msg}`);
+            void vscode.window.showWarningMessage(`Vertex AI: ${msg}`);
             // We do NOT return or abort here, allowing the provider.pingModel to perform the actual access check.
         }
 

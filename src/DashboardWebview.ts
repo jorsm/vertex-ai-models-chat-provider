@@ -72,7 +72,7 @@ export class DashboardWebview {
 
         // Notify Webview to refresh if new usage happens while dashboard is open
         this._usageTracker.onUsageUpdated(() => {
-            this._panel.webview.postMessage({ type: "UPDATE_SIGNAL" });
+            void this._panel.webview.postMessage({ type: "UPDATE_SIGNAL" });
         });
     }
 
@@ -82,12 +82,12 @@ export class DashboardWebview {
         const end = parseLocalDate(endDateStr);
 
         const logs = await this._usageTracker.getUsageInRange(start, end);
-        this._panel.webview.postMessage({ type: "RENDER_DATA", payload: logs });
+        void this._panel.webview.postMessage({ type: "RENDER_DATA", payload: logs });
     }
 
     private async _sendMinDate() {
         const minDate = await this._usageTracker.getMinDateFromLogs();
-        this._panel.webview.postMessage({ type: "MIN_DATE", payload: minDate });
+        void this._panel.webview.postMessage({ type: "MIN_DATE", payload: minDate });
     }
 
     public dispose() {

@@ -279,7 +279,7 @@ export class AuthManager {
             return await this.storeServiceAccount(json, credentials.project_id || vscode.workspace.name || "default", true);
         } catch (e: any) {
             this.logger.log(`Failed to import service account file '${uri.toString()}': ${e}`);
-            vscode.window.showErrorMessage(`Vertex AI: Could not import the service account file. ${e.message || e}`);
+            void vscode.window.showErrorMessage(`Vertex AI: Could not import the service account file. ${e.message || e}`);
             return false;
         }
     }
@@ -295,7 +295,7 @@ export class AuthManager {
     public async removeServiceAccount(): Promise<boolean> {
         const names = this.context.globalState.get<string[]>(GLOBAL_INDEX_KEY) || [];
         if (names.length === 0) {
-            vscode.window.showInformationMessage("Vertex AI: No stored Service Accounts to remove.");
+            void vscode.window.showInformationMessage("Vertex AI: No stored Service Accounts to remove.");
             return false;
         }
 
@@ -325,7 +325,7 @@ export class AuthManager {
             this.notifyAuthUpdated();
         }
 
-        vscode.window.showInformationMessage(`Vertex AI: Removed Service Account '${name}' from this extension. No Google Cloud keys or resources were changed.`);
+        void vscode.window.showInformationMessage(`Vertex AI: Removed Service Account '${name}' from this extension. No Google Cloud keys or resources were changed.`);
         return removedActiveCredential;
     }
 
@@ -391,7 +391,7 @@ export class AuthManager {
     public async clearAuthMethod(): Promise<void> {
         await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "adc" });
         this.notifyAuthUpdated();
-        vscode.window.showInformationMessage("Vertex AI: Authentication reset to Application Default Credentials.");
+        void vscode.window.showInformationMessage("Vertex AI: Authentication reset to Application Default Credentials.");
     }
 
     /**
@@ -504,7 +504,7 @@ export class AuthManager {
         await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "secret", value: name });
         this.notifyAuthUpdated();
         const sourceFileNotice = importedFromFile ? " The original credential file was not modified; delete it yourself if it is no longer needed." : "";
-        vscode.window.showInformationMessage(`Vertex AI: Service Account '${name}' securely stored and activated for this workspace.${sourceFileNotice}`);
+        void vscode.window.showInformationMessage(`Vertex AI: Service Account '${name}' securely stored and activated for this workspace.${sourceFileNotice}`);
         return true;
     }
 
@@ -537,13 +537,13 @@ export class AuthManager {
             completed = true;
             cleanup();
             if (event.exitCode !== 0) {
-                vscode.window.showErrorMessage(`Vertex AI: gcloud authentication failed${event.exitCode === undefined ? "" : ` with exit code ${event.exitCode}`}. Review the authentication terminal for details.`);
+                void vscode.window.showErrorMessage(`Vertex AI: gcloud authentication failed${event.exitCode === undefined ? "" : ` with exit code ${event.exitCode}`}. Review the authentication terminal for details.`);
                 return;
             }
 
             void (async () => {
                 await this.activateAdc();
-                vscode.window.showInformationMessage("Vertex AI: Application Default Credentials updated successfully. Refreshing models…");
+                void vscode.window.showInformationMessage("Vertex AI: Application Default Credentials updated successfully. Refreshing models…");
                 await onSuccess?.();
             })().catch((error) => this.logger.log(`Post-authentication refresh failed: ${error}`));
         });
@@ -555,7 +555,7 @@ export class AuthManager {
 
         terminal.show();
         terminal.sendText(command);
-        vscode.window.showInformationMessage("Vertex AI: Complete gcloud authentication in the terminal. Models will refresh automatically when shell integration reports success; otherwise run Refresh Models.");
+        void vscode.window.showInformationMessage("Vertex AI: Complete gcloud authentication in the terminal. Models will refresh automatically when shell integration reports success; otherwise run Refresh Models.");
     }
 
     private quoteShellArgument(value: string): string {

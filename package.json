@@ -212,13 +212,14 @@
         "bundle-dev": "npm run clean && esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
         "watch-bundle": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --watch",
         "test": "npm run compile && node --test test/*.test.js",
-        "lint": "eslint src",
+        "lint": "eslint src --max-warnings 0",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "preversion": "npm run format:check && npm run compile && npm run lint",
         "prepare": "husky"
     },
     "devDependencies": {
+        "@eslint/js": "^9.39.5",
         "@types/node": "22.x",
         "@types/vscode": "^1.110.0",
         "@typescript-eslint/eslint-plugin": "^8.42.0",
