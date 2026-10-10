@@ -179,9 +179,11 @@ Labels are not forwarded to Billing for Provisioned Throughput. Prefer explicit,
 
 ## Development
 
-Install dependencies with `npm ci`. Run `npm run format` to format the repository and `npm run format:check` to check formatting without changing files. Prettier uses four-space indentation and a 300-column wrapping target; all other options use its defaults. Generated output, the npm lockfile, and the vendored chart library are excluded.
+Install dependencies with `npm ci`. Run `npm run format` to format the repository and `npm run format:check` to check formatting without changing files. Prettier uses four-space indentation and a 300-column wrapping target, with standard defaults explicitly recorded in [`.prettierrc.json`](.prettierrc.json). The [multiline arrays plugin](https://github.com/electrovir/prettier-plugin-multiline-arrays) places each item on its own line in TypeScript, JavaScript, and JSON arrays with two or more items. Empty and single-item arrays are not forced to wrap; existing multiline arrays keep their layout. Generated output, the npm lockfile, and the vendored chart library are excluded. [`.editorconfig`](.editorconfig) shares indentation and whitespace settings across editors; [`.gitattributes`](.gitattributes) keeps text files on LF line endings across operating systems.
 
-VS Code recommends **Prettier - Code formatter** and formats supported files on save using the repository configuration. ESLint checks code quality separately with `npm run lint`; `npm test` compiles and runs the tests. The pre-commit hook, version checks, and CI workflows also check formatting.
+VS Code recommends **Prettier - Code formatter** and formats supported files on save using the repository configuration. `npm run lint` checks TypeScript source using the recommended ESLint and TypeScript rules plus type-aware checks for unhandled and misused promises, including VS Code thenables. The lint command requires zero warnings. SDK payload types remain dynamic while those boundaries are migrated separately.
+
+`npm test` compiles and runs the tests. The compiler enables strict checking, unused-local detection, checked array/object indexing, and exact optional-property types. Internal state that can be cleared declares `undefined` explicitly; optional object properties represent values that may be omitted. The pre-commit hook, version checks, and CI workflows check formatting, and their existing compile/lint steps enforce these checks.
 
 ## License
 
