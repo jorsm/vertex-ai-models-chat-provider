@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const Module = require("node:module");
-const { EffortCatalog } = require("../out/effort/EffortCatalog.js");
+const { EffortCatalog } = require("../out/effort/Effort.js");
 const models = require("../src/models.json").candidateModels;
 let user = {},
     workspace = {},

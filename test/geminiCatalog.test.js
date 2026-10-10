@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const catalog = require("../src/models.json");
-const { EffortCatalog } = require("../out/effort/EffortCatalog.js");
+const { EffortCatalog } = require("../out/effort/Effort.js");
 
 test("bundles the focused Gemini coding catalog", () => {
     const googleModels = new EffortCatalog(catalog.candidateModels).models.filter((model) => model.vendor === "google");

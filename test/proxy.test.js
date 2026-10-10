@@ -1794,8 +1794,7 @@ for (const changed of [
     });
 }
 
-const { EffortCatalog } = require("../out/effort/EffortCatalog.js");
-const { resolveEffort } = require("../out/effort/ResolveEffort.js");
+const { EffortCatalog, resolveEffort } = require("../out/effort/Effort.js");
 const enhancedFixture = require("./fixtures/effort-proxy-enhanced.json");
 
 test("enhanced proxy policies survive parsing only after exact capability acknowledgement", () => {

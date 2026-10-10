@@ -43,7 +43,7 @@ try {
     Module._load = originalLoad;
 }
 const catalog = require("../src/models.json");
-const { EffortCatalog } = require("../out/effort/EffortCatalog.js");
+const { EffortCatalog } = require("../out/effort/Effort.js");
 const spec = catalog.candidateModels.find((model) => model.id === "grok-4.6");
 const token = { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }) };
 const user = (content) => ({ role: 1, content });

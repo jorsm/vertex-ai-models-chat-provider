@@ -1,7 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { EffortCatalog } = require("../out/effort/EffortCatalog.js");
-const { resolveEffort } = require("../out/effort/ResolveEffort.js");
+const { EffortCatalog, resolveEffort } = require("../out/effort/Effort.js");
 const bundled = require("../src/models.json");
 const preferences = (id, value, source = "user") => ({ preferences: { [id]: value }, sourceByModel: { [id]: source } });
 const catalog = new EffortCatalog(bundled.candidateModels);
