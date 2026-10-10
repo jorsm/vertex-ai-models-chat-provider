@@ -3,22 +3,43 @@ import type { VertexChatModelDispatcher } from "../VertexChatModelDispatcher";
 import { EffortCatalog, EffortError, resolveEffort } from "./Effort";
 import { captureEffortPreferences, defaultEffortTarget, hasWorkspace, writeEffortPreference } from "./EffortConfiguration";
 
+/** Picker row payload: a model row selects an ID, while an effort row selects a named value. */
 interface Item extends vscode.QuickPickItem {
+    /** Present in the model-selection step; identifies the catalog entry to configure. */
     modelId?: string;
+    /** Present in the effort-selection step; the default row also carries its actual named level. */
     value?: string;
 }
+/** Convenience state for the next picker opening, independent of the active Chat model. */
 const LAST = "thinkingEffort.lastConfiguredModelId";
 
-/** One owned picker/session; invoking the command again cancels the previous session. */
+/**
+ * Owns the model/effort picker, scope switching and preference writes.
+ * Each run owns one cancellable session; another invocation replaces it.
+ * Connection and catalog revisions are checked before saving a choice.
+ */
 export class ConfigureThinkingEffort implements vscode.Disposable {
+    /** Cancels whichever discovery or picker session this command currently owns. */
     private cancel: (() => void) | undefined;
+
+    /**
+     * @param provider Supplies bounded initial discovery and revisioned snapshots of available models.
+     * @param context Stores the last configured model as workspace convenience state.
+     */
     constructor(
         private readonly provider: Pick<VertexChatModelDispatcher, "getEffortModelSnapshot" | "ensureInitialDiscovery">,
         private readonly context: vscode.ExtensionContext,
     ) {}
+    /** Cancels active discovery or hides the picker; the owning run releases its subscriptions and UI. */
     dispose(): void {
         this.cancel?.();
     }
+    /**
+     * Loads discovered choices and presents model and effort steps using the real catalog values.
+     * Marks the named default in secondary text and saves the selected value at the chosen scope.
+     * Queued writes check cancellation and revisions before updating settings; stale choices refresh for reselection.
+     * User-facing errors are reported here, and owned picker resources are released when the run ends.
+     */
     async run(): Promise<void> {
         this.cancel?.();
         const source = new vscode.CancellationTokenSource();
@@ -54,6 +75,7 @@ export class ConfigureThinkingEffort implements vscode.Disposable {
             let modelId: string | undefined;
             let target = vscode.ConfigurationTarget.Global;
             const effortLabel = (value: string): string => (value === "xhigh" ? "Extra high" : value.charAt(0).toUpperCase() + value.slice(1));
+            /** Displays current effective effort or a recoverable settings error without hiding the model. */
             const description = (id: string, compact = false): string => {
                 try {
                     const preferences = captureEffortPreferences();
@@ -64,6 +86,7 @@ export class ConfigureThinkingEffort implements vscode.Disposable {
                     return compact ? "Invalid setting" : `Invalid: ${error instanceof Error ? error.message : error}`;
                 }
             };
+            /** Shows configurable models and highlights the last configured model when it is still available. */
             const models = () => {
                 modelId = undefined;
                 pick.title = "Thinking Effort — Choose model";
@@ -73,6 +96,7 @@ export class ConfigureThinkingEffort implements vscode.Disposable {
                 pick.items = state.models.filter((model) => model.effort).map((model) => ({ label: model.displayName, modelId: model.id, description: description(model.id, true) }));
                 pick.activeItems = pick.items.filter((item) => item.modelId === last);
             };
+            /** Shows each named level once, with the catalog default and current effective choice marked. */
             const efforts = () => {
                 const model = catalog.get(modelId!);
                 if (!model?.effort) {
@@ -151,6 +175,7 @@ export class ConfigureThinkingEffort implements vscode.Disposable {
                             return;
                         }
                         const selectedId = modelId;
+                        /** Rechecks cancellation, revisions and choice membership when the queued write starts. */
                         const validate = () => {
                             if (source.token.isCancellationRequested) {
                                 throw new vscode.CancellationError();
