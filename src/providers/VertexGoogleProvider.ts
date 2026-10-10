@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { Logger } from "../utils/Logger";
 import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryableError } from "../utils/discovery";
 import { checkAuthError, withRetry } from "../utils/retry";
+import type { ResolvedModelRequest } from "../effort/EffortTypes";
 import { estimateTokens } from "../utils/tokens";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 import { ProxyGateway, isGatewayRetryable, normalizeGatewayError, gatewayRetryDelayMs } from "../ProxyGateway";
@@ -90,8 +91,12 @@ export class VertexGoogleProvider implements VertexModelProvider {
 
   private async getClient() {
     if (!this.client) {
+      const project = this.projectId, location = this.region, gateway = this.gateway, authOptions = this.authOptions;
       // Use dynamic import to support ESM-only @google/genai in a CommonJS context
       const genai = await import("@google/genai");
+      if (project !== this.projectId || location !== this.region || gateway !== this.gateway || authOptions !== this.authOptions) {
+        throw new Error("Configuration changed before Google client initialization.");
+      }
 
       this.client = new genai.GoogleGenAI({
         // @ts-ignore - type definition restricts vertexai to boolean, but project/location are top-level
@@ -475,8 +480,12 @@ export class VertexGoogleProvider implements VertexModelProvider {
     token: vscode.CancellationToken,
     labels?: Record<string, string>,
     spec?: ModelSpec,
+    request?: ResolvedModelRequest,
   ): Promise<ChatInferenceResult> {
-    const { actualId, config } = this.resolveModelId(spec?.version ?? modelId);
+    const legacy = this.resolveModelId(spec?.version ?? modelId);
+    const actualId = request?.effort ? request.backendModelId : legacy.actualId;
+    const config = request?.effort ? (request.effort.value === "provider-default" ? undefined
+      : { thinkingConfig: { thinkingLevel: request.effort.value.toUpperCase() } }) : legacy.config;
     const gateway = this.gateway;
     const cancellation = requestCancellation(token, gateway?.signal);
     this.logger.log(`▶ Google provideLanguageModelChatResponse called — requested: ${modelId} -> executed: ${actualId}, msgs: ${messages.length}`);
@@ -519,6 +528,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
       }
 
       const client = await this.getClient();
+      if (cancellation.signal.aborted) { throw new vscode.CancellationError(); }
       const stream = await withRetry<AsyncIterable<any>>(
         () => cancellableRequest(() =>
           client.models.generateContentStream({

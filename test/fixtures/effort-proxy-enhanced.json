@@ -1,0 +1,85 @@
+{
+  "catalogCapabilities": [
+    "effort-v1"
+  ],
+  "candidateModels": [
+    {
+      "id": "server-gemini",
+      "vendor": "google",
+      "displayName": "Gemini 3.8 Flash",
+      "family": "gemini",
+      "version": "gemini-3.8-flash",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 0.75,
+        "output": 3.75,
+        "cache_read": 0.075,
+        "cache_create": 0.0
+      },
+      "effort": {
+        "kind": "gemini-thinking-level",
+        "values": [
+          "high"
+        ],
+        "default": "high"
+      },
+      "legacyEffortAliases": [
+        {
+          "id": "server-gemini-high",
+          "displayName": "Gemini 3.8 Flash (High)",
+          "version": "gemini-3.8-flash-high",
+          "effort": "high"
+        }
+      ]
+    },
+    {
+      "id": "server-claude",
+      "vendor": "anthropic",
+      "displayName": "Claude Opus 5.5",
+      "family": "claude",
+      "version": "claude-opus-5-5",
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "capabilities": {
+        "imageInput": true,
+        "toolCalling": true
+      },
+      "pricing": {
+        "input": 4.0,
+        "output": 20.0,
+        "cache_read": 0.2,
+        "cache_create": 5.0
+      },
+      "effort": {
+        "kind": "anthropic-adaptive",
+        "values": [
+          "high",
+          "max"
+        ],
+        "default": "provider-default"
+      },
+      "legacyEffortAliases": [
+        {
+          "id": "server-claude-high",
+          "displayName": "Claude Opus 5.5 (High)",
+          "version": "claude-opus-5-5-high",
+          "effort": "high"
+        },
+        {
+          "id": "server-claude-max",
+          "displayName": "Claude Opus 5.5 (Max)",
+          "version": "claude-opus-5-5-max",
+          "effort": "max"
+        }
+      ]
+    }
+  ],
+  "regionPriority": [
+    "global"
+  ]
+}

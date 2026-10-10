@@ -1,5 +1,7 @@
 import { OAuth2Client } from "google-auth-library";
 import type { ModelCatalog, ModelSpec } from "./providers/VertexModelProvider";
+import { EffortCatalog } from "./effort/EffortCatalog";
+import { snapshot } from "./effort/EffortTypes";
 
 export class GatewayError extends Error {
   constructor(message: string, public readonly status?: number, public readonly policyCode?: string) {
@@ -82,6 +84,11 @@ export function parseProxyCatalog(payload: unknown): ModelCatalog {
   // Accept either envelope, preserving the server's routing configuration.
   const entries = "candidateModels" in payload ? payload.candidateModels : "models" in payload ? payload.models : undefined;
   const regions = "regionPriority" in payload ? payload.regionPriority : undefined;
+  const capabilities = "catalogCapabilities" in payload ? payload.catalogCapabilities : undefined;
+  if (capabilities !== undefined && (!Array.isArray(capabilities) || capabilities.some((value) => value !== "effort-v1") || new Set(capabilities).size !== capabilities.length)) {
+    throw new GatewayError("Invalid proxy catalog capabilities: expected effort-v1 acknowledgement.");
+  }
+  const enhanced = Array.isArray(capabilities) && capabilities.includes("effort-v1");
   if (!Array.isArray(entries) || ("candidateModels" in payload && "models" in payload)) {
     throw new GatewayError("Invalid proxy discovery response: expected candidateModels or a legacy models array.");
   }
@@ -112,14 +119,20 @@ export function parseProxyCatalog(payload: unknown): ModelCatalog {
       throw new GatewayError("Invalid proxy catalog: models require unique IDs, vendor identifiers, versions, names, token limits, capabilities and non-negative prices.");
     }
     ids.add(entry.id);
+    if ((entry.effort !== undefined || entry.legacyEffortAliases !== undefined) && !enhanced) {
+      throw new GatewayError("Proxy effort metadata requires catalogCapabilities: ['effort-v1'].");
+    }
     return { id: entry.id, vendor: entry.vendor, version: entry.version, displayName: entry.displayName,
       family: entry.family, maxInputTokens: entry.maxInputTokens, maxOutputTokens: entry.maxOutputTokens,
       capabilities: { imageInput: entry.capabilities.imageInput, toolCalling: entry.capabilities.toolCalling },
       pricing: { ...copyRates(entry.pricing), ...(entry.pricing.longContext ? {
         longContext: { ...copyRates(entry.pricing.longContext), inputThresholdTokens: entry.pricing.longContext.inputThresholdTokens },
       } : {}) },
+      ...(entry.effort !== undefined ? { effort: snapshot(entry.effort) } : {}),
+      ...(entry.legacyEffortAliases !== undefined ? { legacyEffortAliases: snapshot(entry.legacyEffortAliases) } : {}),
     };
   });
+  try { new EffortCatalog(candidateModels, "proxy"); } catch (error) { throw new GatewayError(`Invalid proxy catalog: ${error}`); }
   return { candidateModels, regionPriority: [...regions] };
 }
 
@@ -175,7 +188,7 @@ export class ProxyGateway {
       });
       controller.signal.throwIfAborted();
       const response = await this.fetch(`${this.url}/discovery`, {
-        headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
+        headers: { Authorization: `Bearer ${token}`, "X-Vertex-AI-Catalog-Capabilities": "effort-v1" }, signal: controller.signal,
       });
       if (!response.ok) {
         await response.body?.cancel();

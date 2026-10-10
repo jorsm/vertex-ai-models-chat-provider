@@ -5,7 +5,8 @@ import { Logger } from "../utils/Logger";
 import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryableError } from "../utils/discovery";
 import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
-import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix, resolveClaudeModelId } from "./ClaudeThinking";
+import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix, resolveClaudeModelId, claudeEffortConfig, ClaudeEffort } from "./ClaudeThinking";
+import type { ResolvedModelRequest } from "../effort/EffortTypes";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 import { ProxyGateway, isGatewayRetryable, normalizeGatewayError, gatewayRetryDelayMs } from "../ProxyGateway";
 import { requestCancellation, cancellableRequest } from "../utils/cancellation";
@@ -95,10 +96,16 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     token: vscode.CancellationToken,
     labels?: Record<string, string>,
     spec?: ModelSpec,
+    request?: ResolvedModelRequest,
   ): Promise<ChatInferenceResult> {
+    const client = this.client;
+    const replayCache = this.thinkingReplayCache;
     const gateway = this.gateway;
     const cancellation = requestCancellation(token, gateway?.signal);
-    const { actualId, effort, requestConfig } = resolveClaudeModelId(spec?.version ?? modelId);
+    const legacy = resolveClaudeModelId(spec?.version ?? modelId);
+    const actualId = request?.effort ? request.backendModelId : legacy.actualId;
+    const effort = request?.effort ? (request.effort.value === "provider-default" ? undefined : request.effort.value as ClaudeEffort) : legacy.effort;
+    const requestConfig = effort ? claudeEffortConfig(effort) : undefined;
     this.logger.log(`▶ Anthropic Plugin provideLanguageModelChatResponse called — requested: ${modelId} -> executed: ${actualId}${effort ? ` (${effort} effort)` : ""}, region: ${this.region}, messages: ${messages.length}`);
 
     const requestLabels = labels || this.labels;
@@ -126,7 +133,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
       const stream = await withRetry<any>(
         () => cancellableRequest(() =>
-          this.client.messages.create({
+          client.messages.create({
             model: actualId,
             messages: mappedMessages,
             max_tokens: maxTokens,
@@ -143,7 +150,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
       this.logger.log(`  Stream created successfully`);
 
-      const usage = await this.processStream(stream, charCount, progress, token, cancellation.signal, thinkingPrefix);
+      const usage = await this.processStream(stream, charCount, progress, token, cancellation.signal, thinkingPrefix, replayCache);
       if (cancellation.signal.aborted) { throw new vscode.CancellationError(); }
 
       // Report token usage to VS Code (MIME type 'usage') for Copilot Chat indicator
@@ -433,7 +440,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
   // ── Stream processing ─────────────────────────────────────────────────
 
-  private async processStream(stream: AsyncIterable<any>, charCount: { assistant_text: number; tool_use: number }, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, signal?: AbortSignal, thinkingPrefix?: ClaudeThinkingPrefix): Promise<{ input: number; output: number; cache_read: number; cache_create: number }> {
+  private async processStream(stream: AsyncIterable<any>, charCount: { assistant_text: number; tool_use: number }, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, signal?: AbortSignal, thinkingPrefix?: ClaudeThinkingPrefix, replayCache = this.thinkingReplayCache): Promise<{ input: number; output: number; cache_read: number; cache_create: number }> {
     const contentAccumulator = new ClaudeStreamContentAccumulator();
     const tokenUsage = { input: 0, output: 0, cache_read: 0, cache_create: 0 };
     let chunkCount = 0;
@@ -454,7 +461,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     if (!cancelled) {
       const replay = contentAccumulator.createThinkingReplay();
       if (replay) {
-        this.thinkingReplayCache.store(replay, thinkingPrefix?.fingerprint(replay.blocks));
+        replayCache.store(replay, thinkingPrefix?.fingerprint(replay.blocks));
         const hiddenBlockCount = replay.blocks.filter((block) => block.type === "thinking" || block.type === "redacted_thinking").length;
         this.logger.log(`  🔒 Retained ${hiddenBlockCount} signed thinking block(s) for ${replay.toolCallIds.length} tool continuation(s)`);
       }

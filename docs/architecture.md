@@ -150,3 +150,16 @@ In the event of a failure (networking, project errors, or authentication), it cl
 
 ## Examples
 *(High-level explanation of the architecture, dependencies, or primary design patterns used in this code).*
+## Thinking effort resolution
+
+The dispatcher retains canonical definitions for endpoint discovery and builds an immutable `EffortCatalog` index for exact identity lookup. The bundled catalog contains only regular models, with effort configured independently. Chat and commit-message selectors exclude fixed-effort variants, including standalone suffixed entries in older catalogs. There is no legacy-model setting. Incoming alias metadata can still be validated at the catalog boundary but is never expanded into selectable models.
+
+`captureEffortPreferences()` reads window configuration without an editor/resource URI, copying the effective User/Remote and Workspace objects. The public provider callback captures it synchronously before awaiting labels/discovery. Shared `infer()` accepts an optional internal snapshot after its resource argument and defaults to catalog-only intent. Aliases pin their declared effort; canonical public requests use Workspace then User then catalog default. `catalog-default` terminates lookup and resolves a named default or provider omission. Invalid selections throw a typed `EffortError` before inference.
+
+`resolveEffort()` produces a detached, deeply frozen spec, pricing card, canonical/backend identity and optional resolved effort. Adapters consume that typed context as an additional argument, with suffix decoding retained for callers/old catalogs without policy. Payloads and client references remain local to an invocation across retries. Connection reset cancels its in-flight tokens; revision guards prevent dispatch/accounting against a changed destination.
+
+`getEffortModelSnapshot()` exposes immutable discovered choices and connection/catalog revisions. `ensureInitialDiscovery()` waits for the existing bounded discovery only when no completed state exists. Opening the picker, changing preferences and toggling legacy visibility refresh metadata through the existing event without resetting clients or re-probing availability. Catalog saves and destination/authentication changes retain the reset/discovery path.
+
+`ConfigureThinkingEffort` owns one cancellable model/effort QuickPick with Back and scope controls. It revalidates revisions and policy before a serialized scope-specific write. Each write re-reads the raw target object and changes only the selected key. The last configured ID is stored separately in workspaceState as convenience state, independent of active Chat selection.
+
+See [implementation verification](thinking-effort-verification.md) for the distinction between fixture payloads, extension-host contracts and live route acceptance.

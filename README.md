@@ -117,6 +117,27 @@ See the [enterprise proxy guide](docs/proxy.md) for use cases, configuration, th
 - **🔍 Smart discovery:** Probes the available Google Cloud regions and registers only the models that your selected project can access.
 - **🛡️ Safe credential handling:** Stored Service Accounts are encrypted in VS Code; an explicitly selected but invalid credential fails closed instead of falling back silently.
 
+## Thinking effort
+
+Run **Google Agent Platform: Thinking Effort** from the Command Palette, or use the Chat header brain icon when the host displays it. Select the model explicitly, then its effort. The model list shows each model's name and effective effort in one line; scope and source details appear in the effort step. It remembers the last model configured, which is independent of the active Chat model.
+
+Preferences apply to the next public language-model provider invocation, including callers using VS Code's language-model API. Retries keep that invocation's snapshot. A tool continuation is a new invocation and can use a changed preference. Commit-message generation retains its configured model or fixed-effort alias.
+
+The default write scope is User, except when that model already has a Workspace key. Switch scopes with the picker button. A known default appears once, for example **Medium (Model Default)**; when the provider chooses its own default, the picker shows **Model Default**. Selecting the default saves `catalog-default`, suppressing a lower-scope override for that model. **Remove override at this scope** deletes only its key and can reveal a User preference.
+
+```json
+"vertexAiChat.thinkingEffortByModel": {
+  "claude-opus-5-5": "max",
+  "claude-sonnet-5-5": "catalog-default"
+}
+```
+
+Choices come from the discovered catalog's policy. Unsupported saved values produce a model-specific error; reset them in the picker. Existing unsuffixed entries retain provider-default omission. The new canonical Sonnet 5.5 and Haiku 5.5 entries use explicit High and Medium defaults.
+
+Chat and commit-message model selectors show regular models, with effort configured separately. Fixed-effort variants are removed from the bundled catalog and excluded from selectors; there is no legacy-model toggle. Select a regular model in an old Chat session that used a removed variant.
+
+Proxy catalogs remain authoritative for model availability and effort permissions. Independent effort through a proxy requires the server's negotiated `effort-v1` policy; fixed-effort variants in older catalogs are excluded from selectors. The extension never imports bundled permissions into a server catalog. See [proxy contract](docs/proxy.md), [catalog/provider contracts](docs/providers.md), and [verification and remaining host/service checks](docs/thinking-effort-verification.md).
+
 ## 🤖 Supported models
 
 In direct mode, models are discovered for your project and region. In proxy mode, only models in the server's approved catalog appear in the picker.

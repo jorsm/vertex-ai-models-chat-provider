@@ -10,6 +10,7 @@ import { VertexChatModelDispatcher, MissingProjectIdError } from "./VertexChatMo
 import { Logger } from "./utils/Logger";
 import { VertexAuthenticationError } from "./utils/retry";
 import { GatewayError } from "./ProxyGateway";
+import { ConfigureThinkingEffort } from "./effort/ConfigureThinkingEffort";
 
 export async function activate(context: vscode.ExtensionContext) {
   // Initialize the logger
@@ -44,6 +45,8 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(costStatusBar);
 
   const provider = new VertexChatModelDispatcher(projectId, usageTracker, authManager, catalogResolver);
+  const thinkingEffort = new ConfigureThinkingEffort(provider, context);
+  context.subscriptions.push(thinkingEffort, vscode.commands.registerCommand("vertexAiChat.configureThinkingEffort", () => thinkingEffort.run()));
   context.subscriptions.push(provider);
   context.subscriptions.push(provider.onDidChangeLanguageModelChatInformation(() => {
     costStatusBar.updateStatusBar().catch((err) => Logger.getLogger("extension").log(`Status bar discovery refresh failed: ${err}`));
@@ -200,6 +203,9 @@ export async function activate(context: vscode.ExtensionContext) {
   // Re-run discovery whenever either connection destination setting changes.
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(async (e) => {
+      if (e.affectsConfiguration("vertexAiChat.thinkingEffortByModel")) {
+        provider.refreshModelInformation();
+      }
       const projectIdChanged = e.affectsConfiguration("vertexAiChat.projectId");
       const proxyUrlChanged = e.affectsConfiguration("vertexAiChat.proxyUrl");
       if (projectIdChanged || proxyUrlChanged) {

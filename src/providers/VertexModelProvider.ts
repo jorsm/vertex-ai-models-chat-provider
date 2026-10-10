@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { DiscoveryProbeOptions } from "../utils/discovery";
 import type { ProxyGateway } from "../ProxyGateway";
+import type { ModelEffortSpec, LegacyEffortAlias, ResolvedModelRequest } from "../effort/EffortTypes";
 
 export interface ModelUsageTokens {
   input: number;
@@ -24,6 +25,8 @@ export interface ChatInferenceResult {
 }
 
 export interface ModelSpec {
+  effort?: ModelEffortSpec;
+  legacyEffortAliases?: readonly LegacyEffortAlias[];
   id: string;
   vendor: string;
   displayName: string;
@@ -84,6 +87,7 @@ export interface VertexModelProvider {
     token: vscode.CancellationToken,
     labels?: Record<string, string>,
     spec?: ModelSpec,
+    request?: ResolvedModelRequest,
   ): Promise<ChatInferenceResult>;
 
   /**

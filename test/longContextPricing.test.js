@@ -50,3 +50,19 @@ test("keeps the flat rate for models without a long-context price", async () => 
   });
   assert.equal(cost, 0.278);
 });
+
+test('historical usage keeps its recorded prices after alias removal and new entries append without rewriting',async(t)=>{
+ const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'vertex-effort-usage-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const models=require('../src/models.json').candidateModels;
+ const tracker=new UsageTrackerService({globalStorageUri:{fsPath:dir}},{getEffectiveCatalog:async()=>({candidateModels:models})});
+ const tokens={input:100,output:50,cache_read:0,cache_create:0,characters:{}};
+ await tracker.recordUsage('claude-opus-5-5-high',tokens,models[0].pricing);
+ const filename=(await fs.readdir(path.join(dir,'usage_logs')))[0];
+ const logFile=path.join(dir,'usage_logs',filename);const historical=await fs.readFile(logFile,'utf8');
+ await tracker.recordUsage('claude-opus-5-5',tokens,models[0].pricing,{canonicalModel:'claude-opus-5-5',backendModel:'claude-opus-5-5',effort:'provider-default',effortSource:'catalog-default'});
+ assert((await fs.readFile(logFile,'utf8')).startsWith(historical));
+ const entries=await tracker.getUsageForDate(filename.slice(0,-6));
+ assert.equal(entries.length,2);assert.equal(entries[0].effort,undefined);assert.equal(entries[1].effort,'provider-default');
+ assert.equal(entries[0].cost,entries[1].cost);assert.equal(entries[1].canonicalModel,'claude-opus-5-5');
+});

@@ -10,6 +10,8 @@ import { estimateTokens } from "../utils/tokens";
 import type { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
 import type { ProxyGateway } from "../ProxyGateway";
 import { ModelSpec } from "./VertexModelProvider";
+import type { ResolvedModelRequest } from "../effort/EffortTypes";
+import { requestCancellation, cancellableRequest } from "../utils/cancellation";
 
 // ─── Model configuration types ──────────────────────────────────────────────
 
@@ -72,8 +74,7 @@ export class VertexGrokProvider implements VertexModelProvider {
 
   private async getClient(): Promise<OpenAI> {
     this.assertTransportSupported();
-    // Read project ID live from VS Code settings — user may change it anytime
-    const projectId = vscode.workspace.getConfiguration("vertexAiChat").get<string>("projectId") || this.projectId;
+    const projectId = this.projectId;
     const host = this.region === "global" ? "aiplatform.googleapis.com" : `${this.region}-aiplatform.googleapis.com`;
     const baseURL = `https://${host}/v1/projects/${projectId}/locations/${this.region}/endpoints/openapi`;
 
@@ -159,7 +160,8 @@ export class VertexGrokProvider implements VertexModelProvider {
   // ── Discovery ping ────────────────────────────────────────────────────
 
   getDiscoveryModelId(modelVersion: string): string {
-    return VertexGrokProvider.resolveGrok46(modelVersion).actualId;
+    const actualId = VertexGrokProvider.resolveGrok46(modelVersion).actualId;
+    return VertexGrokProvider.MODEL_CONFIG[actualId.replace(/^xai\//, "")]?.modelPath ?? actualId;
   }
 
   async pingModel(modelVersion: string, options?: DiscoveryProbeOptions): Promise<boolean> {
@@ -214,13 +216,9 @@ export class VertexGrokProvider implements VertexModelProvider {
     token: vscode.CancellationToken,
     labels?: Record<string, string>,
     spec?: ModelSpec,
+    request?: ResolvedModelRequest,
   ): Promise<ChatInferenceResult> {
     this.assertTransportSupported();
-    const resolved = VertexGrokProvider.resolveGrok46(modelId);
-    const config = VertexGrokProvider.MODEL_CONFIG[resolved.actualId];
-    if (!config) {
-      throw new Error(`Unknown Grok model: ${modelId}. Available: ${Object.keys(VertexGrokProvider.MODEL_CONFIG).join(", ")}`);
-    }
     // Use passed spec if available, otherwise resolve from catalog
     let modelSpec = spec;
     if (!modelSpec) {
@@ -231,6 +229,11 @@ export class VertexGrokProvider implements VertexModelProvider {
     if (!modelSpec) {
       throw new Error(`Model spec not found in catalog for: ${modelId}`);
     }
+    const resolved = VertexGrokProvider.resolveGrok46(request?.effort ? request.backendModelId : modelSpec.version);
+    const config = VertexGrokProvider.MODEL_CONFIG[resolved.actualId.replace(/^xai\//, "")];
+    if (!config) { throw new Error(`Unknown Grok model: ${modelSpec.version}. Available: ${Object.keys(VertexGrokProvider.MODEL_CONFIG).join(", ")}`); }
+    const effort = request?.effort ? (request.effort.value === "provider-default" ? undefined : request.effort.value) : resolved.effort;
+    if (effort && !["low", "medium", "high"].includes(effort)) { throw new Error(`Unsupported Grok effort: ${effort}`); }
 
     this.logger.log(`▶ Grok provider response — model: ${modelId} (${config.modelPath}), region: ${this.region}, messages: ${messages.length}`);
 
@@ -239,13 +242,16 @@ export class VertexGrokProvider implements VertexModelProvider {
       this.logger.log(`  🏷️  Labels: ${JSON.stringify(requestLabels)}`);
     }
 
+    const cancellation = requestCancellation(token);
     try {
       const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
 
       const mappedMessages = this.mapMessages(messages, charCount);
       const tools = this.mapTools(options);
 
-      const client = await this.getClient();
+      if (cancellation.signal.aborted) { throw new vscode.CancellationError(); }
+      const clientPromise = this.getClient();
+      const client = await cancellableRequest(() => clientPromise, cancellation.signal);
 
       const requestParams = {
         model: config.modelPath,
@@ -254,15 +260,16 @@ export class VertexGrokProvider implements VertexModelProvider {
         stream: true as const,
         ...(tools?.length ? { tools, tool_choice: "auto" as const } : {}),
         ...(config.extraBody ?? {}),
-        ...(resolved.effort ? { reasoning_effort: resolved.effort } : {}),
+        ...(effort ? { reasoning_effort: effort } : {}),
       };
       this.logger.log(`  📤 Request keys: ${Object.keys(requestParams).join(", ")}`);
 
-      const stream = await withRetry<Stream<OpenAI.Chat.Completions.ChatCompletionChunk>>(() => client.chat.completions.create(requestParams as any) as unknown as Promise<Stream<OpenAI.Chat.Completions.ChatCompletionChunk>>, { token });
+      const stream = await withRetry<Stream<OpenAI.Chat.Completions.ChatCompletionChunk>>(() => cancellableRequest(() => client.chat.completions.create(requestParams as any, { signal: cancellation.signal }) as unknown as Promise<Stream<OpenAI.Chat.Completions.ChatCompletionChunk>>, cancellation.signal), { token });
 
       this.logger.log(`  Stream created successfully`);
 
       const usage = await this.processStream(stream, config, charCount, progress, token);
+      if (cancellation.signal.aborted || token.isCancellationRequested) { throw new vscode.CancellationError(); }
 
       // Report token usage to VS Code (MIME type 'usage') for Copilot Chat indicator
       if (typeof vscode.LanguageModelDataPart !== "undefined") {
@@ -284,6 +291,8 @@ export class VertexGrokProvider implements VertexModelProvider {
       this.logger.log(`  ❌ Grok provideLanguageModelChatResponse error: ${e}`);
       checkAuthError(e);
       throw e;
+    } finally {
+      cancellation.dispose();
     }
   }
 

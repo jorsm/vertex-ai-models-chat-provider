@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import bundledCatalog from "./models.json";
 import { ModelCatalog } from "./providers/VertexModelProvider";
 import { Logger } from "./utils/Logger";
+import { filterLocalEffortModels } from "./effort/EffortCatalog";
 
 /**
  * Resolves the effective model catalog at runtime with precedence:
@@ -190,7 +191,17 @@ export class ModelCatalogResolver implements vscode.Disposable {
       return null;
     }
 
-    return parsed as ModelCatalog;
+    const catalog = parsed as ModelCatalog;
+    const errors: string[] = [];
+    const candidateModels = filterLocalEffortModels(catalog.candidateModels, (message) => errors.push(message));
+    if (errors.length) {
+      this.logger.log(`Invalid custom catalog definitions at ${uri.fsPath}: ${errors.join(" ")}`);
+      if (this.lastErroredPath !== uri.fsPath) {
+        this.lastErroredPath = uri.fsPath;
+        void vscode.window.showErrorMessage(`Google Agent Platform: Unavailable definitions in '${uri.fsPath}': ${errors.join(" ")} Fix the file and save. This catalog remains authoritative.`);
+      }
+    } else { this.lastErroredPath = null; }
+    return { ...catalog, candidateModels };
   }
 
   private isValidCatalog(value: unknown): value is ModelCatalog {

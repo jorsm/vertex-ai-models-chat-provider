@@ -371,3 +371,15 @@ for invalid requests, `NoPermissions` for `401`/`403`, and `NotFound` for `404`.
 consumer can implement its own retry policy; some Copilot versions convert all
 external-provider errors to a generic failure regardless of the error code.
 The extension cannot guarantee that those consumers stop retrying.
+
+## Independent thinking effort (`effort-v1`)
+
+The client sends `X-Vertex-AI-Catalog-Capabilities: effort-v1` on authenticated **GET /discovery only**. It adds no user, project, workspace or billing attribution to discovery. A legacy server may ignore the header and return its existing expanded catalog; the client keeps those entries and their suffix behavior.
+
+An enhanced server acknowledges with top-level `"catalogCapabilities": ["effort-v1"]` and can return canonical model definitions containing `effort` and `legacyEffortAliases`. See the [enhanced fixture](../test/fixtures/effort-proxy-enhanced.json) and [legacy fixture](../test/fixtures/effort-proxy-legacy.json). The acknowledgement is a wire-envelope field, not a field in local `models.json`. Unknown capability versions, unacknowledged effort metadata, invalid policies, redirects or identity collisions fail the entire response, without local fallback.
+
+`effort` declares the backend mode (`anthropic-adaptive` or `gemini-thinking-level` in proxy mode), permitted named `values`, and either a named `default` from that list or `provider-default`. The latter authorizes omission of the override, preserving the adapter's unsuffixed behavior; it does not disable thinking. `legacyEffortAliases` explicitly authorize fixed-effort historical IDs on the same backend, inheriting limits, capabilities and prices. A saved preference cannot widen this policy or populate an empty catalog. Grok proxy transport remains unsupported.
+
+On every inference request the server must enforce backend/model, project, region and named **or omitted** effort. UI validation is not authorization. Use a named default if provider-default omission would violate policy. Keep native Claude `output_config.effort` and adaptive thinking, and Gemini `generationConfig.thinkingConfig.thinkingLevel`, together with existing signed history, labels, authentication, SSE and cancellation behavior.
+
+Clients that do not advertise `effort-v1` must continue receiving the previous expanded catalog with its IDs, versions, defaults, limits and prices. Deploying this contract on a production proxy is a separate server action. The client implementation and local wire fixtures establish neither server deployment nor live authorization; see [verification](thinking-effort-verification.md).

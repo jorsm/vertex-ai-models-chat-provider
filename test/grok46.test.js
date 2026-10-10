@@ -27,8 +27,9 @@ try {
   Module._load = originalLoad;
 }
 const catalog = require("../src/models.json");
+const { EffortCatalog } = require("../out/effort/EffortCatalog.js");
 const spec = catalog.candidateModels.find((model) => model.id === "grok-4.6");
-const token = { isCancellationRequested: false };
+const token = { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }) };
 const user = (content) => ({ role: 1, content });
 
 function harness(chunks = []) {
@@ -138,8 +139,8 @@ test("Grok discovery and inference use the catalog-selected region without a reg
 
 test("removed non-Grok models are absent and cannot be discovered or invoked", async () => {
   const h = harness();
-  assert.deepEqual(catalog.candidateModels.filter((model) => model.vendor === "grok").map((model) => model.id),
-    ["grok-4.6", "grok-4.6-low", "grok-4.6-medium"]);
+  assert.deepEqual(new EffortCatalog(catalog.candidateModels).project().filter((model) => model.vendor === "grok").map((model) => model.id),
+    ["grok-4.6"]);
   for (const [id, version] of [
     ["qwen3-coder-480b", "qwen/qwen3-coder-480b-a35b-instruct-maas"],
     ["deepseek-v3.2", "deepseek-ai/deepseek-v3.2-maas"],
@@ -147,7 +148,7 @@ test("removed non-Grok models are absent and cannot be discovered or invoked", a
     ["grok-4.2-reasoning", "xai/grok-4.20-reasoning"],
   ]) {
     assert.equal(await h.provider.pingModel(version), false);
-    await assert.rejects(h.provider.provideLanguageModelChatResponse(id, [], {}, h.progress, token, undefined, spec), /Unknown Grok model/);
+    await assert.rejects(h.provider.provideLanguageModelChatResponse(id, [], {}, h.progress, token, undefined, { ...spec, id, version }), /Unknown Grok model/);
   }
   assert.equal(h.requests.length, 0);
 });
@@ -172,7 +173,7 @@ test("Grok 4.6 inference uses effort while discovery probes only the endpoint", 
 test("unsupported effort aliases fail before making an inference request", async () => {
   const h = harness();
   for (const id of ["grok-4.6-xhigh", "grok-4.6-max", "grok-4.6-none", "grok-4.2-reasoning-high", "deepseek-v3.2-high"]) {
-    await assert.rejects(h.provider.provideLanguageModelChatResponse(id, [], {}, h.progress, token, undefined, spec), /Unknown Grok model/);
+    await assert.rejects(h.provider.provideLanguageModelChatResponse(id, [], {}, h.progress, token, undefined, { ...spec, id, version: id }), /Unknown Grok model/);
   }
   assert.equal(h.requests.length, 0);
 });

@@ -4,6 +4,8 @@ import * as vscode from "vscode";
 import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { Logger } from "./utils/Logger";
 import type { ModelSpec } from "./providers/VertexModelProvider";
+import { EffortCatalog } from "./effort/EffortCatalog";
+import type { ResolvedEffort } from "./effort/EffortTypes";
 
 export interface PayloadCharacters {
   system: number;
@@ -23,6 +25,10 @@ export interface TokenUsage {
 }
 
 export interface UsageLogEntry {
+  canonicalModel?: string;
+  backendModel?: string;
+  effort?: ResolvedEffort["value"];
+  effortSource?: ResolvedEffort["source"];
   timestamp: string;
   model: string;
   tokens: Required<TokenUsage>;
@@ -51,7 +57,7 @@ export class UsageTrackerService {
    */
   public async calculateCost(model: string, tokens: Required<TokenUsage>, requestPricing?: ModelSpec["pricing"]): Promise<number> {
     // Prefer prices captured for the request; otherwise use the active catalog.
-    const pricing = requestPricing ?? (await this.catalogResolver.getEffectiveCatalog()).candidateModels.find((m) => m.id === model)?.pricing;
+    const pricing = requestPricing ?? new EffortCatalog((await this.catalogResolver.getEffectiveCatalog()).candidateModels).get(model)?.canonical.pricing;
 
     if (!pricing) {
       // Default to 0 or fallback pricing if the model is not found in the map
@@ -82,7 +88,7 @@ export class UsageTrackerService {
    * @param model The model ID used
    * @param usage The raw token usage object
    */
-  public async recordUsage(model: string, usage: TokenUsage, requestPricing?: ModelSpec["pricing"]): Promise<void> {
+  public async recordUsage(model: string, usage: TokenUsage, requestPricing?: ModelSpec["pricing"], metadata?: Pick<UsageLogEntry, "canonicalModel" | "backendModel" | "effort" | "effortSource">): Promise<void> {
     const date = new Date();
 
     // Format YYYYMMDD using Local Time
@@ -109,6 +115,7 @@ export class UsageTrackerService {
       model,
       tokens,
       cost,
+      ...metadata,
     };
 
     // Serialize single line format

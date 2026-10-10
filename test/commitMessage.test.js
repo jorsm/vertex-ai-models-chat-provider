@@ -271,3 +271,12 @@ test("an unavailable default reports an inference error without choosing another
   assert.match(errors[0], /Model not available: gemini-3-flash-preview/);
   assert.deepEqual(updates, []);
 });
+
+test('commit picker omits fixed-effort variants from an expanded catalog',async()=>{
+ const regular={id:'claude-opus-5-5',version:'claude-opus-5-5',displayName:'Claude Opus 5.5',vendor:'anthropic',family:'claude'};
+ const alias={...regular,id:'claude-opus-5-5-max',version:'claude-opus-5-5-max',displayName:'Claude Opus 5.5 (Max)'};
+ const h=discoveryHarness([regular,alias]);pickerSelection=regular.id;
+ await selectCommitMessageModel(h,{rootUri:rootB});
+ assert.equal(pickerCalls[0].items.length,1);assert.equal(pickerCalls[0].items[0].modelId,regular.id);
+ assert.equal(updates[0].value,regular.id);assert.equal(updates[0].resource,rootB);
+});

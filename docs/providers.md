@@ -43,7 +43,7 @@ Each provider implements `getDiscoveryModelId(modelVersion)` using its inference
 - **Google Gemini Integration**: Managed by `VertexGoogleProvider`, supporting Gemini 3 Flash Preview, Gemini 3.7 and 3.8 Flash, and Gemini 3.1 Pro Preview.
 - **Anthropic Claude Integration**: Managed by `VertexAnthropicProvider`, supporting Claude Opus, Fable, Sonnet, and Haiku variants from the active model catalog.
 - **xAI Grok Integration**: Managed by `VertexGrokProvider`, providing access to Grok 4.6 at High (Default), Low, and Medium effort through Vertex AI's OpenAI-compatible endpoint.
-- **Thinking Models**: Gemini `-high` aliases select high thinking. Claude effort aliases (`-low`, `-medium`, `-high`, `-xhigh`, and `-max`) enable adaptive thinking and set `output_config.effort`; the bundled catalog includes only generation-5 `-max` aliases.
+- **Thinking Models**: Bundled models use independent effort configuration: Gemini sends `thinkingConfig.thinkingLevel` and Claude sends adaptive thinking with `output_config.effort`. Fixed-effort variants are excluded from model selectors.
 - **Thought Signatures**: Provider-specific mechanisms maintain reasoning continuity across tool calls by caching and re-injecting Gemini signatures or Claude signed thinking/redacted-thinking blocks.
 - **Parallel Tool Execution**: Implementation of tool call buffering and message merging to satisfy Gemini's requirements for grouped function responses.
 - **Prompt Caching (Ephemeral)**: Automated caching strategy for Anthropic models to reduce latency and costs for long conversations by marking system prompts, tools, and long conversation histories for ephemeral caching.
@@ -218,3 +218,12 @@ Handles Grok 4.6 chat inference using an OpenAI client. This method:
 7. Reports token usage back to VS Code via `LanguageModelDataPart` (MIME `usage`), including separately reported reasoning tokens, and separates cache hits from uncached input for cost estimates.
 
 ## Examples
+## Effort policy and internal request context
+
+`ModelSpec` optionally declares `effort: { kind, values, default }`. Incoming catalogs may still declare `legacyEffortAliases: [{ id, displayName, version, effort }]`, which are validated but never expanded into selectable models; the bundled catalog has no alias definitions. The [JSON schema](../schemas/models.schema.json) supplies editing validation; `EffortCatalog` additionally validates defaults against allowed values, vendor/mode/family restrictions, global identity uniqueness and exact alias backend/effort equivalence. A configurable canonical version must be unsuffixed. A malformed definition in a readable local catalog is quarantined and reported, with that catalog remaining authoritative; existing invalid JSON/root-shape fallback behavior remains. Proxy catalogs fail as a whole.
+
+All adapters now accept optional `request?: ResolvedModelRequest` after `spec`. It carries requested/canonical/backend identity and a deeply frozen resolved policy/spec/price snapshot. With explicit policy, Claude sends `output_config.effort` and compatible adaptive thinking; Google maps to `thinkingConfig.thinkingLevel`; Grok sets `reasoning_effort` for the direct Vertex route's supported levels. `provider-default` omits those overrides and never sends disabled thinking. Without policy/context, legacy version suffix behavior remains supported.
+
+Grok resolves `spec.version`, strips supported legacy suffixes and separates the `grok-4.6` lookup key from its `xai/grok-4.6` path. A custom UI ID is valid only when present in the dispatcher's authoritative catalog; unknown backend versions and unsupported suffixes fail. Proxy transport is rejected before a direct client is constructed.
+
+The initial bundled policies preserve only formerly offered named choices. A wider SDK enum does not widen catalog permissions. Sonnet/Haiku's new canonical IDs use High/Medium catalog defaults. Signed Claude blocks and Gemini thought signatures remain on continuation payloads when effort changes between invocations, as verified in local serialized transport fixtures. Live Vertex acceptance and a deployed proxy's enforcement remain separate checks in [verification](thinking-effort-verification.md).

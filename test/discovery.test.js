@@ -30,7 +30,7 @@ try {
 }
 const { DISCOVERY_PROBE_TIMEOUT_MS, probeWithDeadline, probeWithRetries, resolveDiscoveryTimeoutMs, runDiscoveryQueue, DiscoveryRetryableError } = require("../out/utils/discovery.js");
 const { VertexAuthenticationError } = require("../out/utils/retry.js");
-const catalogModel = require("../src/models.json").candidateModels[0];
+const catalogModel = require("./fixtures/thinking-effort-original-catalog.json").candidateModels[0];
 const model = (id, vendor = "anthropic") => ({ ...catalogModel, id, version: id, vendor });
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const never = () => new Promise(() => {});
@@ -71,7 +71,7 @@ function discoveryResolver(Provider) {
   return provider.getDiscoveryModelId.bind(provider);
 }
 
-test("bundled effort variants share 14 endpoint probes and keep catalog order across refreshes", async () => {
+test("bundled effort variants share 15 endpoint probes and keep catalog order across refreshes", async () => {
   const models = require("../src/models.json").candidateModels;
   const h = harness(models);
   const requests = [];
@@ -83,12 +83,13 @@ test("bundled effort variants share 14 endpoint probes and keep catalog order ac
     const result = await h.dispatcher.discoverModelsAndRegion();
     assert.deepEqual(result.availableModels, models);
     const probes = requests.slice(before);
-    assert.equal(probes.length, 14);
-    assert.equal(new Set(probes.map((target) => JSON.stringify(target))).size, 14);
-    assert.equal(probes.filter(([vendor]) => vendor === "anthropic").length, 9);
+    assert.equal(probes.length, 15);
+    assert.equal(new Set(probes.map((target) => JSON.stringify(target))).size, 15);
+    assert.equal(probes.filter(([vendor]) => vendor === "anthropic").length, 10);
     assert.equal(probes.filter(([vendor]) => vendor === "google").length, 4);
     assert.deepEqual(probes.filter(([vendor]) => vendor === "grok"), [["grok", "xai/grok-4.6"]]);
     assert(probes.some(([vendor, id]) => vendor === "anthropic" && id === "claude-sonnet-5-5"));
+    assert.deepEqual(probes.filter(([vendor, id]) => vendor === "anthropic" && id === "claude-haiku-5-5"), [["anthropic", "claude-haiku-5-5"]]);
   }
 });
 

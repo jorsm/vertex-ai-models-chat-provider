@@ -90,7 +90,7 @@ try {
   ({ generateCommitMessage } = require("../out/commitMessage/CommitMessage.js"));
 } finally { Module._load = originalLoad; }
 const { withRetry } = require("../out/utils/retry.js");
-const catalog = require("../src/models.json");
+const catalog = require("./fixtures/thinking-effort-original-catalog.json");
 const model = (id, vendor = "google", version = id) => ({ ...catalog.candidateModels[0], id, version, vendor });
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
 const flush = () => new Promise(setImmediate);
@@ -319,7 +319,8 @@ test("proxy dispatcher uses the server catalog and sends only an explicit custom
   inspections.proxyUrl = { globalValue: "https://gateway.test" };
   settings.enableUserLabel = true;
   settings.userLabelValue = "Custom.User@example.com";
-  const remote = [model("gemini-test"), { ...model("remote-high", "google", "backend-high"), displayName: "Remote effort", pricing: { input: 10, output: 20 } }];
+  const remote = [model("gemini-test"), { ...model("remote", "google", "backend"), displayName: "Remote model", pricing: { input: 10, output: 20 } },
+    { ...model("remote-high", "google", "backend-high"), displayName: "Remote model (High)", pricing: { input: 10, output: 20 } }];
   const requests = fakeDiscovery(t, remote);
   const h = harness([model("denied"), model("grok", "grok")]);
   h.resolver.getEffectiveCatalog = async () => { throw new Error("must not read local catalog during proxy discovery"); };
@@ -335,7 +336,8 @@ test("proxy dispatcher uses the server catalog and sends only an explicit custom
   assert.equal(h.records.length, 1);
   assert.deepEqual(h.records[0][2], remote[0].pricing);
   const info = await h.dispatcher.provideLanguageModelChatInformation();
-  assert.equal(info[1].name, "Remote effort");
+  assert.deepEqual(info.map(m=>m.id),['gemini-test','remote']);
+  assert.equal(info[1].name, "Remote model");
   assert.match(info[1].detail, /europe-west8/);
   assert.match(info[1].detail, /\$10 in/);
 });
@@ -1090,3 +1092,102 @@ for (const changed of ["tools", "system", "history", "assistant"]) {
     assert.equal(body.thinking.type, "adaptive");
   });
 }
+
+const {EffortCatalog}=require('../out/effort/EffortCatalog.js');
+const {resolveEffort}=require('../out/effort/ResolveEffort.js');
+const enhancedFixture=require('./fixtures/effort-proxy-enhanced.json');
+
+test('enhanced proxy policies/aliases survive parsing only after exact capability acknowledgement',()=>{
+ const legacy=require('./fixtures/effort-proxy-legacy.json');
+ assert.deepEqual(parseProxyCatalog(legacy),legacy);
+ const parsed=parseProxyCatalog(enhancedFixture);
+ assert.deepEqual(parsed.candidateModels,enhancedFixture.candidateModels);
+ assert.deepEqual(new EffortCatalog(parsed.candidateModels,'proxy').project().map(m=>m.id),parsed.candidateModels.map(m=>m.id));
+ const unacknowledged={...enhancedFixture};delete unacknowledged.catalogCapabilities;
+ assert.throws(()=>parseProxyCatalog(unacknowledged),/requires catalogCapabilities/);
+ for(const caps of [['effort-v2'],['effort-v1','effort-v1'],'effort-v1'])assert.throws(()=>parseProxyCatalog({...enhancedFixture,catalogCapabilities:caps}),/capabilities/);
+ const invalid=structuredClone(enhancedFixture);invalid.candidateModels[0].effort.default='low';
+ assert.throws(()=>parseProxyCatalog(invalid),/default must belong/);
+ const collision=structuredClone(enhancedFixture);collision.candidateModels[0].legacyEffortAliases[0].id=collision.candidateModels[1].id;
+ assert.throws(()=>parseProxyCatalog(collision),/Duplicate/);
+ const redirect=structuredClone(enhancedFixture);redirect.candidateModels[0].legacyEffortAliases[0].version='gemini-3.7-flash-high';
+ assert.throws(()=>parseProxyCatalog(redirect),/same backend/);
+});
+test('capability header is discovery-only protocol metadata and carries no billing labels',async(t)=>{
+ const requests=[];
+ const gateway=new ProxyGateway('https://gateway.test/base',async()=> 'personal-token',async(url,init)=>{requests.push({url,headers:new Headers(init.headers)});return Response.json(enhancedFixture);});
+ await gateway.discover(500);
+ assert.equal(requests[0].headers.get('X-Vertex-AI-Catalog-Capabilities'),'effort-v1');
+ assert.equal(requests[0].headers.get('X-Vertex-AI-Labels'),null);assert.equal(requests[0].headers.get('x-goog-user-project'),null);
+ await gateway.fetch('https://gateway.test/base/v1/request',{headers:{Authorization:'Bearer personal-token'}});
+ assert.equal(requests[1].headers.get('X-Vertex-AI-Catalog-Capabilities'),null);
+});
+test('server-only IDs and restricted policies remain authoritative over saved local preferences',async(t)=>{
+ inspections.proxyUrl={globalValue:'https://gateway.test'};
+ const originalFetch=global.fetch;global.fetch=async()=>Response.json(enhancedFixture);t.after(()=>{global.fetch=originalFetch;});
+ const h=harness([model('local-only')]);await h.dispatcher.discoverModelsAndRegion();
+ settings.thinkingEffortByModel={'server-gemini':'low'};inspections.thinkingEffortByModel={globalValue:settings.thinkingEffortByModel};
+ await assert.rejects(h.dispatcher.provideLanguageModelChatResponse({id:'server-gemini'},userMessage(),{}, {report(){}},cancellation().token),/not permitted/);
+ assert.equal(h.calls.filter(c=>c[0]==='infer').length,0);
+ settings.thinkingEffortByModel={'server-gemini':'catalog-default'};inspections.thinkingEffortByModel={globalValue:settings.thinkingEffortByModel};
+ await h.dispatcher.provideLanguageModelChatResponse({id:'server-gemini'},userMessage(),{}, {report(){}},cancellation().token);
+ const request=h.calls.find(c=>c[0]==='infer');assert.equal(request.at(-1).effort.value,'high');assert.equal(request.at(-1).backendModelId,'gemini-3.8-flash');
+ global.fetch=async()=>Response.json({catalogCapabilities:['effort-v1'],candidateModels:[],regionPriority:[]});
+ await h.dispatcher.discoverModelsAndRegion();assert.deepEqual(h.dispatcher.getEffortModelSnapshot().models,[]);
+ await assert.rejects(h.dispatcher.provideLanguageModelChatResponse({id:'server-gemini'},userMessage(),{}, {report(){}},cancellation().token),/not available/);
+});
+for(const [vendor,Provider]of [['google',VertexGoogleProvider],['anthropic',VertexAnthropicProvider]])test(`${vendor} resolved efforts reach native serialized proxy bodies, including default omission`,async(t)=>{
+ const requests=streamingFetch(t,vendor==='google'?[geminiEvent({candidates:[{content:{role:'model',parts:[{text:'ok'}]}}]})]:[claudeEvent({type:'message_stop'})]);
+ const spec=require('../src/models.json').candidateModels.find(m=>m.vendor===vendor&&m.effort);
+ const index=new EffortCatalog([spec],'proxy');const provider=new Provider();provider.initialize('test-project','global',undefined,new ProxyGateway('https://gateway.test/base',async()=> 'token'));
+ for(const preference of [...spec.effort.values,'catalog-default']){
+  const request=resolveEffort(index,spec.id,{preferences:{[spec.id]:preference},sourceByModel:{}});
+  await provider.provideLanguageModelChatResponse(spec.id,userMessage(),{}, {report(){}},cancellation().token,{},request.spec,request);
+  const wire=requests.at(-1);assert(wire.url.startsWith('https://gateway.test/base/'));
+  assert(!wire.url.includes('-high:')&&!wire.url.includes('-max:'));
+  const expected=request.effort.value==='provider-default'?undefined:request.effort.value;
+  if(vendor==='google')assert.equal(wire.body.generationConfig?.thinkingConfig?.thinkingLevel,expected?.toUpperCase());
+  else{assert.equal(wire.body.output_config?.effort,expected);assert.equal(wire.body.thinking?.type,expected?'adaptive':undefined);}
+  assert.equal(new Headers(wire.init.headers).get('X-Vertex-AI-Catalog-Capabilities'),null);
+ }
+});
+test('Claude effort change on a tool continuation retains signed and redacted blocks in serialized payload',async(t)=>{
+ const events=[
+  {type:'message_start',message:{id:'msg',role:'assistant',content:[],usage:{input_tokens:1,output_tokens:0}}},
+  {type:'content_block_start',index:0,content_block:{type:'thinking',thinking:'private',signature:'signed'}},
+  {type:'content_block_stop',index:0},
+  {type:'content_block_start',index:1,content_block:{type:'redacted_thinking',data:'opaque'}},
+  {type:'content_block_stop',index:1},
+  {type:'content_block_start',index:2,content_block:{type:'tool_use',id:'effort-tool',name:'lookup',input:{}}},
+  {type:'content_block_stop',index:2},{type:'message_stop'}];
+ const requests=streamingFetch(t,events.map(claudeEvent));
+ const spec=require('../src/models.json').candidateModels[0],index=new EffortCatalog([spec],'proxy');
+ const provider=new VertexAnthropicProvider();provider.initialize('test-project','global',undefined,new ProxyGateway('https://gateway.test',async()=> 'token'));
+ const run=async(effort,messages)=>{const request=resolveEffort(index,spec.id,{preferences:{[spec.id]:effort},sourceByModel:{}});await provider.provideLanguageModelChatResponse(spec.id,messages,{}, {report(){}},cancellation().token,{},request.spec,request);};
+ await run('high',userMessage());
+ await run('max',[...userMessage(),{role:2,content:[new ToolCallPart('effort-tool','lookup',{})]},{role:1,content:[new ToolResultPart('effort-tool',[new TextPart('done')])]}]);
+ assert.equal(requests[0].body.output_config.effort,'high');assert.equal(requests[1].body.output_config.effort,'max');
+ assert.deepEqual(requests[1].body.messages[1].content.slice(0,2),[{type:'thinking',thinking:'private',signature:'signed'},{type:'redacted_thinking',data:'opaque'}]);
+});
+test('Gemini effort change on a tool continuation preserves the thought signature',async(t)=>{
+ const requests=streamingFetch(t,[geminiEvent({candidates:[{content:{role:'model',parts:[{functionCall:{name:'lookup',args:{}},thoughtSignature:'effort-signed'}]}}]})]);
+ const base=require('../src/models.json').candidateModels.find(m=>m.id==='gemini-3.8-flash');
+ const spec={...base,effort:{...base.effort,values:['low','high']}};const index=new EffortCatalog([spec],'proxy');
+ const provider=new VertexGoogleProvider();provider.initialize('test-project','global',undefined,new ProxyGateway('https://gateway.test',async()=> 'token'));const parts=[];
+ const run=async(effort,messages)=>{const request=resolveEffort(index,spec.id,{preferences:{[spec.id]:effort},sourceByModel:{}});await provider.provideLanguageModelChatResponse(spec.id,messages,{}, {report(p){parts.push(p);}},cancellation().token,{},request.spec,request);};
+ await run('high',userMessage());const call=parts.find(p=>p instanceof ToolCallPart);
+ await run('low',[...userMessage(),{role:2,content:[call]},{role:1,content:[new ToolResultPart(call.callId,[new TextPart('done')])]}]);
+ assert.equal(requests[0].body.generationConfig.thinkingConfig.thinkingLevel,'HIGH');assert.equal(requests[1].body.generationConfig.thinkingConfig.thinkingLevel,'LOW');
+ assert.equal(requests[1].body.contents[1].parts[0].thoughtSignature,'effort-signed');
+});
+
+test('readable malformed local effort policies are quarantined without falling through to User/bundle',async(t)=>{
+ const resolver=Object.create(ModelCatalogResolver.prototype);resolver.cached=null;resolver.lastErroredPath=null;resolver.logger={log(){}};
+ const ws={fsPath:'/test/.vscode/models.json'},userUri={fsPath:'/test/user/models.json'};resolver.userCatalogUri=userUri;resolver.getWorkspaceCatalogUri=()=>ws;
+ const bad=structuredClone(enhancedFixture.candidateModels[0]);bad.effort.values=[];
+ const good=model('local-healthy'),fallback=model('user-fallback');let content=JSON.stringify({candidateModels:[bad,good],regionPriority:['global']});
+ const previousFs=vscode.workspace.fs;vscode.workspace.fs={readFile:async uri=>Buffer.from(uri===ws?content:JSON.stringify({candidateModels:[fallback],regionPriority:['global']}))};t.after(()=>vscode.workspace.fs=previousFs);
+ assert.deepEqual((await resolver.getEffectiveCatalog()).candidateModels,[good]);assert.equal(await resolver.getActiveSource(),'workspace');
+ content=JSON.stringify({candidateModels:[bad],regionPriority:['global']});resolver.invalidateCache();assert.deepEqual((await resolver.getEffectiveCatalog()).candidateModels,[]);assert.equal(await resolver.getActiveSource(),'workspace');
+ content='{invalid JSON';resolver.invalidateCache();assert.equal((await resolver.getEffectiveCatalog()).candidateModels[0].id,'user-fallback');assert.equal(await resolver.getActiveSource(),'user');
+});

@@ -80,3 +80,11 @@ To see which tools are currently available to the language models:
 1. Open the Command Palette (`Ctrl+Shift+P`).
 2. Run `Google Agent Platform: Dump Installed Tools Schema`.
 3. The **Google Agent Platform: Tools Dump** output channel will show the names, descriptions, and input schemas of all registered tools.
+
+## Thinking Effort command
+
+Activation registers `vertexAiChat.configureThinkingEffort` once for both the Palette contribution (**Google Agent Platform: Thinking Effort**) and `view/title` Chat header contribution. It uses stable QuickPick/configuration APIs and no native per-model proposal. The header's `view == workbench.panel.chat.view.copilot` condition requires host UI verification; the Palette path remains available where the header surface differs.
+
+The window setting `thinkingEffortByModel` fires `refreshModelInformation()` only. It does not call `setProjectId`, reinitialize SDKs or initiate discovery. The disposable command owns its picker/listeners and cancels an older invocation. Settings-write errors keep the picker open with the real effective state. Workspace scope is unavailable without an open workspace; active source-editor changes do not affect effort scope. Named model defaults share one picker row with their matching effort value.
+
+The existing Refresh Models management contribution now resides at the provider's top level. Effort configuration is independent of that deprecated management entry point. See [README](../README.md#thinking-effort) for persistence and compact-mode recovery, and [verification](thinking-effort-verification.md) for actual host evidence and untested surfaces.

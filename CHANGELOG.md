@@ -4,6 +4,30 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+
+- Thinking Effort command and Chat header contribution using stable APIs, with per-model User/Workspace preferences, explicit catalog default and removal actions, current-value metadata, and cancellation/stale-policy handling.
+- Optional effort policy and compatibility-alias metadata in local catalogs and negotiated `effort-v1` proxy catalogs. Invalid definitions cannot grant bundled permissions.
+- Optional canonical/backend/effort fields in usage logs and a recent-requests dashboard table that also reads historical entries.
+
+### Changed
+
+- Consolidate the bundle into 15 regular models and remove fixed-effort variants from model selectors and the bundled catalog. Configure effort separately without a legacy-model toggle. Add canonical Sonnet 5.5 (High default) and Haiku 5.5 (Medium default).
+- Simplify the Thinking Effort model list to one line per model and merge each named default with its matching effort value, such as Medium (Model Default).
+- Public provider invocations capture effort once; retries preserve that snapshot. Internal commit generation retains catalog/alias behavior. Grok routes by catalog version with independent xAI namespace normalization.
+- Refresh effort metadata without resetting connections or probing availability. Put the existing Refresh Models management command at the provider contribution's top level.
+
+Verification and remaining real-host/live-service checks are recorded in [thinking-effort-verification.md](docs/thinking-effort-verification.md). No version bump, publication or external proxy deployment is included.
+
+## [0.7.4] — 2026-10-07 (Pre-release)
+
+### Added
+
+- Claude Haiku 5.5 with its default Medium effort plus explicit High and Max effort choices, a 1M-token input context, a 128K-token output limit, vision, and tool calling.
+- Google Cloud global pricing for Claude Haiku 5.5, including prompt caching and higher rates when the complete input context exceeds 100K tokens.
+
 ## [0.7.3] — 2026-10-05
 
 ### Added

@@ -13,6 +13,11 @@ import { UsageTrackerService } from "./UsageTrackerService";
 import { Logger } from "./utils/Logger";
 import { DISCOVERY_PROBE_TIMEOUT_MS, getDiscoveryStartDelayMs, probeWithRetries, resolveDiscoveryTimeoutMs, runDiscoveryQueue } from "./utils/discovery";
 import { estimateTokens } from "./utils/tokens";
+import { EffortCatalog } from "./effort/EffortCatalog";
+import { captureEffortPreferences } from "./effort/EffortConfiguration";
+import { EffortPreferenceSnapshot, snapshot } from "./effort/EffortTypes";
+import { resolveEffort } from "./effort/ResolveEffort";
+import { cancellableRequest, requestCancellation } from "./utils/cancellation";
 
 const execAsync = util.promisify(childProcess.exec);
 
@@ -41,7 +46,27 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   private directDiscoveryController?: AbortController;
   private authSubscription?: vscode.Disposable;
   private connectionRevision = 0;
+  private inferenceController = new AbortController();
+  private catalogRevision = 0;
   public getConnectionRevision(): number { return this.connectionRevision; }
+  private catalogIndex?: EffortCatalog;
+  private indexedModels?: ModelSpec[];
+  private currentEffortCatalog(): EffortCatalog {
+    if (!this.catalogIndex || this.indexedModels !== this.availableModels) {
+      this.catalogIndex = new EffortCatalog(this.availableModels, this.getProxyUrl() ? "proxy" : "direct");
+      this.indexedModels = this.availableModels;
+    }
+    return this.catalogIndex;
+  }
+  public getEffortModelSnapshot() {
+    return snapshot({ models: this.currentEffortCatalog().models, connectionRevision: this.connectionRevision, catalogRevision: this.catalogRevision });
+  }
+  public async ensureInitialDiscovery(token: vscode.CancellationToken): Promise<void> {
+    if (!this.discoveryDone && !this._discoveryPromise) { void this.discoverModelsAndRegion().catch(() => {}); }
+    await this.waitForDiscovery(token);
+    if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
+  }
+  public refreshModelInformation(): void { this._onDidChange.fire(); }
   public dispose(): void { this.resetConnection(); this.authSubscription?.dispose(); this._onDidChange.dispose(); }
   private region?: string;
   private availableModels: ModelSpec[] = [];
@@ -185,6 +210,8 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
   public resetConnection(): void {
     this.connectionRevision++;
+    this.inferenceController.abort();
+    this.inferenceController = new AbortController();
     this.gateway?.dispose();
     this.gateway = undefined;
     this.directDiscoveryController?.abort();
@@ -244,6 +271,8 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         }
         this.region = region;
         this.availableModels = catalog.candidateModels;
+        this.catalogRevision++;
+        this.currentEffortCatalog();
         this.catalogResolver.setProxyCatalog?.(catalog);
         this.discoveryDone = true;
         this._onDidChange.fire();
@@ -360,6 +389,8 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
         this.region = region;
         this.availableModels = available;
+        this.catalogRevision++;
+        this.currentEffortCatalog();
         this.discoveryDone = true;
         this._onDidChange.fire();
 
@@ -372,6 +403,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     this.logger.log("❌ No models available in any region.");
     this.region = undefined;
     this.availableModels = [];
+    this.catalogRevision++;
     this.discoveryDone = true;
     this._onDidChange.fire();
 
@@ -392,6 +424,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   public clearModels(): void {
     this.region = undefined;
     this.availableModels = [];
+    this.catalogRevision++;
     if (this.getProxyUrl()) { this.catalogResolver.setProxyCatalog?.({ candidateModels: [], regionPriority: [] }); }
     this.discoveryDone = true;
     this._onDidChange.fire();
@@ -409,13 +442,25 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     const versionParts = vscode.version.split(".");
     const isV120OrHigher = Number.parseInt(versionParts[0]) > 1 || (Number.parseInt(versionParts[0]) === 1 && Number.parseInt(versionParts[1]) >= 120);
 
-    return this.availableModels.map((m) => {
+    const catalog = this.currentEffortCatalog();
+    let preferences: EffortPreferenceSnapshot | undefined;
+    let configurationError: unknown;
+    try { preferences = captureEffortPreferences(); } catch (error) { configurationError = error; }
+    return catalog.project().map((m) => {
       const pricing = this.formatPricingDisplay(m.pricing);
+      let effortDetail = "";
+      try {
+        if (configurationError && !catalog.get(m.id)?.alias) { throw configurationError; }
+        const resolved = resolveEffort(catalog, m.id, preferences);
+        if (resolved.effort) {
+          effortDetail = ` · Effort: ${resolved.effort.value} · ${resolved.effort.source}${resolved.effort.source === "legacy-alias" ? " (fixed legacy choice)" : ""}`;
+        }
+      } catch (error) { effortDetail = ` · Invalid effort: ${error instanceof Error ? error.message : String(error)}`; }
       const info: any = {
         id: m.id,
         name: m.displayName,
-        detail: `Vertex AI (${this.region}) • ${pricing.detail}`,
-        tooltip: `Google Cloud Vertex AI · ${this.region}\n\n${pricing.tooltip}`,
+        detail: `Vertex AI (${this.region}) • ${pricing.detail}${effortDetail}`,
+        tooltip: `Google Cloud Vertex AI · ${this.region}${effortDetail}\n\n${pricing.tooltip}`,
         family: m.family,
         version: m.version,
         maxInputTokens: m.maxInputTokens,
@@ -474,7 +519,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
   }
 
   async provideTokenCount(modelChatInfo: vscode.LanguageModelChatInformation, text: string | vscode.LanguageModelChatRequestMessage, token: vscode.CancellationToken): Promise<number> {
-    const spec = this.availableModels.find((m: ModelSpec) => m.id === modelChatInfo.id);
+    const spec = this.currentEffortCatalog().get(modelChatInfo.id)?.canonical;
     const provider = this.activeProviders.get(spec?.vendor || "");
 
     if (provider?.provideTokenCount) {
@@ -518,7 +563,8 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     token: vscode.CancellationToken,
   ): Promise<void> {
     try {
-      await this.infer(model.id, messages, options, progress, token, vscode.window.activeTextEditor?.document.uri);
+      const preferences = captureEffortPreferences();
+      await this.infer(model.id, messages, options, progress, token, vscode.window.activeTextEditor?.document.uri, preferences);
     } catch (error) {
       // Generic Error loses the HTTP classification across the VS Code RPC boundary.
       if (error instanceof GatewayError) {
@@ -612,9 +658,32 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     options: vscode.ProvideLanguageModelChatResponseOptions,
     progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken,
     resource?: vscode.Uri,
+    preferences?: EffortPreferenceSnapshot,
   ): Promise<void> {
-    const requestLabels = await this.resolveRequestLabels(resource, token);
-    return this.inferWithLabels(modelId, messages, options, progress, token, requestLabels);
+    const revision = this.connectionRevision;
+    const connectionSignal = this.inferenceController.signal;
+    const requestToken: vscode.CancellationToken = {
+      get isCancellationRequested() { return token.isCancellationRequested || connectionSignal.aborted; },
+      onCancellationRequested: (listener, thisArgs, disposables) => {
+        const abort = () => listener.call(thisArgs, undefined);
+        connectionSignal.addEventListener("abort", abort, { once: true });
+        const caller = token.onCancellationRequested?.(listener, thisArgs);
+        const disposable = { dispose: () => { caller?.dispose(); connectionSignal.removeEventListener("abort", abort); } };
+        disposables?.push(disposable);
+        return disposable;
+      },
+    };
+    const cancellation = requestCancellation(requestToken);
+    try {
+      if (cancellation.signal.aborted) { throw new vscode.CancellationError(); }
+      const labelsPromise = this.resolveRequestLabels(resource, requestToken);
+      const requestLabels = await cancellableRequest(() => labelsPromise, cancellation.signal);
+      if (revision !== this.connectionRevision) { throw new Error("Configuration changed before inference. Refresh Models."); }
+      return await this.inferWithLabels(modelId, messages, options, progress, requestToken, requestLabels, preferences);
+    } catch (error) {
+      if (revision !== this.connectionRevision) { throw new Error("Configuration changed during inference. Refresh Models."); }
+      throw error;
+    } finally { cancellation.dispose(); }
   }
 
   private async inferWithLabels(
@@ -622,6 +691,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     options: vscode.ProvideLanguageModelChatResponseOptions,
     progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken,
     requestLabels: Record<string, string>,
+    preferences?: EffortPreferenceSnapshot,
   ): Promise<void> {
     if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
     const revision = this.connectionRevision;
@@ -632,15 +702,18 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     await this.waitForDiscovery(token);
     if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
     if (revision !== this.connectionRevision) { throw new Error("Configuration changed before inference. Refresh Models."); }
-    const spec = this.availableModels.find((m: ModelSpec) => m.id === modelId);
-    if (!spec) { throw new Error(`Model not available: ${modelId}. Refresh Models or select an allowed model.`); }
+    const request = resolveEffort(this.currentEffortCatalog(), modelId, preferences);
+    const spec = request.spec;
+    this.logger.log(`Request resolution: requested=${modelId}, canonical=${request.canonicalId}, backend=${request.backendModelId}, effort=${request.effort?.value ?? "legacy-version"}, source=${request.effort?.source ?? "catalog-default"}`);
     const provider = this.activeProviders.get(spec.vendor);
     if (!provider) {
       throw new Error(`No provider is registered for vendor '${spec.vendor}' (model '${modelId}').`);
     }
 
     try {
-      const result = await provider.provideLanguageModelChatResponse(modelId, messages, options, progress, token, requestLabels, spec);
+      const result = await provider.provideLanguageModelChatResponse(modelId, messages, options, progress, token, requestLabels, spec, request);
+      if (revision !== this.connectionRevision) { throw new Error("Configuration changed during inference. Refresh Models."); }
+      if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
       this.logger.log(`  ✅ Successfully completed request via plugin ${provider.vendor}`);
 
       if (result.usage.input > 0 || result.usage.output > 0) {
@@ -651,7 +724,8 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
             cache_read: result.usage.cache_read,
             cache_create: result.usage.cache_create,
             characters: result.charCount,
-          }, spec.pricing)
+          }, spec.pricing, { canonicalModel: request.canonicalId, backendModel: request.backendModelId,
+            ...(request.effort ? { effort: request.effort.value, effortSource: request.effort.source } : {}) })
           .catch((err) => this.logger.log(`  ⚠️ Failed to record usage: ${err}`));
       }
     } catch (e) {

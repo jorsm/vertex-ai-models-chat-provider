@@ -2,17 +2,15 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const catalog = require("../src/models.json");
+const { EffortCatalog } = require("../out/effort/EffortCatalog.js");
 
 test("bundles the focused Gemini coding catalog", () => {
-  const googleModels = catalog.candidateModels.filter((model) => model.vendor === "google");
+  const googleModels = new EffortCatalog(catalog.candidateModels).project().filter((model) => model.vendor === "google");
 
   assert.deepEqual(googleModels.map((model) => model.id), [
     "gemini-3.8-flash",
-    "gemini-3.8-flash-high",
     "gemini-3.7-flash",
-    "gemini-3.7-flash-high",
     "gemini-3-flash-preview",
-    "gemini-3-flash-preview-high",
     "gemini-3.1-pro-preview",
   ]);
 

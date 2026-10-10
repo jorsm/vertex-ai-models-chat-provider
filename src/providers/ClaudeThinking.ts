@@ -4,6 +4,10 @@ export const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const
 
 export type ClaudeEffort = (typeof CLAUDE_EFFORTS)[number];
 
+export function claudeEffortConfig(effort: ClaudeEffort) {
+  return { thinking: { type: "adaptive" as const, display: "omitted" as const }, output_config: { effort } };
+}
+
 export interface ClaudeModelResolution {
   actualId: string;
   effort?: ClaudeEffort;
@@ -28,10 +32,7 @@ export function resolveClaudeModelId(modelId: string): ClaudeModelResolution {
   return {
     actualId: modelId.slice(0, -match[0].length),
     effort,
-    requestConfig: {
-      thinking: { type: "adaptive", display: "omitted" },
-      output_config: { effort },
-    },
+    requestConfig: claudeEffortConfig(effort),
   };
 }
 
