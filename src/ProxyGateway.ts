@@ -1,7 +1,6 @@
 import { OAuth2Client } from "google-auth-library";
-import type { ModelCatalog, ModelSpec } from "./providers/VertexModelProvider";
-import { EffortCatalog } from "./effort/EffortCatalog";
-import { snapshot } from "./effort/EffortTypes";
+import type { ModelCatalog } from "./providers/VertexModelProvider";
+import { parseModelCatalog } from "./ModelCatalogParser";
 
 export class GatewayError extends Error {
     constructor(
@@ -108,65 +107,16 @@ export function parseProxyCatalog(payload: unknown): ModelCatalog {
     if (!Array.isArray(entries) || ("candidateModels" in payload && "models" in payload)) {
         throw new GatewayError("Invalid proxy discovery response: expected candidateModels or a legacy models array.");
     }
-    if (!Array.isArray(regions) || !regions.every((region) => typeof region === "string" && /^[a-z][a-z0-9-]*$/.test(region)) || (entries.length > 0 && regions.length === 0)) {
-        throw new GatewayError("Invalid proxy discovery response: regionPriority must contain valid regions, with at least one region when models are advertised.");
-    }
-    const ids = new Set<string>();
-    const validId = (value: unknown) => typeof value === "string" && /^[a-zA-Z0-9_.@-]{1,256}$/.test(value);
-    const validVersion = (value: unknown) => typeof value === "string" && value.length <= 256 && value.split("/").every((segment) => validId(segment) && segment !== "." && segment !== "..");
-    const validText = (value: unknown) => typeof value === "string" && value.trim().length > 0 && value.length <= 256;
-    const positiveInteger = (value: unknown) => Number.isSafeInteger(value) && Number(value) > 0;
-    const validRates = (rates: any) =>
-        rates && typeof rates === "object" && [rates.input, rates.output].every((rate) => typeof rate === "number" && Number.isFinite(rate) && rate >= 0) && [rates.cache_read, rates.cache_create].every((rate) => rate === undefined || (typeof rate === "number" && Number.isFinite(rate) && rate >= 0));
-    const copyRates = (rates: any) => ({ input: rates.input, output: rates.output, ...(rates.cache_read !== undefined ? { cache_read: rates.cache_read } : {}), ...(rates.cache_create !== undefined ? { cache_create: rates.cache_create } : {}) });
-    const candidateModels = entries.map((entry: any): ModelSpec => {
-        if (
-            !entry ||
-            !validId(entry.vendor) ||
-            !validId(entry.id) ||
-            !validVersion(entry.version) ||
-            ids.has(entry.id) ||
-            !validText(entry.displayName) ||
-            !validText(entry.family) ||
-            !positiveInteger(entry.maxInputTokens) ||
-            !positiveInteger(entry.maxOutputTokens) ||
-            typeof entry.capabilities?.imageInput !== "boolean" ||
-            typeof entry.capabilities?.toolCalling !== "boolean" ||
-            !validRates(entry.pricing) ||
-            (entry.pricing.longContext !== undefined && (!validRates(entry.pricing.longContext) || !positiveInteger(entry.pricing.longContext.inputThresholdTokens)))
-        ) {
-            throw new GatewayError("Invalid proxy catalog: models require unique IDs, vendor identifiers, versions, names, token limits, capabilities and non-negative prices.");
-        }
-        ids.add(entry.id);
-        if (entry.effort !== undefined && !enhanced) {
-            throw new GatewayError("Proxy effort metadata requires catalogCapabilities: ['effort-v1'].");
-        }
-        return {
-            id: entry.id,
-            vendor: entry.vendor,
-            version: entry.version,
-            displayName: entry.displayName,
-            family: entry.family,
-            maxInputTokens: entry.maxInputTokens,
-            maxOutputTokens: entry.maxOutputTokens,
-            capabilities: { imageInput: entry.capabilities.imageInput, toolCalling: entry.capabilities.toolCalling },
-            pricing: {
-                ...copyRates(entry.pricing),
-                ...(entry.pricing.longContext
-                    ? {
-                          longContext: { ...copyRates(entry.pricing.longContext), inputThresholdTokens: entry.pricing.longContext.inputThresholdTokens },
-                      }
-                    : {}),
-            },
-            ...(entry.effort !== undefined ? { effort: snapshot(entry.effort) } : {}),
-        };
-    });
+    let catalog: ModelCatalog;
     try {
-        new EffortCatalog(candidateModels);
+        catalog = parseModelCatalog({ candidateModels: entries, regionPriority: regions });
     } catch (error) {
-        throw new GatewayError(`Invalid proxy catalog: ${error}`);
+        throw new GatewayError(`Invalid proxy catalog: ${error instanceof Error ? error.message : error}`);
     }
-    return { candidateModels, regionPriority: [...regions] };
+    if (!enhanced && catalog.candidateModels.some((model) => model.effort !== undefined)) {
+        throw new GatewayError("Proxy effort metadata requires catalogCapabilities: ['effort-v1'].");
+    }
+    return catalog;
 }
 
 export class ProxyGateway {

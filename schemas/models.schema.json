@@ -17,7 +17,8 @@
             "type": "array",
             "description": "Ordered list of GCP regions to probe (e.g. \"global\", \"us-east5\"). Discovery stops at the first region where at least one model responds.",
             "items": {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
             },
             "examples": [["global", "us-east5", "europe-west1", "asia-southeast1"]]
         }
@@ -30,34 +31,50 @@
             "properties": {
                 "id": {
                     "type": "string",
-                    "description": "Unique identifier for the model, used by VS Code and the extension to reference it."
+                    "description": "Unique identifier for the model, used by VS Code and the extension to reference it.",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[a-zA-Z0-9_.@-]+$"
                 },
                 "vendor": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "Provider identifier used to dispatch inference to a registered adapter (for example, \"google\", \"anthropic\", or \"grok\"). An unregistered provider produces an inference error."
+                    "description": "Provider identifier used to dispatch inference to a registered adapter (for example, \"google\", \"anthropic\", or \"grok\"). An unregistered provider produces an inference error.",
+                    "maxLength": 256,
+                    "pattern": "^[a-zA-Z0-9_.@-]+$"
                 },
                 "displayName": {
                     "type": "string",
-                    "description": "Human-readable name shown in the Copilot Chat model picker."
+                    "description": "Human-readable name shown in the Copilot Chat model picker.",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "\\S"
                 },
                 "family": {
                     "type": "string",
-                    "description": "Model family (e.g. \"gemini\", \"claude\", \"grok\")."
+                    "description": "Model family (e.g. \"gemini\", \"claude\", \"grok\").",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "\\S"
                 },
                 "version": {
                     "type": "string",
-                    "description": "The specific API version/model name sent to Vertex AI. For Grok this is the xAI model path (for example, \"xai/grok-4.6\")."
+                    "description": "The specific API version/model name sent to Vertex AI. For Grok this is the xAI model path (for example, \"xai/grok-4.6\"). Slash-separated namespaces are allowed; URLs, absolute paths, empty segments and dot segments are invalid.",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^(?!\\.{1,2}(?:/|$))[a-zA-Z0-9_.@-]+(?:/(?!\\.{1,2}(?:/|$))[a-zA-Z0-9_.@-]+)*$"
                 },
                 "maxInputTokens": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "Maximum allowed input tokens for the model."
+                    "description": "Maximum allowed input tokens for the model.",
+                    "maximum": 9007199254740991
                 },
                 "maxOutputTokens": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "Maximum allowed output tokens for the model."
+                    "description": "Maximum allowed output tokens for the model.",
+                    "maximum": 9007199254740991
                 },
                 "capabilities": {
                     "type": "object",
@@ -108,7 +125,8 @@
                                 "inputThresholdTokens": {
                                     "type": "integer",
                                     "minimum": 1,
-                                    "description": "Use this rate card only when total input, cached input, and cache writes exceed this many tokens."
+                                    "description": "Use this rate card only when total input, cached input, and cache writes exceed this many tokens.",
+                                    "maximum": 9007199254740991
                                 },
                                 "input": {
                                     "type": "number",
@@ -146,16 +164,34 @@
                             "uniqueItems": true,
                             "items": {
                                 "type": "string",
-                                "minLength": 1
+                                "minLength": 1,
+                                "pattern": "\\S"
                             }
                         },
                         "default": {
                             "type": "string",
                             "minLength": 1,
-                            "description": "Default effort sent when no saved model preference is present. Must belong to values."
+                            "description": "Default effort sent when no saved model preference is present. Must belong to values.",
+                            "pattern": "\\S"
                         }
                     }
                 }
+            }
+        }
+    },
+    "if": {
+        "properties": {
+            "candidateModels": {
+                "type": "array",
+                "minItems": 1
+            }
+        }
+    },
+    "then": {
+        "properties": {
+            "regionPriority": {
+                "type": "array",
+                "minItems": 1
             }
         }
     }

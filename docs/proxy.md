@@ -261,6 +261,8 @@ Filter discovery using the authenticated caller's permissions. Return an empty `
 
 The extension publishes only the variants explicitly returned. It does not synthesize variants or supplement an empty catalog. Duplicate IDs, malformed vendor identifiers, invalid metadata, malformed JSON, or a response larger than 1 MiB invalidate the whole response. Discovery initializes all registered adapters with the configured gateway; individual adapters report unsupported transports during inference. Discovery uses `vertexAiChat.modelDiscoveryTimeoutSeconds` (45 seconds by default), including token acquisition and response reading. The server's prices drive model information and local usage estimates, with each request retaining its selected rate card.
 
+At discovery ingestion, the client uses the same [catalog schema](../schemas/models.schema.json) and [parser](../src/ModelCatalogParser.ts) as local catalog files. Structural checks run once, with separate checks for unique IDs and effort-default membership. The proxy envelope handles capability acknowledgement; internal consumers do not repeat catalog validation. Unsupported effort names remain the backend API's responsibility.
+
 ### Route rewriting and request bodies
 
 The incoming path carries the user's configured `projectId` and the first region from the server's `regionPriority`, which the proxy forwards upstream. Check the location against your approved regions and the model against your allowlist, authorize the caller for the requested project, and never let a client path select an arbitrary hostname or upstream URL. If the proxy's runtime identity cannot call Vertex in that project, the upstream error is returned and shown in VS Code.

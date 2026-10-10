@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import { resolveCommitMessageResourceUri } from "./CommitMessage";
 import type { CommitMessageCommandContext } from "./CommitMessage";
 import type { VertexChatModelDispatcher } from "../VertexChatModelDispatcher";
-import { EffortCatalog } from "../effort/EffortCatalog";
 
 /** Selects an available model and persists the choice in the commit-message setting. */
 export async function selectCommitMessageModel(provider: Pick<VertexChatModelDispatcher, "discoverModelsAndRegion">, context?: CommitMessageCommandContext): Promise<void> {
@@ -16,7 +15,7 @@ export async function selectCommitMessageModel(provider: Pick<VertexChatModelDis
             },
             () => provider.discoverModelsAndRegion(),
         );
-        const availableModels = [...new EffortCatalog(discovered.availableModels).models];
+        const availableModels = [...discovered.availableModels];
         if (availableModels.length === 0) {
             vscode.window.showWarningMessage("Google Agent Platform: No model is available for commit-message generation.");
             return;

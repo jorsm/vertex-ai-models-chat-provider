@@ -125,6 +125,8 @@ In direct mode, resolves the effective model catalog at runtime, enabling user- 
 
 The extension registers two palette commands backed by this resolver: `vertexAiChat.openUserModelsFile` and `vertexAiChat.openWorkspaceModelsFile`. Both custom file paths are covered by `contributes.jsonValidation` globs in `package.json`, providing JSON schema validation and autocomplete in the editor. A `FileSystemWatcher` on both files invalidates the cache and re-runs discovery on save (debounced ~300ms), refreshing the Copilot Chat model picker.
 
+[ModelCatalogParser](../src/ModelCatalogParser.ts) executes the same JSON schema at the local-file and proxy-response boundaries. It validates the envelope and each model, then checks ID uniqueness and effort-default membership. Local files report and exclude malformed definitions while preserving their valid models; proxy discovery rejects a malformed response as a whole. The bundled catalog is checked during automated tests. Internal consumers use the parsed catalog directly; `EffortCatalog` only provides an immutable index and does not revalidate it. Model and effort support remain the backend API's responsibility.
+
 ### activate
 
 [source](../src/extension.ts)

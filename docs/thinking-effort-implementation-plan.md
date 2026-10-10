@@ -15,7 +15,7 @@ Effort is optional model metadata:
 }
 ```
 
-`values` contains unique nonempty strings. `default` is required when effort is present and belongs to that list. Backend APIs validate model support; runtime catalog checks do not contain vendor enums or model-family patterns. A model without effort metadata sends no override. Custom catalogs replace bundled choices and remain authoritative when malformed definitions are excluded. Proxy catalogs are validated as one response and never inherit local choices.
+`values` contains unique nonempty strings. `default` is required when effort is present and belongs to that list. `ModelCatalogParser` executes `schemas/models.schema.json` once when ingesting local files or proxy responses, with separate checks for ID uniqueness and default membership. The bundled catalog is validated in tests. `EffortCatalog` indexes already parsed models without validation. Backend APIs validate model support; catalog checks do not contain vendor enums or model-family patterns. A model without effort metadata sends no override. Custom catalogs replace bundled choices and remain authoritative when malformed definitions are excluded. Proxy catalogs are validated as one response and never inherit local choices.
 
 Bundled named defaults follow current primary documentation:
 

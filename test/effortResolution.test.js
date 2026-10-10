@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { EffortCatalog, filterLocalEffortModels } = require("../out/effort/EffortCatalog.js");
+const { EffortCatalog } = require("../out/effort/EffortCatalog.js");
 const { resolveEffort } = require("../out/effort/ResolveEffort.js");
 const bundled = require("../src/models.json");
 const preferences = (id, value, source = "user") => ({ preferences: { [id]: value }, sourceByModel: { [id]: source } });
@@ -39,7 +39,15 @@ test("only the selected preference is checked; models without effort have no fab
 });
 
 test("custom backend names are literal and custom effort strings are catalog choices", () => {
-    const custom = { ...bundled.candidateModels[0], id: "company-model", version: "company-reasoner-high", effort: { values: ["ultra", "quiet"], default: "quiet" } };
+    const custom = {
+        ...bundled.candidateModels[0],
+        id: "company-model",
+        version: "company-reasoner-high",
+        effort: {
+            values: ["ultra", "quiet"],
+            default: "quiet",
+        },
+    };
     const index = new EffortCatalog([custom]);
     assert.equal(index.models.length, 1);
     assert.equal(resolveEffort(index, custom.id).spec.version, custom.version);
@@ -57,39 +65,6 @@ test("catalog and resolved requests are detached recursively frozen snapshots", 
     assert.deepEqual(request.spec.effort.values, ["medium", "high", "max"]);
     assert(Object.isFrozen(request.spec.pricing));
     assert(Object.isFrozen(request.spec.effort.values));
-});
-
-for (const [name, mutate] of [
-    ["empty values", (m) => (m.effort.values = [])],
-    ["duplicate values", (m) => (m.effort.values = ["high", "high"])],
-    ["empty value", (m) => (m.effort.values = [""])],
-    ["non-string value", (m) => (m.effort.values = [3])],
-    ["default outside choices", (m) => (m.effort.default = "low")],
-    ["missing default", (m) => delete m.effort.default],
-    ["null policy", (m) => (m.effort = null)],
-]) {
-    test(`malformed ${name} excludes only its definition without bundled fallback`, () => {
-        const bad = structuredClone(bundled.candidateModels[0]);
-        mutate(bad);
-        assert.throws(() => new EffortCatalog([bad]), /Model/);
-        const errors = [];
-        const good = bundled.candidateModels.at(-1);
-        assert.deepEqual(
-            filterLocalEffortModels([bad, good], (error) => errors.push(error)),
-            [good],
-        );
-        assert(errors.length);
-    });
-}
-
-test("duplicate model IDs exclude both definitions", () => {
-    const a = structuredClone(bundled.candidateModels[0]);
-    const b = { ...a, version: "different-backend" };
-    assert.throws(() => new EffortCatalog([a, b]), /Duplicate/);
-    assert.deepEqual(
-        filterLocalEffortModels([a, b], () => {}),
-        [],
-    );
 });
 
 test("a reused ID with changed choices revalidates saved preferences", () => {

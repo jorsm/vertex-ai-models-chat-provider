@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import bundledCatalog from "./models.json";
 import { ModelCatalog } from "./providers/VertexModelProvider";
 import { Logger } from "./utils/Logger";
-import { filterLocalEffortModels } from "./effort/EffortCatalog";
+import { parseModelCatalog } from "./ModelCatalogParser";
 
 /**
  * Resolves the effective model catalog at runtime with precedence:
@@ -190,14 +190,14 @@ export class ModelCatalogResolver implements vscode.Disposable {
             return null;
         }
 
-        if (!this.isValidCatalog(parsed)) {
-            this.reportParseError(uri.fsPath, "Missing required 'candidateModels' array or 'regionPriority' array.");
+        const errors: string[] = [];
+        let catalog: ModelCatalog;
+        try {
+            catalog = parseModelCatalog(parsed, (message) => errors.push(message));
+        } catch (error) {
+            this.reportParseError(uri.fsPath, error instanceof Error ? error.message : String(error));
             return null;
         }
-
-        const catalog = parsed as ModelCatalog;
-        const errors: string[] = [];
-        const candidateModels = filterLocalEffortModels(catalog.candidateModels, (message) => errors.push(message));
         if (errors.length) {
             this.logger.log(`Invalid custom catalog definitions at ${uri.fsPath}: ${errors.join(" ")}`);
             if (this.lastErroredPath !== uri.fsPath) {
@@ -207,15 +207,7 @@ export class ModelCatalogResolver implements vscode.Disposable {
         } else {
             this.lastErroredPath = null;
         }
-        return { ...catalog, candidateModels };
-    }
-
-    private isValidCatalog(value: unknown): value is ModelCatalog {
-        if (typeof value !== "object" || value === null) {
-            return false;
-        }
-        const v = value as Record<string, unknown>;
-        return Array.isArray(v.candidateModels) && Array.isArray(v.regionPriority);
+        return catalog;
     }
 
     private reportParseError(filePath: string, detail: string): void {

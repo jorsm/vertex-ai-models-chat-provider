@@ -156,6 +156,8 @@ In direct mode, need a different model set or region order? Create a workspace `
 
 For a custom model, set `version` to the exact backend model name, and put configurable levels in `effort.values` with a named `effort.default`. For example, `"effort": { "values": ["medium", "high", "max"], "default": "high" }`. Model identity and effort are independent. The extension sends `version` literally and leaves support validation to the backend API.
 
+Custom files and proxy responses are checked against the catalog JSON schema when loaded. The parser also checks unique model IDs and that each effort default belongs to its choices. Malformed local definitions are reported and excluded; the remaining custom catalog stays authoritative, even when empty. Invalid JSON or an invalid catalog envelope falls back to the next local tier. A malformed proxy catalog fails discovery without a local fallback.
+
 ## 💳 Billing and labels
 
 The local dashboard estimates spend; your Google Cloud Billing account remains the source of truth. Enable `vertexAiChat.enableUserLabel` and `vertexAiChat.enableProjectLabel` when you need cost attribution for Gemini and Claude PayGo requests.

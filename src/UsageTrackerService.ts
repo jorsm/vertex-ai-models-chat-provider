@@ -4,7 +4,6 @@ import * as vscode from "vscode";
 import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { Logger } from "./utils/Logger";
 import type { ModelSpec } from "./providers/VertexModelProvider";
-import { EffortCatalog } from "./effort/EffortCatalog";
 
 export interface PayloadCharacters {
     system: number;
@@ -52,7 +51,7 @@ export class UsageTrackerService {
      */
     public async calculateCost(model: string, tokens: Required<TokenUsage>, requestPricing?: ModelSpec["pricing"]): Promise<number> {
         // Prefer prices captured for the request; otherwise use the active catalog.
-        const pricing = requestPricing ?? new EffortCatalog((await this.catalogResolver.getEffectiveCatalog()).candidateModels).get(model)?.pricing;
+        const pricing = requestPricing ?? (await this.catalogResolver.getEffectiveCatalog()).candidateModels.find((spec) => spec.id === model)?.pricing;
 
         if (!pricing) {
             // Default to 0 or fallback pricing if the model is not found in the map

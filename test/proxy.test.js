@@ -317,13 +317,19 @@ test("client identity and proxy token gcloud commands are serialized", async () 
 });
 test("server catalog supplies complete metadata and validates IDs, prices, limits, capabilities and duplicates", () => {
     const entry = model("server-only-high", "google", "backend-high");
-    const catalog = { candidateModels: [entry], regionPriority: ["europe-west8", "us-east5"] };
+    const catalog = {
+        candidateModels: [entry],
+        regionPriority: ["europe-west8", "us-east5"],
+    };
     assert.deepEqual(parseProxyCatalog({ models: [entry], regionPriority: catalog.regionPriority }), catalog);
     assert.deepEqual(parseProxyCatalog(catalog), catalog);
     assert.deepEqual(parseProxyCatalog({ candidateModels: [], regionPriority: [] }), { candidateModels: [], regionPriority: [] });
     const namespaced = model("grok", "grok", "xai/grok-4.6");
     const custom = model("future-model", "future-provider", "organization/model");
-    const mixed = { candidateModels: [entry, namespaced, custom], regionPriority: catalog.regionPriority };
+    const mixed = {
+        candidateModels: [entry, namespaced, custom],
+        regionPriority: catalog.regionPriority,
+    };
     assert.deepEqual(parseProxyCatalog(mixed), mixed);
     for (const invalid of [
         model("https://evil.test"),
@@ -343,13 +349,19 @@ test("server catalog supplies complete metadata and validates IDs, prices, limit
     for (const payload of [
         {},
         { models: null },
-        { models: [entry, entry], regionPriority: catalog.regionPriority },
+        {
+            models: [entry, entry],
+            regionPriority: catalog.regionPriority,
+        },
         { candidateModels: [entry] },
         { models: [entry] },
         { candidateModels: [entry], regionPriority: [] },
         { models: [entry], regionPriority: [] },
         { models: [entry], regionPriority: ["https://elsewhere"] },
-        { candidateModels: [entry], regionPriority: ["europe-west8", 42] },
+        {
+            candidateModels: [entry],
+            regionPriority: ["europe-west8", 42],
+        },
         { candidateModels: [entry], regionPriority: ["https://elsewhere"] },
         { candidateModels: [entry], regionPriority: [], models: [] },
         { candidateModels: [{ id: "incomplete" }], regionPriority: ["global"] },
@@ -1214,7 +1226,10 @@ test("proxy catalog takes precedence for all consumers and an empty response nev
     const resolver = Object.create(ModelCatalogResolver.prototype);
     resolver.cached = { catalog: { candidateModels: [model("local")], regionPriority: ["global"] }, source: "bundled" };
     const remote = [{ ...model("server-only"), pricing: { input: 3, output: 9, cache_read: 1 } }];
-    const catalog = { candidateModels: remote, regionPriority: ["europe-west8", "us-east5"] };
+    const catalog = {
+        candidateModels: remote,
+        regionPriority: ["europe-west8", "us-east5"],
+    };
     resolver.setProxyCatalog(catalog);
     assert.equal(await resolver.getActiveSource(), "proxy");
     assert.deepEqual(await resolver.getEffectiveCatalog(), catalog);
@@ -1563,7 +1578,7 @@ test("enhanced proxy policies survive parsing only after exact capability acknow
     assert.throws(() => parseProxyCatalog(invalid), /default must belong/);
     const collision = structuredClone(enhancedFixture);
     collision.candidateModels[0].id = collision.candidateModels[1].id;
-    assert.throws(() => parseProxyCatalog(collision), /unique IDs/);
+    assert.throws(() => parseProxyCatalog(collision), /Duplicate model ID/);
 });
 test("capability header is discovery-only protocol metadata and carries no billing labels", async (t) => {
     const requests = [];
@@ -1662,7 +1677,13 @@ test("Claude effort change on a tool continuation retains signed and redacted bl
 test("Gemini effort change on a tool continuation preserves the thought signature", async (t) => {
     const requests = streamingFetch(t, [geminiEvent({ candidates: [{ content: { role: "model", parts: [{ functionCall: { name: "lookup", args: {} }, thoughtSignature: "effort-signed" }] } }] })]);
     const base = require("../src/models.json").candidateModels.find((m) => m.id === "gemini-3.8-flash");
-    const spec = { ...base, effort: { values: ["low", "high"], default: "high" } };
+    const spec = {
+        ...base,
+        effort: {
+            values: ["low", "high"],
+            default: "high",
+        },
+    };
     const index = new EffortCatalog([spec]);
     const provider = new VertexGoogleProvider();
     provider.initialize("test-project", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
@@ -1692,7 +1713,7 @@ test("Gemini effort change on a tool continuation preserves the thought signatur
     assert.equal(requests[1].body.contents[1].parts[0].thoughtSignature, "effort-signed");
 });
 
-test("readable malformed local effort policies are quarantined without falling through to User/bundle", async (t) => {
+test("malformed local definitions are excluded at ingestion without falling through to User/bundle", async (t) => {
     const resolver = Object.create(ModelCatalogResolver.prototype);
     resolver.cached = null;
     resolver.lastErroredPath = null;
@@ -1702,15 +1723,27 @@ test("readable malformed local effort policies are quarantined without falling t
     resolver.userCatalogUri = userUri;
     resolver.getWorkspaceCatalogUri = () => ws;
     const bad = structuredClone(enhancedFixture.candidateModels[0]);
-    bad.effort.values = [];
     const good = model("local-healthy"),
         fallback = model("user-fallback");
-    let content = JSON.stringify({ candidateModels: [bad, good], regionPriority: ["global"] });
+    let content = JSON.stringify({
+        candidateModels: [bad, good],
+        regionPriority: ["global"],
+    });
     const previousFs = vscode.workspace.fs;
     vscode.workspace.fs = { readFile: async (uri) => Buffer.from(uri === ws ? content : JSON.stringify({ candidateModels: [fallback], regionPriority: ["global"] })) };
     t.after(() => (vscode.workspace.fs = previousFs));
-    assert.deepEqual((await resolver.getEffectiveCatalog()).candidateModels, [good]);
-    assert.equal(await resolver.getActiveSource(), "workspace");
+    for (const mutate of [(m) => (m.effort.values = "high"), (m) => delete m.pricing, (m) => (m.capabilities.imageInput = "yes")]) {
+        const malformed = structuredClone(bad);
+        mutate(malformed);
+        content = JSON.stringify({
+            candidateModels: [malformed, good],
+            regionPriority: ["global"],
+        });
+        resolver.invalidateCache();
+        assert.deepEqual((await resolver.getEffectiveCatalog()).candidateModels, [good]);
+        assert.equal(await resolver.getActiveSource(), "workspace");
+    }
+    bad.effort.values = [];
     content = JSON.stringify({ candidateModels: [bad], regionPriority: ["global"] });
     resolver.invalidateCache();
     assert.deepEqual((await resolver.getEffectiveCatalog()).candidateModels, []);
