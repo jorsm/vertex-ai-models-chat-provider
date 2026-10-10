@@ -34,7 +34,20 @@ The local dashboard is a per-machine estimate. In [proxy mode](proxy.md), prices
 
 For centralized, invoice-oriented reporting, enable Google Cloud Billing export to BigQuery and use request labels. The extension can attach `vscode-vertex-ai-user` and `vscode-vertex-ai-project` to Gemini and Anthropic Claude requests; Grok does not currently send billing labels.
 
-Set either a custom `userLabelValue` or `projectLabelValue` when you need stable report dimensions. If an enabled label cannot resolve to either a custom value or its automatic fallback, the request proceeds without that one label and the extension emits a single VS Code warning plus an output-channel warning. This prevents silent loss of an opted-in attribution dimension.
+### Request Label Resolution
+
+Set either a custom `userLabelValue` or `projectLabelValue` when you need stable report dimensions. When enabled, labels are resolved for each inference request in this order:
+
+- `vscode-vertex-ai-user`: use the effective request-scoped `userLabelValue`; if it is empty or invalid, resolve the client identity through `AuthManager`. If identity lookup fails or produces no valid value, the extension shows an error and blocks the request; no inference is sent.
+- `vscode-vertex-ai-project`: first use `projectLabelValue` at folder scope, or at workspace scope when no folder-scope value is set. If that value is absent or invalid, use these automatic fallbacks in order:
+    1. In a multi-root workspace with a resource belonging to a root, use that root's folder name.
+    2. In a multi-root workspace without a matching resource folder, use the workspace name.
+    3. Outside a multi-root workspace, use the workspace name.
+    4. If unresolved and the request has a resource, use its containing folder name.
+    5. If exactly one workspace folder is open, use that folder's name.
+    6. Otherwise, show an error and block the request; no inference is sent.
+
+Warnings are shown once per label until a later request resolves that label successfully. Label values are sanitized before being sent.
 
 Google only forwards request labels to Cloud Billing for PayGo usage; Provisioned Throughput does not receive them. Use low-cardinality, non-sensitive values: label values surface in billing exports, and Google can omit a label key after too many distinct values. See [Google's request-label documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/capabilities/add-labels-to-api-calls), [billing export setup](https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery), and the [standard usage export schema](https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery-tables/standard-usage).
 
