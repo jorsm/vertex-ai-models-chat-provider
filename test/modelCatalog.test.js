@@ -83,7 +83,7 @@ for (const [
     ],
     [
         "default outside choices",
-        (m) => (m.effort.default = "low"),
+        (m) => (m.effort.default = "unsupported"),
         "default must belong",
     ],
     [

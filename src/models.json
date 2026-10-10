@@ -20,8 +20,10 @@
             },
             "effort": {
                 "values": [
+                    "low",
                     "medium",
                     "high",
+                    "xhigh",
                     "max"
                 ],
                 "default": "medium"
@@ -47,7 +49,10 @@
             },
             "effort": {
                 "values": [
+                    "low",
+                    "medium",
                     "high",
+                    "xhigh",
                     "max"
                 ],
                 "default": "high"
@@ -73,7 +78,10 @@
             },
             "effort": {
                 "values": [
+                    "low",
+                    "medium",
                     "high",
+                    "xhigh",
                     "max"
                 ],
                 "default": "high"
@@ -99,7 +107,10 @@
             },
             "effort": {
                 "values": [
+                    "low",
+                    "medium",
                     "high",
+                    "xhigh",
                     "max"
                 ],
                 "default": "high"
@@ -125,7 +136,10 @@
             },
             "effort": {
                 "values": [
+                    "low",
+                    "medium",
                     "high",
+                    "xhigh",
                     "max"
                 ],
                 "default": "high"
@@ -151,8 +165,10 @@
             },
             "effort": {
                 "values": [
-                    "high",
+                    "low",
                     "medium",
+                    "high",
+                    "xhigh",
                     "max"
                 ],
                 "default": "high"
@@ -178,7 +194,10 @@
             },
             "effort": {
                 "values": [
+                    "low",
+                    "medium",
                     "high",
+                    "xhigh",
                     "max"
                 ],
                 "default": "high"
@@ -201,6 +220,15 @@
                 "output": 15.0,
                 "cache_read": 0.3,
                 "cache_create": 3.75
+            },
+            "effort": {
+                "values": [
+                    "low",
+                    "medium",
+                    "high",
+                    "max"
+                ],
+                "default": "high"
             }
         },
         {
@@ -230,8 +258,10 @@
             },
             "effort": {
                 "values": [
+                    "low",
                     "medium",
                     "high",
+                    "xhigh",
                     "max"
                 ],
                 "default": "medium"
@@ -276,6 +306,7 @@
             },
             "effort": {
                 "values": [
+                    "low",
                     "medium",
                     "high"
                 ],
@@ -302,6 +333,7 @@
             },
             "effort": {
                 "values": [
+                    "low",
                     "medium",
                     "high"
                 ],
@@ -327,7 +359,12 @@
                 "cache_create": 0.0
             },
             "effort": {
-                "values": ["high"],
+                "values": [
+                    "minimal",
+                    "low",
+                    "medium",
+                    "high"
+                ],
                 "default": "high"
             }
         },
@@ -355,6 +392,14 @@
                     "cache_read": 0.4,
                     "cache_create": 0.0
                 }
+            },
+            "effort": {
+                "values": [
+                    "low",
+                    "medium",
+                    "high"
+                ],
+                "default": "high"
             }
         },
         {

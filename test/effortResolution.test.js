@@ -31,7 +31,7 @@ test("named public preferences and catalog-only internal defaults remain distinc
 test("only the selected preference is checked; models without effort have no fabricated controls", () => {
     assert.equal(resolveEffort(catalog, "claude-opus-5-5", preferences("unrelated", "invalid")).effort.value, "medium");
     for (const value of [
-        "low",
+        "minimal",
         "invalid",
         "",
         null,
@@ -71,8 +71,10 @@ test("catalog and resolved requests are detached recursively frozen snapshots", 
     model.pricing.input = 99;
     assert.equal(request.spec.pricing.input, 4);
     assert.deepEqual(request.spec.effort.values, [
+        "low",
         "medium",
         "high",
+        "xhigh",
         "max",
     ]);
     assert(Object.isFrozen(request.spec.pricing));

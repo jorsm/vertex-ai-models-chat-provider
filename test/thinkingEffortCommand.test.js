@@ -173,8 +173,10 @@ test("explicit model step uses discovered policy, remembers last configured and 
     assert.deepEqual(
         p.items.filter((i) => i.value).map((i) => i.value),
         [
+            "low",
             "medium",
             "high",
+            "xhigh",
             "max",
         ],
     );
@@ -201,11 +203,19 @@ test("existing Workspace key sets scope; default choice saves its actual named l
         ]),
         [
             [
+                "Low",
+                undefined,
+            ],
+            [
                 "Medium",
                 "Default",
             ],
             [
                 "High",
+                undefined,
+            ],
+            [
+                "Extra high",
                 undefined,
             ],
             [
@@ -289,7 +299,7 @@ test("setting failure keeps picker open and effective state unchanged", async ()
 });
 test("invalid saved value stays visible and can be reset rather than silently substituted", async () => {
     const h = harness(models.slice(0, 1));
-    user = { "claude-opus-5-5": "low" };
+    user = { "claude-opus-5-5": "minimal" };
     const { running, p } = await open(h);
     assert.match(p.placeholder, /Invalid.*not permitted/);
     assert.equal(p.activeItems.length, 0);
@@ -348,12 +358,20 @@ test("named default is one choice, highlights an existing value and saves the de
             ]),
         [
             [
+                "Low",
+                "low",
+            ],
+            [
                 "Medium",
                 "medium",
             ],
             [
                 "High",
                 "high",
+            ],
+            [
+                "Extra high",
+                "xhigh",
             ],
             [
                 "Max",

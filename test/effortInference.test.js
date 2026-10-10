@@ -159,7 +159,7 @@ test("settings change while waiting for labels does not alter the public snapsho
 });
 test("invalid policy fails before inference; exact dispatcher membership remains required", async () => {
     const h = harness();
-    prefs = { "claude-opus-5-5": "low" };
+    prefs = { "claude-opus-5-5": "minimal" };
     await assert.rejects(h.d.provideLanguageModelChatResponse({ id: "claude-opus-5-5" }, messages, {}, progress, token()), /not permitted/);
     await assert.rejects(h.d.infer("arbitrary-ui-id", messages, {}, progress, token()), /not available/);
     assert.equal(h.requests.length, 0);
