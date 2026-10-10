@@ -15,7 +15,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
     private projectId!: string;
     private region!: string;
     private authOptions?: any;
-    private gateway?: ProxyGateway;
+    private gateway: ProxyGateway | undefined;
     private labels: Record<string, string> = {};
     private readonly logger = new Logger("VertexGoogleProvider");
     /**
@@ -539,7 +539,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
             );
 
             const processor = new StreamPartProcessor(this, modelId, actualId, progress, charCount, this.logger);
-            const bufferedCalls: Array<{ callId: string; callName: string; args: any; signature?: string }> = [];
+            const bufferedCalls: Array<{ callId: string; callName: string; args: any; signature: string | undefined }> = [];
 
             for await (const chunk of stream) {
                 if (cancellation.signal.aborted) {

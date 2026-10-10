@@ -160,7 +160,7 @@ export class ClaudeThinkingPrefix {
     }
 }
 
-type CachedReplay = ClaudeThinkingReplay & { prefixFingerprint?: string };
+type CachedReplay = ClaudeThinkingReplay & { prefixFingerprint: string | undefined };
 
 /** Keeps a bounded set of signed assistant turns for VS Code tool continuations. */
 export class ClaudeThinkingReplayCache {

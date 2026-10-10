@@ -155,7 +155,8 @@ export async function runDiscoveryQueue<T, R>(targets: readonly T[], probe: (tar
                 return;
             }
             try {
-                results[index] = await probe(targets[index]);
+                // The worker reserved this index while next was below targets.length.
+                results[index] = await probe(targets[index]!);
             } catch (error) {
                 failed = true;
                 throw error;

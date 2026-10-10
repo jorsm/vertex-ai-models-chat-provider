@@ -37,11 +37,11 @@ interface ServiceAccountCredentials {
 }
 
 export class AuthManager {
-    private proxyToken?: { token: string; expires: number };
-    private proxyTokenPromise?: Promise<string>;
+    private proxyToken: { token: string; expires: number } | undefined;
+    private proxyTokenPromise: Promise<string> | undefined;
     private proxyTokenRevision = 0;
-    private identityCache?: { value: string; expires: number };
-    private identityPromise?: Promise<string | undefined>;
+    private identityCache: { value: string; expires: number } | undefined;
+    private identityPromise: Promise<string | undefined> | undefined;
     private identityRevision = 0;
     private gcloudOperationQueue: Promise<void> = Promise.resolve();
 
@@ -93,11 +93,12 @@ export class AuthManager {
             });
             const token = result.stdout.trim();
             const parts = token.split(".");
-            if (parts.length !== 3) {
+            const encodedClaims = parts[1];
+            if (parts.length !== 3 || !encodedClaims) {
                 throw new Error();
             }
             // Local shape checks only. Signature/authorization are verified by the gateway.
-            const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+            const claims = JSON.parse(Buffer.from(encodedClaims, "base64url").toString("utf8"));
             if (revision !== this.proxyTokenRevision || typeof claims.email !== "string" || claims.email.toLowerCase().endsWith(".gserviceaccount.com") || claims.email_verified !== true || typeof claims.exp !== "number" || claims.exp * 1000 <= Date.now() + 60_000) {
                 throw new Error();
             }
@@ -266,17 +267,18 @@ export class AuthManager {
             openLabel: "Import Credential",
         });
 
-        if (!uris || uris.length === 0) {
+        const uri = uris?.[0];
+        if (!uri) {
             return false;
         }
 
         try {
-            const bytes = await vscode.workspace.fs.readFile(uris[0]);
+            const bytes = await vscode.workspace.fs.readFile(uri);
             const json = new TextDecoder().decode(bytes);
             const credentials = this.parseServiceAccount(json);
             return await this.storeServiceAccount(json, credentials.project_id || vscode.workspace.name || "default", true);
         } catch (e: any) {
-            this.logger.log(`Failed to import service account file '${uris[0].toString()}': ${e}`);
+            this.logger.log(`Failed to import service account file '${uri.toString()}': ${e}`);
             vscode.window.showErrorMessage(`Vertex AI: Could not import the service account file. ${e.message || e}`);
             return false;
         }

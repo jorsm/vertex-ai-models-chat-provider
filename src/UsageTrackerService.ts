@@ -223,11 +223,11 @@ export class UsageTrackerService {
                 .filter((d) => /^\d{8}$/.test(d))
                 .sort();
 
-            if (dates.length === 0) {
+            const minDate = dates[0];
+            if (!minDate) {
                 return null;
             }
 
-            const minDate = dates[0];
             const year = minDate.substring(0, 4);
             const month = minDate.substring(4, 6);
             const day = minDate.substring(6, 8);

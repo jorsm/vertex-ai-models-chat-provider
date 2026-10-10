@@ -21,7 +21,7 @@ export class ModelCatalogResolver implements vscode.Disposable {
 
     /** Cached effective catalog + its source. Invalidated by `invalidateCache()` (e.g. on file save). */
     private cached: { catalog: ModelCatalog; source: "workspace" | "user" | "bundled" } | null = null;
-    private proxyCatalog?: ModelCatalog;
+    private proxyCatalog: ModelCatalog | undefined;
 
     /** In proxy mode even an empty catalog is authoritative; never use a local fallback. */
     setProxyCatalog(catalog: ModelCatalog | undefined): void {

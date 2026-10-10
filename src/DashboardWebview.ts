@@ -2,6 +2,14 @@ import * as vscode from "vscode";
 
 import { UsageTrackerService } from "./UsageTrackerService";
 
+function parseLocalDate(value: string): Date {
+    const [year, month, day] = value.split("-").map(Number);
+    if (year === undefined || month === undefined || day === undefined || ![year, month, day].every(Number.isFinite)) {
+        throw new Error("Usage dates must include a year, month, and day.");
+    }
+    return new Date(year, month - 1, day, 0, 0, 0, 0);
+}
+
 export class DashboardWebview {
     public static currentPanel: DashboardWebview | undefined;
     private readonly _panel: vscode.WebviewPanel;
@@ -70,11 +78,8 @@ export class DashboardWebview {
 
     private async _fetchData(startDateStr: string, endDateStr: string) {
         // e.g. "2026-03-20" -> parse to local midnight explicitly
-        const [sy, sm, sd] = startDateStr.split("-").map(Number);
-        const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
-
-        const [ey, em, ed] = endDateStr.split("-").map(Number);
-        const end = new Date(ey, em - 1, ed, 0, 0, 0, 0);
+        const start = parseLocalDate(startDateStr);
+        const end = parseLocalDate(endDateStr);
 
         const logs = await this._usageTracker.getUsageInRange(start, end);
         this._panel.webview.postMessage({ type: "RENDER_DATA", payload: logs });

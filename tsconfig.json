@@ -11,7 +11,10 @@
         /* Additional Checks */
         "noImplicitReturns": true /* Report error when not all code paths in function return a value. */,
         "noFallthroughCasesInSwitch": true /* Report errors for fallthrough cases in switch statement. */,
-        "noUnusedParameters": true /* Report errors on unused parameters. */
+        "noUnusedParameters": true /* Report errors on unused parameters. */,
+        "noUnusedLocals": true,
+        "noUncheckedIndexedAccess": true,
+        "exactOptionalPropertyTypes": true
     },
     "exclude": ["playground/**", "node_modules/**"]
 }

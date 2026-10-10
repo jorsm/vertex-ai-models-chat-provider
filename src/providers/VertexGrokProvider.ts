@@ -20,7 +20,7 @@ export class VertexGrokProvider implements VertexModelProvider {
     private projectId!: string;
     private region!: string;
     private authOptions?: any;
-    private gateway?: ProxyGateway;
+    private gateway: ProxyGateway | undefined;
     private labels: Record<string, string> = {};
     private catalogResolver?: ModelCatalogResolver;
     private readonly logger = new Logger("VertexGrokProvider");
@@ -278,8 +278,7 @@ export class VertexGrokProvider implements VertexModelProvider {
         const systemParts: string[] = [];
         const mappedMessages: any[] = [];
 
-        for (let i = 0; i < messages.length; i++) {
-            const msg = messages[i];
+        for (const msg of messages) {
             const roleNum = msg.role;
 
             if (roleNum === (0 as vscode.LanguageModelChatMessageRole)) {

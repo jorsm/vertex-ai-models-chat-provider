@@ -21,7 +21,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
     private labels: Record<string, string> = {};
     private readonly logger = new Logger("VertexAnthropicProvider");
     private thinkingReplayCache = new ClaudeThinkingReplayCache();
-    private gateway?: ProxyGateway;
+    private gateway: ProxyGateway | undefined;
 
     initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void {
         this.projectId = projectId;
@@ -202,8 +202,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         const systemParts: string[] = [];
         const mappedMessages: any[] = [];
 
-        for (let i = 0; i < messages.length; i++) {
-            const msg = messages[i];
+        for (const [i, msg] of messages.entries()) {
             const roleNum = msg.role;
             const roleName = this.roleName(roleNum);
             this.logger.log(`  ── Message [${i}] role=${roleName} (${roleNum}), ${msg.content.length} part(s)`);

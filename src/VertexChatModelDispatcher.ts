@@ -1,5 +1,3 @@
-import * as childProcess from "child_process";
-import * as util from "util";
 import { setMaxListeners } from "events";
 import * as vscode from "vscode";
 import { AuthManager } from "./AuthManager";
@@ -18,8 +16,6 @@ import { captureEffortPreferences } from "./effort/EffortConfiguration";
 import { EffortPreferenceSnapshot, snapshot } from "./effort/EffortTypes";
 import { resolveEffort } from "./effort/ResolveEffort";
 import { cancellableRequest, requestCancellation } from "./utils/cancellation";
-
-const execAsync = util.promisify(childProcess.exec);
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -40,8 +36,8 @@ export interface DiscoveryResult {
 
 export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvider {
     private projectId: string;
-    private gateway?: ProxyGateway;
-    private directDiscoveryController?: AbortController;
+    private gateway: ProxyGateway | undefined;
+    private directDiscoveryController: AbortController | undefined;
     private authSubscription?: vscode.Disposable;
     private connectionRevision = 0;
     private inferenceController = new AbortController();
@@ -78,7 +74,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         this.authSubscription?.dispose();
         this._onDidChange.dispose();
     }
-    private region?: string;
+    private region: string | undefined;
     private availableModels: ModelSpec[] = [];
     private readonly activeProviders: Map<string, VertexModelProvider> = new Map();
     private discoveryDone = false;
@@ -467,8 +463,8 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     private mapModels(): vscode.LanguageModelChatInformation[] {
         // Check if we are running in VS Code 1.120 or higher
-        const versionParts = vscode.version.split(".");
-        const isV120OrHigher = Number.parseInt(versionParts[0]) > 1 || (Number.parseInt(versionParts[0]) === 1 && Number.parseInt(versionParts[1]) >= 120);
+        const [major = "0", minor = "0"] = vscode.version.split(".");
+        const isV120OrHigher = Number.parseInt(major) > 1 || (Number.parseInt(major) === 1 && Number.parseInt(minor) >= 120);
 
         const catalog = this.currentEffortCatalog();
         let preferences: EffortPreferenceSnapshot | undefined;
