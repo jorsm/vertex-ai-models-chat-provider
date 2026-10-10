@@ -18,7 +18,7 @@ export interface ResolvedModelRequest {
 }
 export class EffortError extends Error {
     constructor(
-        public readonly code: "unavailable" | "invalid-preference" | "unsupported" | "invalid-catalog" | "stale",
+        public readonly code: "unavailable" | "invalid-preference" | "unsupported" | "stale",
         message: string,
     ) {
         super(message);

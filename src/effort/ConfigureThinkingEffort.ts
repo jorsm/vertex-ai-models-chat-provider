@@ -13,7 +13,7 @@ const LAST = "thinkingEffort.lastConfiguredModelId";
 
 /** One owned picker/session; invoking the command again cancels the previous session. */
 export class ConfigureThinkingEffort implements vscode.Disposable {
-    private cancel?: () => void;
+    private cancel: (() => void) | undefined;
     constructor(
         private readonly provider: Pick<VertexChatModelDispatcher, "getEffortModelSnapshot" | "ensureInitialDiscovery">,
         private readonly context: vscode.ExtensionContext,
@@ -94,15 +94,16 @@ export class ConfigureThinkingEffort implements vscode.Disposable {
                 }
                 pick.items = model.effort.values.map((value) => ({
                     label: effortLabel(value),
-                    description: value === model.effort!.default ? "Default" : undefined,
+                    ...(value === model.effort!.default ? { description: "Default" } : {}),
                     value,
                 }));
                 pick.activeItems = pick.items.filter((item) => item.value === current);
             };
             models();
-            if (pick.items.length === 1) {
-                modelId = pick.items[0].modelId;
-                target = defaultEffortTarget(modelId!);
+            const onlyItem = pick.items[0];
+            if (pick.items.length === 1 && onlyItem?.modelId) {
+                modelId = onlyItem.modelId;
+                target = defaultEffortTarget(modelId);
                 efforts();
             }
             await new Promise<void>((resolve) => {
