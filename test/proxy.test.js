@@ -761,7 +761,7 @@ test("project label prefers workspaceFile over workspace.name when available", a
     inspections.proxyUrl = { globalValue: "https://gateway.test" };
     settings.enableProjectLabel = true;
     const previousWorkspaceFile = vscode.workspace.workspaceFile;
-    vscode.workspace.workspaceFile = vscode.Uri.file("/workspace/noovle-ai-companion.code-workspace");
+    vscode.workspace.workspaceFile = vscode.Uri.file("/workspace/multi-root-project.code-workspace");
     t.after(() => {
         vscode.workspace.workspaceFile = previousWorkspaceFile;
     });
@@ -770,7 +770,7 @@ test("project label prefers workspaceFile over workspace.name when available", a
     await h.dispatcher.infer("gemini-test", userMessage(), { tools: [] }, { report() {} }, cancellation().token, undefined);
 
     const request = h.calls.find((call) => call[0] === "infer");
-    assert.deepEqual(request[7], { "vscode-vertex-ai-project": "noovle-ai-companion" });
+    assert.deepEqual(request[7], { "vscode-vertex-ai-project": "multi-root-project" });
 });
 test("project label strips workspace suffix from workspace.name", async (t) => {
     inspections.proxyUrl = { globalValue: "https://gateway.test" };
@@ -778,7 +778,7 @@ test("project label strips workspace suffix from workspace.name", async (t) => {
     const previousWorkspaceName = vscode.workspace.name;
     const previousWorkspaceFile = vscode.workspace.workspaceFile;
     vscode.workspace.workspaceFile = undefined;
-    vscode.workspace.name = "noovle-ai-companion (Workspace)";
+    vscode.workspace.name = "multi-root-project (Workspace)";
     t.after(() => {
         vscode.workspace.name = previousWorkspaceName;
         vscode.workspace.workspaceFile = previousWorkspaceFile;
@@ -788,7 +788,7 @@ test("project label strips workspace suffix from workspace.name", async (t) => {
     await h.dispatcher.infer("gemini-test", userMessage(), { tools: [] }, { report() {} }, cancellation().token, undefined);
 
     const request = h.calls.find((call) => call[0] === "infer");
-    assert.deepEqual(request[7], { "vscode-vertex-ai-project": "noovle-ai-companion" });
+    assert.deepEqual(request[7], { "vscode-vertex-ai-project": "multi-root-project" });
 });
 test("proxy discovery rejects models without a configured region before initializing adapters", async (t) => {
     inspections.proxyUrl = { globalValue: "https://gateway.test" };

@@ -680,7 +680,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
      * Resolves a clean workspace name suitable for project labeling, addressing specific VS Code edge cases:
      * 1. Multi-root workspace file: When a `.code-workspace` file is loaded, `vscode.workspace.workspaceFile`
      *    points directly to it. Extracting the basename without the `.code-workspace` extension yields the
-     *    intended multi-root project identifier (e.g. 'noovle-ai-companion') rather than the first folder.
+     *    intended multi-root project identifier (e.g. 'my-project') rather than the first folder.
      * 2. Suffix stripping: In VS Code, `vscode.workspace.name` is formatted by LabelService and frequently
      *    includes a localized suffix such as " (Workspace)" or " (Area di lavoro)". If not cleaned,
      *    sanitization converts parenthesis into underscores (e.g. 'project__workspace_').
