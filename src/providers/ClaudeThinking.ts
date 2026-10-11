@@ -1,11 +1,19 @@
 import { createHash, Hash } from "node:crypto";
 
+/**
+ * Builds adaptive-thinking options with the caller's literal effort value.
+ *
+ * @remarks Thinking display is omitted; signed blocks are still accumulated for
+ * tool continuations by {@link ClaudeStreamContentAccumulator}.
+ */
 export function claudeEffortConfig(effort: string) {
     return { thinking: { type: "adaptive" as const, display: "omitted" as const }, output_config: { effort } };
 }
 
+/** Supported content blocks retained for an assistant tool-use continuation. */
 export type ClaudeReplayBlock = { type: "thinking"; thinking: string; signature: string } | { type: "redacted_thinking"; data: string } | { type: "text"; text: string } | { type: "tool_use"; id: string; name: string; input: object };
 
+/** Mutable assembly state for one indexed content block. */
 interface StreamBlockState {
     block: ClaudeReplayBlock;
     inputJson?: string;
@@ -13,23 +21,31 @@ interface StreamBlockState {
     valid: boolean;
 }
 
+/** A complete signed assistant turn and its tool-continuation lookup keys. */
 export interface ClaudeThinkingReplay {
+    /** Content in original stream-index order, including visible and signed blocks. */
     blocks: ClaudeReplayBlock[];
+    /** IDs of tool blocks with nonempty IDs and names. */
     toolCallIds: string[];
-}
-
-function cloneReplayBlocks(blocks: readonly ClaudeReplayBlock[]): ClaudeReplayBlock[] {
-    return JSON.parse(JSON.stringify(blocks)) as ClaudeReplayBlock[];
 }
 
 /**
  * Reassembles Claude's streamed content blocks in their original index order.
- * Thinking content is never exposed by this class; it is retained only so a
- * tool-use continuation can send the exact signed blocks back to Claude.
+ *
+ * @remarks
+ * This class accumulates content without publishing response parts. The provider
+ * uses visible blocks for responses and retains signed blocks so a tool-use
+ * continuation can send the completed assistant turn back unchanged.
  */
 export class ClaudeStreamContentAccumulator {
     private readonly states = new Map<number, StreamBlockState>();
 
+    /**
+     * Starts a recognized block at its stream index, replacing any prior state.
+     *
+     * @remarks Unknown block types are ignored. Tool input must be an object;
+     * otherwise the initial input is an empty object.
+     */
     start(index: number, contentBlock: any): void {
         let block: ClaudeReplayBlock | undefined;
 
@@ -62,6 +78,7 @@ export class ClaudeStreamContentAccumulator {
         }
     }
 
+    /** Appends matching text, thinking, signature or tool-JSON deltas to a block. */
     delta(index: number, delta: any): void {
         const state = this.states.get(index);
         if (!state) {
@@ -79,6 +96,15 @@ export class ClaudeStreamContentAccumulator {
         }
     }
 
+    /**
+     * Finalizes a known block and returns a defensive JSON copy.
+     *
+     * @remarks Malformed or non-object tool JSON invalidates replay eligibility
+     * while leaving the initial input in the returned block. Callers currently
+     * emit that tool block; this behavior is recorded for a later decision.
+     *
+     * @returns Undefined when no recognized block was started at the index.
+     */
     stop(index: number): ClaudeReplayBlock | undefined {
         const state = this.states.get(index);
         if (!state) {
@@ -101,6 +127,12 @@ export class ClaudeStreamContentAccumulator {
         return JSON.parse(JSON.stringify(state.block)) as ClaudeReplayBlock;
     }
 
+    /**
+     * Creates a replay only when every accumulated block is stopped and valid.
+     *
+     * @remarks Requires signed thinking or redacted data and at least one named
+     * tool call with an ID. The returned blocks are copied in stream-index order.
+     */
     createThinkingReplay(): ClaudeThinkingReplay | undefined {
         const orderedStates = [...this.states.entries()]
             .sort(([a], [b]) => a - b)
@@ -127,18 +159,20 @@ export class ClaudeStreamContentAccumulator {
     }
 }
 
-function withoutCacheMarker(block: any): any {
-    const { cache_control: _cacheControl, ...rest } = block;
-    if (rest.type === "tool_result" && Array.isArray(rest.content)) {
-        rest.content = rest.content.map(withoutCacheMarker);
-    }
-    return rest;
-}
-
-/** Incremental hash: keep no copy of prompts, tool results or reasoning. */
+/**
+ * Incrementally fingerprints the model, system prompt, tools and message prefix.
+ *
+ * @remarks The hash retains no copy of prompts, tool results or reasoning. Cache
+ * markers are excluded without modifying the supplied blocks or tool inputs.
+ */
 export class ClaudeThinkingPrefix {
     private hash: Hash;
 
+    /**
+     * Starts a model/system/tool fingerprint, or adopts a supplied hash snapshot.
+     *
+     * @param hash - Internal snapshot used by {@link copy}.
+     */
     constructor(model: string, system?: any[], tools?: any[], hash?: Hash) {
         this.hash =
             hash ??
@@ -151,14 +185,22 @@ export class ClaudeThinkingPrefix {
             );
     }
 
+    /** Adds the message role and content, excluding transport cache markers. */
     append(message: any): void {
         this.hash.update(JSON.stringify({ role: message.role, content: message.content.map(withoutCacheMarker) }));
     }
 
+    /** Returns an independent hash snapshot without retaining the source history. */
     copy(): ClaudeThinkingPrefix {
         return new ClaudeThinkingPrefix("", undefined, undefined, this.hash.copy());
     }
 
+    /**
+     * Hashes the prefix plus visible assistant blocks without consuming this hash.
+     *
+     * @remarks Thinking and redacted blocks are excluded so the same fingerprint
+     * can validate mapped history before its signed replay has been restored.
+     */
     fingerprint(assistantBlocks: readonly any[]): string {
         const visible = assistantBlocks.filter((block) => block.type !== "thinking" && block.type !== "redacted_thinking");
         const copy = this.copy();
@@ -169,13 +211,20 @@ export class ClaudeThinkingPrefix {
 
 type CachedReplay = ClaudeThinkingReplay & { prefixFingerprint: string | undefined };
 
-/** Keeps a bounded set of signed assistant turns for VS Code tool continuations. */
+/**
+ * Keeps a bounded set of signed assistant turns for VS Code tool continuations.
+ *
+ * @remarks Replays are indexed by tool-call ID and copied on storage and lookup.
+ * Matching requires the complete set of tool calls from one retained turn.
+ */
 export class ClaudeThinkingReplayCache {
     private readonly byToolCallId = new Map<string, CachedReplay>();
     private readonly turns: CachedReplay[] = [];
 
+    /** @param maxTurns - Maximum number of retained assistant turns; defaults to 64. */
     constructor(private readonly maxTurns = 64) {}
 
+    /** Stores a defensive copy and evicts oldest turns beyond the configured bound. */
     store(replay: ClaudeThinkingReplay, prefixFingerprint?: string): void {
         const cached: CachedReplay = {
             blocks: cloneReplayBlocks(replay.blocks),
@@ -200,6 +249,12 @@ export class ClaudeThinkingReplayCache {
         }
     }
 
+    /**
+     * Finds a retained turn by its complete tool-call set and optional fingerprint.
+     *
+     * @remarks A supplied fingerprint mismatch permanently removes that turn's
+     * lookup entries. Matching blocks are returned as a defensive JSON copy.
+     */
     find(toolCallIds: readonly string[], prefixFingerprint?: string): ClaudeReplayBlock[] | undefined {
         const requestedIds = new Set(toolCallIds);
         for (const callId of requestedIds) {
@@ -220,4 +275,18 @@ export class ClaudeThinkingReplayCache {
         }
         return undefined;
     }
+}
+
+/** Creates the existing JSON copy used at replay storage/lookup boundaries. */
+function cloneReplayBlocks(blocks: readonly ClaudeReplayBlock[]): ClaudeReplayBlock[] {
+    return JSON.parse(JSON.stringify(blocks)) as ClaudeReplayBlock[];
+}
+
+/** Strips block-level cache markers while preserving actual tool-input fields. */
+function withoutCacheMarker(block: any): any {
+    const { cache_control: _cacheControl, ...rest } = block;
+    if (rest.type === "tool_result" && Array.isArray(rest.content)) {
+        rest.content = rest.content.map(withoutCacheMarker);
+    }
+    return rest;
 }

@@ -5,24 +5,40 @@ import { Logger } from "../utils/Logger";
 import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryableError } from "../utils/discovery";
 import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
-import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix, claudeEffortConfig } from "./ClaudeThinking";
+import { ClaudeThinkingReplayCache, claudeEffortConfig } from "./ClaudeThinking";
+import { mapClaudeMessages, mapClaudeTools, logClaudeMessages } from "./anthropic/ClaudeMessages";
+import { restoreClaudeThinking, applyClaudeCacheControl } from "./anthropic/ClaudeRequestContext";
+import { processClaudeStream } from "./anthropic/ClaudeStream";
 import type { ResolvedModelRequest } from "../effort/Effort";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 import { ProxyGateway, isGatewayRetryable, normalizeGatewayError, gatewayRetryDelayMs } from "../ProxyGateway";
 import { requestCancellation, cancellableRequest } from "../utils/cancellation";
 
-// ─── Provider Plugin ───────────────────────────────────────────────────────
-
+/**
+ * Provides Claude discovery and streaming inference through Vertex or a gateway.
+ *
+ * @remarks Request conversion, cache markers and stream events are handled by
+ * {@link mapClaudeMessages}, {@link applyClaudeCacheControl} and
+ * {@link processClaudeStream}; this class owns transport and request lifetimes.
+ */
 export class VertexAnthropicProvider implements VertexModelProvider {
+    /** Catalog vendor handled by this provider. */
     vendor = "anthropic";
     private client!: AnthropicVertex;
     private projectId!: string;
     private region!: string;
     private labels: Record<string, string> = {};
     private readonly logger = new Logger("VertexAnthropicProvider");
+    /** Signed tool turns retained until eviction or the next initialization. */
     private thinkingReplayCache = new ClaudeThinkingReplayCache();
     private gateway: ProxyGateway | undefined;
 
+    /**
+     * Configures the SDK transport and starts a fresh signed-turn cache.
+     *
+     * @remarks Gateway requests disable SDK retries; direct requests retain SDK
+     * defaults. In-flight inference keeps its previously captured client/cache.
+     */
     initialize(projectId: string, region: string, authOptions?: any, gateway?: ProxyGateway): void {
         this.projectId = projectId;
         this.region = region;
@@ -49,10 +65,17 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         });
     }
 
+    /** Sets labels used when a request does not provide its own label object. */
     setLabels(labels: Record<string, string>): void {
         this.labels = labels;
     }
 
+    /**
+     * Probes availability with a one-token response and no SDK retries.
+     *
+     * @returns False for aborted probes and ordinary failures. Authentication
+     * and retryable discovery errors are propagated to the discovery caller.
+     */
     async pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean> {
         try {
             options?.signal.throwIfAborted();
@@ -83,14 +106,24 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         }
     }
 
-    // ── Token counting (heuristic) ─────────────────────────────────────────
-
+    /** Estimates tokens locally using the shared heuristic, without an API call. */
     async provideTokenCount(text: string | vscode.LanguageModelChatRequestMessage, _token: vscode.CancellationToken): Promise<number> {
         return estimateTokens(text);
     }
 
-    // ── Chat response (inference) ─────────────────────────────────────────
-
+    /**
+     * Maps history, restores signed tool turns and streams a Claude response.
+     *
+     * @remarks
+     * Model identity and effort prefer the resolved request. The output budget
+     * continues to use the optional catalog spec, falling back to 4096 tokens.
+     * An explicit label object, including an empty one, overrides stored labels.
+     * Cancellation links the VS Code token with the gateway lifetime signal.
+     *
+     * @returns Backend usage and the existing character attribution counters.
+     * @throws A VS Code cancellation error on abort, or the inference error
+     * normalized for gateway transport when applicable.
+     */
     async provideLanguageModelChatResponse(
         modelId: string,
         messages: readonly vscode.LanguageModelChatRequestMessage[],
@@ -121,14 +154,14 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         try {
             const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
 
-            const { systemBlocks, mappedMessages } = this.mapMessages(messages, charCount);
+            const { systemBlocks, mappedMessages } = mapClaudeMessages(messages, charCount, this.logger);
 
-            const tools = this.mapTools(options, charCount);
+            const tools = mapClaudeTools(options, charCount);
 
-            const thinkingPrefix = this.restoreThinking(actualId, systemBlocks, tools, mappedMessages);
-            this.applyCacheControl(tools, systemBlocks, mappedMessages);
+            const thinkingPrefix = restoreClaudeThinking(actualId, systemBlocks, tools, mappedMessages, this.thinkingReplayCache, this.logger);
+            applyClaudeCacheControl(tools, systemBlocks, mappedMessages, this.logger);
 
-            this.logMappedMessages(actualId, mappedMessages, systemBlocks, tools, maxTokens);
+            logClaudeMessages(actualId, mappedMessages, systemBlocks, tools, maxTokens, this.logger);
 
             const stream = await withRetry<any>(
                 () =>
@@ -156,7 +189,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
             this.logger.log(`  Stream created successfully`);
 
-            const usage = await this.processStream(stream, charCount, progress, token, cancellation.signal, thinkingPrefix, replayCache);
+            const usage = await processClaudeStream(stream, charCount, progress, token, replayCache, this.logger, cancellation.signal, thinkingPrefix);
             if (cancellation.signal.aborted) {
                 throw new vscode.CancellationError();
             }
@@ -193,346 +226,6 @@ export class VertexAnthropicProvider implements VertexModelProvider {
             throw e;
         } finally {
             cancellation.dispose();
-        }
-    }
-
-    // ── Message mapping ───────────────────────────────────────────────────
-
-    private mapMessages(messages: readonly vscode.LanguageModelChatRequestMessage[], charCount: { system: number; user_text: number; assistant_text: number; image: number; tool_use: number; tool_result: number }): { systemBlocks: any[] | undefined; mappedMessages: any[] } {
-        const systemParts: string[] = [];
-        const mappedMessages: any[] = [];
-
-        for (const [
-            i,
-            msg,
-        ] of messages.entries()) {
-            const roleNum = msg.role;
-            const roleName = this.roleName(roleNum);
-            this.logger.log(`  ── Message [${i}] role=${roleName} (${roleNum}), ${msg.content.length} part(s)`);
-
-            this.logMessageParts(msg.content);
-
-            if (roleNum !== vscode.LanguageModelChatMessageRole.User && roleNum !== vscode.LanguageModelChatMessageRole.Assistant) {
-                this.extractSystemParts(msg.content, systemParts, charCount);
-                continue;
-            }
-
-            const role = roleNum === vscode.LanguageModelChatMessageRole.User ? "user" : "assistant";
-            const contentParts = this.mapContentParts(msg.content, role, charCount);
-            mappedMessages.push({ role, content: contentParts });
-        }
-
-        if (mappedMessages.length === 0 || mappedMessages[0].role !== "user") {
-            this.logger.log(`  ⚠️  No user messages — inserting placeholder`);
-            mappedMessages.unshift({ role: "user", content: [{ type: "text", text: " " }] });
-        }
-
-        const systemBlocks = systemParts.length > 0 ? systemParts.map((text) => ({ type: "text", text })) : undefined;
-        return { systemBlocks, mappedMessages };
-    }
-
-    private restoreThinking(model: string, system: any[] | undefined, tools: any[] | undefined, messages: any[]): ClaudeThinkingPrefix {
-        const prefix = new ClaudeThinkingPrefix(model, system, tools);
-        for (const message of messages) {
-            if (message.role === "assistant") {
-                const ids = message.content.flatMap((block: any) => (block.type === "tool_use" ? [block.id] : []));
-                const hadReplay = this.thinkingReplayCache.find(ids) !== undefined;
-                const blocks = this.thinkingReplayCache.find(ids, prefix.fingerprint(message.content));
-                if (blocks) {
-                    message.content = blocks;
-                    this.logger.log(`  Restored signed thinking for ${ids.length} tool call(s): prefix unchanged`);
-                } else if (hadReplay) {
-                    this.logger.log(`  Discarded cached thinking for ${ids.length} tool call(s): context, tools or assistant content changed`);
-                }
-            }
-            prefix.append(message);
-        }
-        return prefix;
-    }
-
-    private roleName(roleNum: vscode.LanguageModelChatMessageRole): string {
-        if (roleNum === vscode.LanguageModelChatMessageRole.User) {
-            return "User";
-        }
-        if (roleNum === vscode.LanguageModelChatMessageRole.Assistant) {
-            return "Assistant";
-        }
-        return "System";
-    }
-
-    private extractSystemParts(content: readonly vscode.LanguageModelChatRequestMessage["content"][number][], systemParts: string[], charCount: { system: number }): void {
-        for (const part of content) {
-            if (part instanceof vscode.LanguageModelTextPart && part.value.length > 0) {
-                systemParts.push(part.value);
-                charCount.system += part.value.length;
-            }
-        }
-        this.logger.log(`     → Extracted as system prompt (${systemParts.length} part(s) so far, ${systemParts.reduce((a, s) => a + s.length, 0)} chars total)`);
-    }
-
-    private logMessageParts(content: readonly vscode.LanguageModelChatRequestMessage["content"][number][]): void {
-        content.forEach((part, p) => {
-            if (part instanceof vscode.LanguageModelTextPart) {
-                const preview = part.value.length > 300 ? "…" + part.value.slice(-300) : part.value;
-                this.logger.log(`     Part [${p}] TextPart (${part.value.length} chars): ${preview}`);
-            } else if (part instanceof vscode.LanguageModelToolResultPart) {
-                this.logger.log(`     Part [${p}] ToolResultPart callId=${part.callId}, content: ${this.previewToolResult(part)}`);
-            } else if (part instanceof vscode.LanguageModelToolCallPart) {
-                const inputStr = JSON.stringify(part.input);
-                const inputPreview = inputStr.length > 200 ? "…" + inputStr.slice(-200) : inputStr;
-                this.logger.log(`     Part [${p}] ToolCallPart callId=${part.callId}, name=${part.name}, input=${inputPreview}`);
-            } else if (part instanceof vscode.LanguageModelDataPart) {
-                this.logger.log(`     Part [${p}] DataPart mime=${part.mimeType}, size=${part.data?.byteLength ?? 0} bytes`);
-            } else {
-                const keys = Object.keys(part as object);
-                const snapshot = keys
-                    .slice(0, 5)
-                    .map((k) => `${k}=${String((part as Record<string, unknown>)[k]).slice(0, 50)}`)
-                    .join(", ");
-                this.logger.log(`     Part [${p}] Unknown part type: ${Object.getPrototypeOf(part)?.constructor?.name ?? typeof part} — keys: [${keys.join(", ")}] ${snapshot}`);
-            }
-        });
-    }
-
-    private previewToolResult(part: vscode.LanguageModelToolResultPart): string {
-        if (!Array.isArray(part.content)) {
-            const s = String(part.content);
-            return s.length > 100 ? "…" + s.slice(-100) : s;
-        }
-        return part.content
-            .map((c) => {
-                if (c instanceof vscode.LanguageModelTextPart) {
-                    return c.value.length > 100 ? "…" + c.value.slice(-100) : c.value;
-                }
-                return JSON.stringify(c).slice(-100);
-            })
-            .join(", ");
-    }
-
-    private mapContentParts(content: readonly vscode.LanguageModelChatRequestMessage["content"][number][], role: string, charCount: { user_text: number; assistant_text: number; image: number; tool_use: number; tool_result: number }): any[] {
-        const contentParts: any[] = [];
-
-        for (const part of content) {
-            if (part instanceof vscode.LanguageModelTextPart) {
-                this.mapTextPart(part, role, contentParts, charCount);
-            } else if (part instanceof vscode.LanguageModelToolResultPart) {
-                this.mapToolResultPart(part, contentParts, charCount);
-            } else if (part instanceof vscode.LanguageModelToolCallPart) {
-                contentParts.push({ type: "tool_use", id: part.callId, name: part.name, input: part.input });
-                charCount.tool_use += JSON.stringify(part.input).length + part.name.length;
-            } else if (part instanceof vscode.LanguageModelDataPart) {
-                this.mapDataPart(part, role, contentParts, charCount);
-            }
-        }
-
-        if (contentParts.length === 0) {
-            contentParts.push({ type: "text", text: " " });
-        }
-        return contentParts;
-    }
-
-    private mapTextPart(part: vscode.LanguageModelTextPart, role: string, contentParts: any[], charCount: { user_text: number; assistant_text: number }): void {
-        if (part.value.length === 0) {
-            return;
-        }
-        contentParts.push({ type: "text", text: part.value });
-        if (role === "user") {
-            charCount.user_text += part.value.length;
-        } else {
-            charCount.assistant_text += part.value.length;
-        }
-    }
-
-    private mapToolResultPart(part: vscode.LanguageModelToolResultPart, contentParts: any[], charCount: { tool_result: number }): void {
-        let toolResultStr = "";
-        if (Array.isArray(part.content)) {
-            toolResultStr = part.content.map((c) => (c instanceof vscode.LanguageModelTextPart ? c.value : JSON.stringify(c))).join("\n");
-        }
-        contentParts.push({ type: "tool_result", tool_use_id: part.callId, content: toolResultStr || " " });
-        charCount.tool_result += toolResultStr.length;
-    }
-
-    private mapDataPart(part: vscode.LanguageModelDataPart, role: string, contentParts: any[], charCount: { user_text: number; assistant_text: number; image: number }): void {
-        if (part.mimeType?.startsWith("image/")) {
-            const base64 = Buffer.from(part.data).toString("base64");
-            contentParts.push({ type: "image", source: { type: "base64", media_type: part.mimeType, data: base64 } });
-            charCount.image += base64.length;
-            this.logger.log(`     🖼️  Mapped image: ${part.mimeType}, ${part.data.byteLength} bytes → base64 (${base64.length} chars)`);
-        } else {
-            this.mapNonImageDataPart(part, role, contentParts, charCount);
-        }
-    }
-
-    private mapNonImageDataPart(part: vscode.LanguageModelDataPart, role: string, contentParts: any[], charCount: { user_text: number; assistant_text: number }): void {
-        try {
-            const text = new TextDecoder().decode(part.data);
-            if (text.length > 0) {
-                contentParts.push({ type: "text", text });
-                if (role === "user") {
-                    charCount.user_text += text.length;
-                } else {
-                    charCount.assistant_text += text.length;
-                }
-                this.logger.log(`     📎 Mapped non-image DataPart (${part.mimeType}) as text (${text.length} chars)`);
-            }
-        } catch {
-            this.logger.log(`     ⚠️  Skipped non-image DataPart (${part.mimeType}, ${part.data.byteLength} bytes) — could not decode`);
-        }
-    }
-
-    // ── Tool schema mapping ───────────────────────────────────────────────
-
-    private mapTools(options: vscode.ProvideLanguageModelChatResponseOptions, charCount: { system: number }): any[] | undefined {
-        if (!options.tools?.length) {
-            return undefined;
-        }
-
-        const tools = options.tools.map((t) => ({
-            name: t.name,
-            description: t.description,
-            input_schema: t.inputSchema ?? { type: "object", properties: {} },
-        }));
-
-        charCount.system += JSON.stringify(tools).length;
-        return tools;
-    }
-
-    // ── Cache control ─────────────────────────────────────────────────────
-
-    private applyCacheControl(tools: any[] | undefined, systemBlocks: any[] | undefined, mappedMessages: any[]): void {
-        // 1. Static Prefix Caching (System / Tools)
-        const prefixCached = this.applyPrefixCache(tools, systemBlocks);
-
-        // 2. Chat History Caching (Messages)
-        const { historyCached, historyTokens } = this.applyHistoryCache(mappedMessages);
-
-        this.logger.log(`  Caching Strategy Applied: Prefix=${prefixCached}, History=${historyCached} (Estimated ${historyTokens} tokens)`);
-    }
-
-    private applyPrefixCache(tools: any[] | undefined, systemBlocks: any[] | undefined): boolean {
-        if (tools && tools.length > 0) {
-            tools.at(-1).cache_control = { type: "ephemeral" };
-            return true;
-        }
-        if (systemBlocks && systemBlocks.length > 0) {
-            systemBlocks.at(-1).cache_control = { type: "ephemeral" };
-            return true;
-        }
-        return false;
-    }
-
-    private applyHistoryCache(mappedMessages: any[]): { historyCached: boolean; historyTokens: number } {
-        let historyTokens = 0;
-        for (let i = 0; i < mappedMessages.length - 1; i++) {
-            historyTokens += Math.ceil(JSON.stringify(mappedMessages[i]).length / 4);
-        }
-
-        if (historyTokens > 1024 && mappedMessages.length > 1) {
-            const secondToLast = mappedMessages.at(-2);
-            if (secondToLast?.content?.length > 0) {
-                secondToLast.content.at(-1).cache_control = { type: "ephemeral" };
-                return { historyCached: true, historyTokens };
-            }
-        }
-        return { historyCached: false, historyTokens };
-    }
-
-    // ── Logging helpers ───────────────────────────────────────────────────
-
-    private logMappedMessages(modelId: string, mappedMessages: any[], systemBlocks: any[] | undefined, tools: any[] | undefined, maxTokens: number): void {
-        this.logger.log(`  ── Mapped messages summary ──`);
-        for (let i = 0; i < mappedMessages.length; i++) {
-            const mm = mappedMessages[i];
-            const partsDesc = mm.content.map((p: any) => p.type + (p.cache_control ? " [CACHED]" : "")).join(", ");
-            this.logger.log(`     [${i}] ${mm.role}: ${partsDesc}`);
-        }
-
-        const sysCharCount = systemBlocks ? systemBlocks.reduce((a: number, b: any) => a + b.text.length, 0) : 0;
-        const sysLog = systemBlocks ? sysCharCount + " chars" : "none";
-        this.logger.log(`  Sending: model=${modelId}, max_tokens=${maxTokens}, msgs=${mappedMessages.length}, system=${sysLog}, tools=${tools?.length ?? 0}`);
-    }
-
-    // ── Stream processing ─────────────────────────────────────────────────
-
-    private async processStream(
-        stream: AsyncIterable<any>,
-        charCount: { assistant_text: number; tool_use: number },
-        progress: vscode.Progress<vscode.LanguageModelResponsePart>,
-        token: vscode.CancellationToken,
-        signal?: AbortSignal,
-        thinkingPrefix?: ClaudeThinkingPrefix,
-        replayCache = this.thinkingReplayCache,
-    ): Promise<{ input: number; output: number; cache_read: number; cache_create: number }> {
-        const contentAccumulator = new ClaudeStreamContentAccumulator();
-        const tokenUsage = { input: 0, output: 0, cache_read: 0, cache_create: 0 };
-        let chunkCount = 0;
-        let cancelled = false;
-
-        for await (const chunk of stream) {
-            if (signal?.aborted) {
-                throw new vscode.CancellationError();
-            }
-            chunkCount++;
-            if (token.isCancellationRequested) {
-                this.logger.log(`  Cancelled after ${chunkCount} chunks`);
-                cancelled = true;
-                break;
-            }
-            this.handleStreamChunk(chunk, charCount, progress, contentAccumulator, tokenUsage);
-        }
-
-        if (signal?.aborted) {
-            throw new vscode.CancellationError();
-        }
-        if (!cancelled) {
-            const replay = contentAccumulator.createThinkingReplay();
-            if (replay) {
-                replayCache.store(replay, thinkingPrefix?.fingerprint(replay.blocks));
-                const hiddenBlockCount = replay.blocks.filter((block) => block.type === "thinking" || block.type === "redacted_thinking").length;
-                this.logger.log(`  🔒 Retained ${hiddenBlockCount} signed thinking block(s) for ${replay.toolCallIds.length} tool continuation(s)`);
-            }
-        }
-
-        this.logger.log(`  ✅ Stream finished — ${chunkCount} chunks total`);
-        return tokenUsage;
-    }
-
-    private handleStreamChunk(
-        chunk: any,
-        charCount: { assistant_text: number; tool_use: number },
-        progress: vscode.Progress<vscode.LanguageModelResponsePart>,
-        contentAccumulator: ClaudeStreamContentAccumulator,
-        tokenUsage: { input: number; output: number; cache_read: number; cache_create: number },
-    ): void {
-        if (chunk.type === "message_start") {
-            const usage = chunk.message?.usage;
-            if (usage) {
-                tokenUsage.input = usage.input_tokens ?? 0;
-                tokenUsage.cache_read = usage.cache_read_input_tokens ?? 0;
-                tokenUsage.cache_create = usage.cache_creation_input_tokens ?? 0;
-                this.logger.log(`  📊 Input tokens: ${tokenUsage.input}, cache_read: ${tokenUsage.cache_read}, cache_create: ${tokenUsage.cache_create}`);
-            }
-        } else if (chunk.type === "message_delta") {
-            const usage = chunk.usage;
-            if (usage) {
-                tokenUsage.output = usage.output_tokens ?? 0;
-                this.logger.log(`  📊 Output tokens: ${tokenUsage.output}`);
-            }
-        } else if (chunk.type === "content_block_start") {
-            contentAccumulator.start(chunk.index, chunk.content_block);
-        } else if (chunk.type === "content_block_delta") {
-            contentAccumulator.delta(chunk.index, chunk.delta);
-            if (chunk.delta.type === "text_delta") {
-                charCount.assistant_text += chunk.delta.text.length;
-                progress.report(new vscode.LanguageModelTextPart(chunk.delta.text));
-            } else if (chunk.delta.type === "input_json_delta") {
-                charCount.tool_use += chunk.delta.partial_json.length;
-            }
-        } else if (chunk.type === "content_block_stop") {
-            const completedBlock = contentAccumulator.stop(chunk.index);
-            if (completedBlock?.type === "tool_use") {
-                progress.report(new vscode.LanguageModelToolCallPart(completedBlock.id, completedBlock.name, completedBlock.input));
-            }
         }
     }
 }

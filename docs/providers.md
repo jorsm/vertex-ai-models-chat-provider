@@ -1,7 +1,7 @@
 # docs/providers.md
 
 > **Overview**
-> This module contains the provider implementations that bridge VS Code's Language Model API with Vertex AI backend services. It handles authentication via Application Default Credentials or stored Service Account credentials, model discovery, and the transformation of VS Code's chat protocol into provider-specific payloads (Anthropic/Google).
+> This module contains the provider implementations that bridge VS Code's Language Model API with Vertex AI backend services. It handles authentication via Application Default Credentials or stored Service Account credentials, model discovery, and the transformation of VS Code's chat protocol into provider-specific payloads (Anthropic/Google/Grok).
 
 ## Table of Contents
 
@@ -37,11 +37,28 @@
 
 The provider architecture uses a unified `VertexModelProvider` interface to support multiple model families.
 
+The provider entry points retain their existing paths and coordinate configuration, discovery, request creation, retries, and cancellation. Vendor-specific message conversion and stream interpretation live in helper modules:
+
+| Area                     | Modules                                                                                                                | Responsibility                                                                                   |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Shared contract          | [VertexModelProvider.ts](../src/providers/VertexModelProvider.ts)                                                      | Catalog metadata, inference results, diagnostic counters, and the adapter interface.             |
+| Claude messages          | [ClaudeMessages.ts](../src/providers/anthropic/ClaudeMessages.ts)                                                      | History/tool conversion and mapping diagnostics.                                                 |
+| Claude request context   | [ClaudeRequestContext.ts](../src/providers/anthropic/ClaudeRequestContext.ts)                                          | Signed replay restoration and ephemeral cache marker placement.                                  |
+| Claude stream and replay | [ClaudeStream.ts](../src/providers/anthropic/ClaudeStream.ts), [ClaudeThinking.ts](../src/providers/ClaudeThinking.ts) | Stream events, ordered block assembly, prefix fingerprints, and bounded replay storage.          |
+| Gemini messages          | [GeminiMessages.ts](../src/providers/google/GeminiMessages.ts)                                                         | History conversion, function responses, signature lookup, and reasoning-header filtering.        |
+| Gemini stream            | [GeminiStream.ts](../src/providers/google/GeminiStream.ts)                                                             | Candidate interpretation, buffered function calls, signature storage, and streamed token counts. |
+| Gemini tool schemas      | [VertexToolSchema.ts](../src/providers/google/VertexToolSchema.ts)                                                     | Background discovery and recursive schema-key filtering.                                         |
+| Grok messages            | [GrokMessages.ts](../src/providers/grok/GrokMessages.ts)                                                               | OpenAI-compatible history and tool declarations.                                                 |
+| Grok stream              | [GrokStream.ts](../src/providers/grok/GrokStream.ts)                                                                   | Incremental tool arguments, response progress, and backend-specific usage normalization.         |
+| Grok transport           | [GrokTransport.ts](../src/providers/grok/GrokTransport.ts)                                                             | Direct client authentication and malformed SSE keepalive filtering.                              |
+
+This organization preserves existing business logic. The [provider follow-up topics](providers-follow-up.md) record observed behaviors and unresolved design choices for separate discussion, including signature identity, malformed tool arguments, retries, usage contracts, and schema discovery.
+
 The dispatcher groups models by vendor and literal catalog `version`, then schedules one discovery operation per backend in each region, with at most three concurrent endpoints and staggered starts. Each operation calls `pingModel()` without effort settings and retries transient failures within the endpoint deadline. A 429 preserves reachability. Entries sharing the same vendor/version share availability; each request resolves its effort independently.
 
-- **Google Gemini Integration**: Managed by `VertexGoogleProvider`, supporting Gemini 3 Flash Preview, Gemini 3.7 and 3.8 Flash, and Gemini 3.1 Pro Preview.
-- **Anthropic Claude Integration**: Managed by `VertexAnthropicProvider`, supporting Claude Opus, Fable, Sonnet, and Haiku variants from the active model catalog.
-- **xAI Grok Integration**: Managed by `VertexGrokProvider`, providing access to Grok 4.6 at High (Default), Low, and Medium effort through Vertex AI's OpenAI-compatible endpoint.
+- **Google Gemini Integration**: Managed by `VertexGoogleProvider`, using model versions and effort defaults from the active catalog.
+- **Anthropic Claude Integration**: Managed by `VertexAnthropicProvider`, using model versions and effort defaults from the active catalog.
+- **xAI Grok Integration**: Managed by `VertexGrokProvider` through Vertex AI's OpenAI-compatible endpoint, using literal backend paths and effort defaults from the active catalog.
 - **Thinking Models**: Bundled models use independent effort configuration: Gemini sends `thinkingConfig.thinkingLevel` and Claude sends adaptive thinking with `output_config.effort`.
 - **Thought Signatures**: Provider-specific mechanisms maintain reasoning continuity across tool calls by caching and re-injecting Gemini signatures or Claude signed thinking/redacted-thinking blocks.
 - **Parallel Tool Execution**: Implementation of tool call buffering and message merging to satisfy Gemini's requirements for grouped function responses.
@@ -87,7 +104,7 @@ Estimates token usage using a 4-characters-per-token heuristic for text strings 
 #### provideLanguageModelChatResponse
 
 [source](../src/providers/VertexAnthropicProvider.ts)
-`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>, spec?: ModelSpec): Promise<ChatInferenceResult>`
+`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>, spec?: ModelSpec, request?: ResolvedModelRequest): Promise<ChatInferenceResult>`
 
 Handles chat inference for Anthropic models. This method:
 
@@ -152,7 +169,7 @@ Strips the leaked signature prefix from a reasoning header text block, returning
 #### provideLanguageModelChatResponse
 
 [source](../src/providers/VertexGoogleProvider.ts)
-`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>, spec?: ModelSpec): Promise<ChatInferenceResult>`
+`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>, spec?: ModelSpec, request?: ResolvedModelRequest): Promise<ChatInferenceResult>`
 
 Main entry point for chat inference. This method:
 
@@ -198,7 +215,7 @@ Updates internal labels for request logging only. The Grok OpenAI-compatible req
 [source](../src/providers/VertexGrokProvider.ts)
 `pingModel(modelVersion: string, options?: DiscoveryProbeOptions): Promise<boolean>`
 
-Verifies the availability of the model path (e.g., `xai/grok-4.6`) in the catalog-selected region by sending a minimal OpenAI-format chat completion request using the provided `DiscoveryProbeOptions`. It rejects unsupported model paths before making requests; regional availability is determined by the probe response. It surfaces transient failures as `DiscoveryRetryableError`; 429 responses carry evidence of reachability for the shared retry policy.
+Verifies the availability of the literal model path (e.g., `xai/grok-4.6`) in the catalog-selected region by sending a minimal OpenAI-format chat completion request using the provided `DiscoveryProbeOptions`. It rejects proxy transport before making requests; direct model paths are passed through and regional availability is determined by the probe response. It surfaces transient failures as `DiscoveryRetryableError`; 429 responses carry evidence of reachability for the shared retry policy.
 
 #### provideTokenCount
 
@@ -210,7 +227,7 @@ Estimates token usage using a 4-characters-per-token heuristic.
 #### provideLanguageModelChatResponse
 
 [source](../src/providers/VertexGrokProvider.ts)
-`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>, spec?: ModelSpec): Promise<ChatInferenceResult>`
+`provideLanguageModelChatResponse(modelId: string, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken, labels?: Record<string, string>, spec?: ModelSpec, request?: ResolvedModelRequest): Promise<ChatInferenceResult>`
 
 Handles Grok 4.6 chat inference using an OpenAI client. This method:
 
