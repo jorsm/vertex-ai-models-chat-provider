@@ -41,7 +41,15 @@ jobs:
                   npx --no-install vsce package --pre-release --no-dependencies --out "$VSIX_PATH"
 
             - name: Verify prerelease manifest
-              run: unzip -p "$VSIX_PATH" extension.vsixmanifest | rg -q 'Microsoft.VisualStudio.Code.PreRelease" Value="true'
+              run: |
+                  node <<'NODE'
+                  const { execFileSync } = require("node:child_process");
+                  const manifest = execFileSync("unzip", ["-p", process.env.VSIX_PATH, "extension.vsixmanifest"], { encoding: "utf8" });
+                  if (!manifest.includes('Id="Microsoft.VisualStudio.Code.PreRelease" Value="true"')) {
+                    console.error("::error::The prerelease artifact is missing its prerelease manifest.");
+                    process.exit(1);
+                  }
+                  NODE
 
             - name: Require live ADC acceptance
               id: live-gate
