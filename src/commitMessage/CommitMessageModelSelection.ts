@@ -1,13 +1,34 @@
 import * as vscode from "vscode";
-import { resolveCommitMessageResourceUri } from "./CommitMessage";
-import type { CommitMessageCommandContext } from "./CommitMessage";
 import type { VertexChatModelDispatcher } from "../VertexChatModelDispatcher";
+import { resolveCommitMessageResourceUri } from "./CommitMessageContext";
+import type { CommitMessageCommandContext } from "./CommitMessageContext";
 
-/** Selects an available model and persists the choice in the commit-message setting. */
+/**
+ * Discovers models, prompts for a selection, and saves the commit-message model ID.
+ *
+ * @remarks
+ * Handles `vertexAiChat.selectCommitMessageModel`. Both commit-message commands
+ * use {@link resolveCommitMessageResourceUri} to choose their resource.
+ *
+ * The picker includes every discovered model and places the configured model
+ * first when available. Dismissing it leaves the setting unchanged. Discovery
+ * and persistence failures are reported through error notifications; an empty
+ * catalog shows a warning without opening the picker.
+ *
+ * Preserves the most specific existing explicit setting: workspace folder,
+ * workspace, then user. Without an override, writes to the matching workspace
+ * folder, otherwise an open workspace, otherwise user settings. Only the model
+ * ID is persisted; {@link VertexChatModelDispatcher.infer} validates availability
+ * again when a commit message is generated.
+ *
+ * @param provider - Shared discovery entry point supplying the current available models.
+ * @param context - Repository or file URI, or the SCM provider invoking the command.
+ * @returns Resolves after the selection is saved, the picker is dismissed, or
+ * an empty catalog or discovery/persistence failure is reported.
+ */
 export async function selectCommitMessageModel(provider: Pick<VertexChatModelDispatcher, "discoverModelsAndRegion">, context?: CommitMessageCommandContext): Promise<void> {
-    const resource = resolveCommitMessageResourceUri(context) ?? vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
-
     try {
+        const resource = resolveCommitMessageResourceUri(context);
         const discovered = await vscode.window.withProgress(
             {
                 location: vscode.ProgressLocation.Notification,
@@ -15,7 +36,7 @@ export async function selectCommitMessageModel(provider: Pick<VertexChatModelDis
             },
             () => provider.discoverModelsAndRegion(),
         );
-        const availableModels = [...discovered.availableModels];
+        const availableModels = discovered.availableModels;
         if (availableModels.length === 0) {
             void vscode.window.showWarningMessage("Google Agent Platform: No model is available for commit-message generation.");
             return;
@@ -41,27 +62,39 @@ export async function selectCommitMessageModel(provider: Pick<VertexChatModelDis
             return;
         }
 
-        // Preserve an existing override's scope. New choices apply to the repository
-        // folder, or to the workspace/user when no matching folder is open.
-        const inspected = config.inspect<string>("commitMessageModel");
-        const folder = resource ? vscode.workspace.getWorkspaceFolder(resource) : undefined;
-        let target: vscode.ConfigurationTarget;
-        if (inspected?.workspaceFolderValue !== undefined && folder) {
-            target = vscode.ConfigurationTarget.WorkspaceFolder;
-        } else if (inspected?.workspaceValue !== undefined) {
-            target = vscode.ConfigurationTarget.Workspace;
-        } else if (inspected?.globalValue !== undefined) {
-            target = vscode.ConfigurationTarget.Global;
-        } else if (folder) {
-            target = vscode.ConfigurationTarget.WorkspaceFolder;
-        } else if (vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.length) {
-            target = vscode.ConfigurationTarget.Workspace;
-        } else {
-            target = vscode.ConfigurationTarget.Global;
-        }
+        const target = getModelSettingTarget(config, resource);
         await config.update("commitMessageModel", selection.modelId, target);
         void vscode.window.showInformationMessage(`Google Agent Platform: Commit messages will use ${selection.modelId}.`);
     } catch (error) {
-        void vscode.window.showErrorMessage(`Google Agent Platform: Could not select a commit-message model — ${error}`);
+        const message = error instanceof Error ? error.message : String(error);
+        void vscode.window.showErrorMessage(`Google Agent Platform: Could not select a commit-message model — ${message}`);
     }
+}
+
+/**
+ * Preserves an explicit model override's scope, or chooses the nearest open scope.
+ *
+ * @param config - Configuration resolved for the command resource.
+ * @param resource - Resource used to find the matching workspace folder.
+ * @returns The most specific existing override's target, otherwise folder, workspace, or user.
+ */
+function getModelSettingTarget(config: vscode.WorkspaceConfiguration, resource?: vscode.Uri): vscode.ConfigurationTarget {
+    const inspected = config.inspect<string>("commitMessageModel");
+    const folder = resource ? vscode.workspace.getWorkspaceFolder(resource) : undefined;
+    if (inspected?.workspaceFolderValue !== undefined && folder) {
+        return vscode.ConfigurationTarget.WorkspaceFolder;
+    }
+    if (inspected?.workspaceValue !== undefined) {
+        return vscode.ConfigurationTarget.Workspace;
+    }
+    if (inspected?.globalValue !== undefined) {
+        return vscode.ConfigurationTarget.Global;
+    }
+    if (folder) {
+        return vscode.ConfigurationTarget.WorkspaceFolder;
+    }
+    if (vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.length) {
+        return vscode.ConfigurationTarget.Workspace;
+    }
+    return vscode.ConfigurationTarget.Global;
 }
