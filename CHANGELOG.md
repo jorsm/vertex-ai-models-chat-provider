@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.7.5] — 2026-10-11 (Pre-release)
+
 ### Added
 
 - Thinking Effort command and Chat header contribution using stable APIs, with per-model User/Workspace preferences, named catalog defaults, current-value metadata, and cancellation/stale-policy handling.
@@ -20,7 +22,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Public provider invocations capture effort once; retries preserve that snapshot. Internal commit generation uses catalog defaults. All providers route by the literal catalog version.
 - Refresh effort metadata without resetting connections or probing availability. Put the existing Refresh Models management command at the provider contribution's top level.
 
-Verification and remaining real-host/live-service checks are recorded in [thinking-effort-verification.md](docs/thinking-effort-verification.md). No version bump, publication or external proxy deployment is included.
+### Fixed
+
+- In multi-root workspaces, resolve project label from `.code-workspace` configuration file when available and strip localized `(Workspace)` suffixes from `workspace.name`.
+- Streamline label resolution workflows with prioritized early returns and descriptive comments.
 
 ## [0.7.4] — 2026-10-07 (Pre-release)
 
