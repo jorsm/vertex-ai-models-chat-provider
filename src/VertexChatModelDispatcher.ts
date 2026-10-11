@@ -1,4 +1,5 @@
 import { setMaxListeners } from "events";
+import * as path from "path";
 import * as vscode from "vscode";
 import { AuthManager } from "./auth/AuthManager";
 import { ProxyGateway, GatewayError } from "./ProxyGateway";
@@ -631,37 +632,99 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         }
     }
 
+    /**
+     * Resolves the user label for inference requests (`vscode-vertex-ai-user`), evaluating
+     * resolution strategies in descending order of precedence:
+     * 1. Explicit configuration: Uses `vertexAiChat.userLabelValue` if configured in settings.
+     * 2. Dynamic identity resolution: Queries `AuthManager.getIdentity()` to retrieve the user's
+     *    authenticated Google identity (e.g. gcloud active account or service account).
+     *
+     * Throws `vscode.LanguageModelError.Blocked` via `failMissingLabelValue("user")` if an enabled
+     * user label cannot be resolved.
+     */
     private async resolveUserLabel(config: vscode.WorkspaceConfiguration, token: vscode.CancellationToken, revision: number): Promise<string> {
-        // Prefer an explicitly configured value.
-        let userLabelValue = this.getValidLabelValue(config.get<string>("userLabelValue"));
+        // 1. Check for an explicitly configured user label, which overrides automatic identity resolution.
+        const configuredValue = this.getValidLabelValue(config.get<string>("userLabelValue"));
+        if (configuredValue) {
+            return configuredValue;
+        }
 
-        if (!userLabelValue) {
-            // Otherwise, resolve the request's user identity.
-            let identity: string | undefined;
-            try {
-                identity = await this.authManager.getIdentity();
-            } catch (error) {
-                if (error instanceof vscode.CancellationError || token.isCancellationRequested) {
-                    throw new vscode.CancellationError();
-                }
-                this.failMissingLabelValue("user", true);
-            }
-            if (token.isCancellationRequested) {
+        // 2. Resolve user identity dynamically from active credentials or gcloud account.
+        let identity: string | undefined;
+        try {
+            identity = await this.authManager.getIdentity();
+        } catch (error) {
+            if (error instanceof vscode.CancellationError || token.isCancellationRequested) {
                 throw new vscode.CancellationError();
             }
-            if (revision !== this.connectionRevision) {
-                throw new Error("Configuration changed before inference. Refresh Models.");
-            }
-            userLabelValue = this.getValidLabelValue(identity);
+            this.failMissingLabelValue("user", true);
         }
 
-        if (!userLabelValue) {
-            this.failMissingLabelValue("user");
+        if (token.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+        if (revision !== this.connectionRevision) {
+            throw new Error("Configuration changed before inference. Refresh Models.");
         }
 
-        return userLabelValue;
+        const resolvedIdentityValue = this.getValidLabelValue(identity);
+        if (resolvedIdentityValue) {
+            return resolvedIdentityValue;
+        }
+
+        // Fallback: No valid user label could be determined.
+        return this.failMissingLabelValue("user");
     }
 
+    /**
+     * Resolves a clean workspace name suitable for project labeling, addressing specific VS Code edge cases:
+     * 1. Multi-root workspace file: When a `.code-workspace` file is loaded, `vscode.workspace.workspaceFile`
+     *    points directly to it. Extracting the basename without the `.code-workspace` extension yields the
+     *    intended multi-root project identifier (e.g. 'noovle-ai-companion') rather than the first folder.
+     * 2. Suffix stripping: In VS Code, `vscode.workspace.name` is formatted by LabelService and frequently
+     *    includes a localized suffix such as " (Workspace)" or " (Area di lavoro)". If not cleaned,
+     *    sanitization converts parenthesis into underscores (e.g. 'project__workspace_').
+     * 3. Fallback: If no `.code-workspace` URI exists (e.g. single-folder or untitled workspace), falls back
+     *    to the cleaned `vscode.workspace.name`.
+     */
+    private resolveCleanWorkspaceName(): string | undefined {
+        // Case 1: Multi-root workspace opened via a .code-workspace file
+        const wsFile = vscode.workspace.workspaceFile;
+        if (wsFile) {
+            const basename = path.posix.basename(wsFile.path);
+            const nameWithoutExt = basename.replace(/\.code-workspace$/i, "");
+            const valid = this.getValidLabelValue(nameWithoutExt);
+            if (valid) {
+                return valid;
+            }
+        }
+
+        // Case 2 & 3: Fall back to vscode.workspace.name, stripping localized suffixes like "(Workspace)"
+        if (vscode.workspace.name) {
+            const cleaned = vscode.workspace.name.replace(/\s*\([^)]*\)$/, "");
+            return this.getValidLabelValue(cleaned);
+        }
+
+        return undefined;
+    }
+
+    /**
+     * Resolves the project label for inference requests (`vscode-vertex-ai-project`), evaluating
+     * resolution strategies in descending order of precedence:
+     * 1. Explicit configuration: Uses `vertexAiChat.projectLabelValue` if configured in settings
+     *    (supporting workspace-folder or workspace overrides).
+     * 2. Active resource folder (multi-root): In multi-root workspaces with an active editor or
+     *    resource, uses the name of the folder containing that resource.
+     * 3. Multi-root workspace name: In multi-root workspaces without an active resource, uses the
+     *    clean workspace identifier via `resolveCleanWorkspaceName()` (`.code-workspace` filename
+     *    or cleaned `vscode.workspace.name`).
+     * 4. Single-folder / folderless workspace name: Uses the cleaned workspace name.
+     * 5. Active resource folder fallback: If workspace name is unavailable, uses the folder of the resource.
+     * 6. Single open folder fallback: Uses the single opened workspace folder if exactly one exists.
+     *
+     * Throws `vscode.LanguageModelError.Blocked` via `failMissingLabelValue("project")` if an enabled
+     * project label cannot be resolved.
+     */
     private resolveProjectLabel(config: vscode.WorkspaceConfiguration, resource: vscode.Uri | undefined): string {
         // Check for an explicitly configured value first, which overrides any automatic inference.
         const inspection = config.inspect<string>("projectLabelValue");
@@ -673,7 +736,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         // If not set, infer a value from the workspace context.
         const activeResourceFolder = resource ? vscode.workspace.getWorkspaceFolder(resource) : undefined;
         const workspaceFolders = vscode.workspace.workspaceFolders;
-        const workspaceName = this.getValidLabelValue(vscode.workspace.name);
+        const workspaceName = this.resolveCleanWorkspaceName();
         const isMultiRootWorkspace = (workspaceFolders?.length ?? 0) > 1;
 
         // 1. In a multi-root workspace, use the folder containing the active resource.

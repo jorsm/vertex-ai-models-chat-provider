@@ -28,6 +28,9 @@ class CancellationError extends Error {}
 const rootA = { fsPath: "/a" },
     rootB = { fsPath: "/b" };
 const vscode = {
+    Uri: {
+        file: (p) => ({ fsPath: p, path: p }),
+    },
     StatusBarAlignment: { Right: 1 },
     MarkdownString: class {
         value = "";
@@ -753,6 +756,39 @@ test("project label uses the workspace name without an active resource and the f
     const requests = h.calls.filter((call) => call[0] === "infer");
     assert.deepEqual(requests[0][7], { "vscode-vertex-ai-project": "workspace" });
     assert.deepEqual(requests[1][7], { "vscode-vertex-ai-project": "b" });
+});
+test("project label prefers workspaceFile over workspace.name when available", async (t) => {
+    inspections.proxyUrl = { globalValue: "https://gateway.test" };
+    settings.enableProjectLabel = true;
+    const previousWorkspaceFile = vscode.workspace.workspaceFile;
+    vscode.workspace.workspaceFile = vscode.Uri.file("/workspace/noovle-ai-companion.code-workspace");
+    t.after(() => {
+        vscode.workspace.workspaceFile = previousWorkspaceFile;
+    });
+    fakeDiscovery(t, [{ id: "gemini-test", vendor: "google" }]);
+    const h = harness([model("gemini-test")]);
+    await h.dispatcher.infer("gemini-test", userMessage(), { tools: [] }, { report() {} }, cancellation().token, undefined);
+
+    const request = h.calls.find((call) => call[0] === "infer");
+    assert.deepEqual(request[7], { "vscode-vertex-ai-project": "noovle-ai-companion" });
+});
+test("project label strips workspace suffix from workspace.name", async (t) => {
+    inspections.proxyUrl = { globalValue: "https://gateway.test" };
+    settings.enableProjectLabel = true;
+    const previousWorkspaceName = vscode.workspace.name;
+    const previousWorkspaceFile = vscode.workspace.workspaceFile;
+    vscode.workspace.workspaceFile = undefined;
+    vscode.workspace.name = "noovle-ai-companion (Workspace)";
+    t.after(() => {
+        vscode.workspace.name = previousWorkspaceName;
+        vscode.workspace.workspaceFile = previousWorkspaceFile;
+    });
+    fakeDiscovery(t, [{ id: "gemini-test", vendor: "google" }]);
+    const h = harness([model("gemini-test")]);
+    await h.dispatcher.infer("gemini-test", userMessage(), { tools: [] }, { report() {} }, cancellation().token, undefined);
+
+    const request = h.calls.find((call) => call[0] === "infer");
+    assert.deepEqual(request[7], { "vscode-vertex-ai-project": "noovle-ai-companion" });
 });
 test("proxy discovery rejects models without a configured region before initializing adapters", async (t) => {
     inspections.proxyUrl = { globalValue: "https://gateway.test" };
