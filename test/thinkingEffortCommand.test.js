@@ -5,7 +5,9 @@ const { EffortCatalog } = require("../out/effort/Effort.js");
 const models = require("../src/models.json").candidateModels;
 let user = {},
     workspace = {},
-    fail = false;
+    fail = false,
+    beforeWrite,
+    beforeShow;
 const pickers = [],
     errors = [],
     writes = [],
@@ -32,6 +34,7 @@ class Picker {
     onDidAccept = this.acceptEvent.event;
     onDidTriggerButton = this.buttonEvent.event;
     show() {
+        beforeShow?.();
         this.visible = true;
     }
     hide() {
@@ -88,6 +91,7 @@ const vscode = {
                 get: () => ({ ...user, ...workspace }),
                 inspect: () => ({ globalValue: user, workspaceValue: workspace }),
                 update: async (key, value, target) => {
+                    await beforeWrite?.();
                     if (fail) throw Error("read-only");
                     writes.push({ key, value, target });
                     if (target === 1) user = value;
@@ -108,16 +112,22 @@ const vscode = {
     },
 };
 const load = Module._load;
-let ConfigureThinkingEffort;
+let ConfigureThinkingEffort, writeEffortPreference;
 try {
     Module._load = function (r, ...args) {
         return r === "vscode" ? vscode : load.call(this, r, ...args);
     };
     ({ ConfigureThinkingEffort } = require("../out/effort/ConfigureThinkingEffort.js"));
+    ({ writeEffortPreference } = require("../out/effort/EffortConfiguration.js"));
 } finally {
     Module._load = load;
 }
 const flush = () => new Promise(setImmediate);
+const deferred = () => {
+    let resolve;
+    const promise = new Promise((done) => (resolve = done));
+    return { promise, resolve };
+};
 function harness(selected = models.slice(0, 2), last) {
     let state = { models: selected, connectionRevision: 0, catalogRevision: 1 };
     let ensured = 0;
@@ -136,12 +146,17 @@ function harness(selected = models.slice(0, 2), last) {
         change(models = selected) {
             state = { ...state, models, catalogRevision: state.catalogRevision + 1 };
         },
+        changeConnection() {
+            state = { ...state, connectionRevision: state.connectionRevision + 1 };
+        },
     };
 }
 test.beforeEach(() => {
     user = {};
     workspace = {};
     fail = false;
+    beforeWrite = undefined;
+    beforeShow = undefined;
     pickers.length = 0;
     errors.length = 0;
     writes.length = 0;
@@ -396,4 +411,119 @@ test("malformed Workspace object in model step is reported without an unhandled 
     assert.match(p.title, /Choose model/);
     p.hide();
     await running;
+});
+
+test("picker setup failure releases subscriptions before a hide event can occur", async () => {
+    const h = harness();
+    beforeShow = () => {
+        throw Error("picker could not open");
+    };
+    await h.command.run();
+    const p = pickers.at(-1);
+    assert(p.disposed);
+    assert.equal(p.hideEvent.listeners.size, 0);
+    assert.equal(p.acceptEvent.listeners.size, 0);
+    assert.equal(p.buttonEvent.listeners.size, 0);
+    assert.match(errors[0], /picker could not open/);
+    assert.equal(writes.length, 0);
+});
+
+test("closing a picker cancels its queued write and leaves other writes intact", async () => {
+    const started = deferred();
+    const release = deferred();
+    beforeWrite = async () => {
+        beforeWrite = undefined;
+        started.resolve();
+        await release.promise;
+    };
+    const blockingWrite = writeEffortPreference("other", "high", vscode.ConfigurationTarget.Global);
+    await started.promise;
+    const h = harness(models.slice(0, 1));
+    const { running, p } = await open(h);
+    const accepting = p.accept(p.items.find((item) => item.value === "max"));
+    h.command.dispose();
+    await running;
+    release.resolve();
+    await Promise.all([
+        blockingWrite,
+        accepting,
+    ]);
+    assert.deepEqual(user, { other: "high" });
+    assert.equal(writes.length, 1);
+    assert.equal(states.length, 0);
+    assert.equal(errors.length, 0);
+    assert(p.disposed);
+    assert.equal(p.acceptEvent.listeners.size, 0);
+});
+
+test("connection changes while a write is queued require reselection before saving", async () => {
+    const started = deferred();
+    const release = deferred();
+    beforeWrite = async () => {
+        beforeWrite = undefined;
+        started.resolve();
+        await release.promise;
+    };
+    const blockingWrite = writeEffortPreference("other", "high", vscode.ConfigurationTarget.Global);
+    await started.promise;
+    const h = harness(models.slice(0, 1));
+    const { running, p } = await open(h);
+    const accepting = p.accept(p.items.find((item) => item.value === "max"));
+    h.changeConnection();
+    release.resolve();
+    await Promise.all([
+        blockingWrite,
+        accepting,
+    ]);
+    assert.deepEqual(user, { other: "high" });
+    assert.equal(states.length, 0);
+    assert.match(errors[0], /changed/);
+    assert(p.visible);
+    assert.equal(p.busy, false);
+    await p.accept(p.items.find((item) => item.value === "high"));
+    await running;
+    assert.equal(user[models[0].id], "high");
+});
+
+test("pending persistence ignores duplicate accepts and scope changes", async () => {
+    const started = deferred();
+    const release = deferred();
+    beforeWrite = async () => {
+        started.resolve();
+        await release.promise;
+    };
+    const h = harness(models.slice(0, 1));
+    const { running, p } = await open(h);
+    const accepting = p.accept(p.items.find((item) => item.value === "max"));
+    await started.promise;
+    await p.accept(p.items.find((item) => item.value === "high"));
+    await p.button(p.buttons.find((button) => button !== back));
+    assert.match(p.title, /User/);
+    release.resolve();
+    await accepting;
+    await running;
+    assert.equal(writes.length, 1);
+    assert.equal(user[models[0].id], "max");
+    assert.deepEqual(workspace, {});
+});
+
+test("closing during an active settings write does not update last-model state afterward", async () => {
+    const started = deferred();
+    const release = deferred();
+    beforeWrite = async () => {
+        started.resolve();
+        await release.promise;
+    };
+    const h = harness(models.slice(0, 1));
+    const { running, p } = await open(h);
+    const accepting = p.accept(p.items.find((item) => item.value === "max"));
+    await started.promise;
+    p.hide();
+    await running;
+    release.resolve();
+    await accepting;
+    assert.equal(user[models[0].id], "max");
+    assert.equal(states.length, 0);
+    assert.equal(errors.length, 0);
+    assert(p.disposed);
 });

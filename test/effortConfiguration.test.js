@@ -110,3 +110,22 @@ test("queued writes validate the current connection/catalog before persisting", 
     );
     assert.equal(writes.length, 0);
 });
+
+test("prototype-named IDs are stored and removed as own keys without changing other entries", async () => {
+    user = { other: "medium" };
+    await api.writeEffortPreference("__proto__", "high", 1);
+    const captured = api.captureEffortPreferences();
+    assert.equal(Object.getPrototypeOf(user), Object.prototype);
+    assert.equal(Object.hasOwn(user, "__proto__"), true);
+    assert.equal(captured.preferences.__proto__, "high");
+    assert.equal(captured.sourceByModel.__proto__, "user");
+    await api.writeEffortPreference("__proto__", undefined, 1);
+    assert.deepEqual(user, { other: "medium" });
+});
+
+test("WorkspaceFolder targets are rejected before any preference write", async () => {
+    await assert.rejects(api.writeEffortPreference("a", "high", vscode.ConfigurationTarget.WorkspaceFolder), /only be saved to User or Workspace/);
+    assert.equal(writes.length, 0);
+    assert.deepEqual(user, {});
+    assert.deepEqual(workspace, {});
+});
