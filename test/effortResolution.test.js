@@ -6,7 +6,7 @@ const preferences = (id, value, source = "user") => ({ preferences: { [id]: valu
 const catalog = new EffortCatalog(bundled.candidateModels);
 
 test("every bundled default is a named choice and the catalog preserves model metadata", () => {
-    assert.equal(catalog.models.length, 15);
+    assert.equal(catalog.models.length, bundled.candidateModels.length);
     for (const model of bundled.candidateModels) {
         assert.deepEqual(catalog.get(model.id), model);
         const request = resolveEffort(catalog, model.id);
@@ -40,8 +40,11 @@ test("only the selected preference is checked; models without effort have no fab
     ]) {
         assert.throws(() => resolveEffort(catalog, "claude-opus-5-5", preferences("claude-opus-5-5", value)), /effort/);
     }
-    assert.throws(() => resolveEffort(catalog, "claude-haiku-4-5", preferences("claude-haiku-4-5", "high")), /does not declare/);
-    assert.equal(resolveEffort(catalog, "claude-haiku-4-5").effort, undefined);
+    const custom = { ...bundled.candidateModels[0], id: "custom-no-effort-model", version: "custom-chat-model" };
+    delete custom.effort;
+    const withoutEffort = new EffortCatalog([custom]);
+    assert.throws(() => resolveEffort(withoutEffort, custom.id, preferences(custom.id, "high")), /does not declare/);
+    assert.equal(resolveEffort(withoutEffort, custom.id).effort, undefined);
 });
 
 test("custom backend names are literal and custom effort strings are catalog choices", () => {

@@ -5,6 +5,9 @@ dist/
 .vscode-test/
 playground/
 *.vsix
+.env
+.env.*
+!.env.example
 
 # Machine-maintained and vendored files
 package-lock.json

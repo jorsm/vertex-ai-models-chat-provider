@@ -268,25 +268,6 @@
             }
         },
         {
-            "id": "claude-haiku-4-5",
-            "vendor": "anthropic",
-            "displayName": "Claude Haiku 4.5",
-            "family": "claude",
-            "version": "claude-haiku-4-5",
-            "maxInputTokens": 200000,
-            "maxOutputTokens": 64000,
-            "capabilities": {
-                "imageInput": true,
-                "toolCalling": true
-            },
-            "pricing": {
-                "input": 1.0,
-                "output": 5.0,
-                "cache_read": 0.1,
-                "cache_create": 1.25
-            }
-        },
-        {
             "id": "gemini-3.8-flash",
             "vendor": "google",
             "displayName": "Gemini 3.8 Flash",

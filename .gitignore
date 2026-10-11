@@ -4,3 +4,7 @@ node_modules
 .vscode-test/
 playground/
 *.vsix
+gha-creds-*.json
+.env
+.env.*
+!.env.example

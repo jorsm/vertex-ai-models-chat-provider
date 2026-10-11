@@ -2,14 +2,25 @@ name: Publish Pre-Release to VS Marketplace
 
 on:
     workflow_dispatch:
+        inputs:
+            verify_only:
+                description: "Run all release checks without publishing"
+                type: boolean
+                default: false
 
 jobs:
     build-and-publish-prerelease:
         runs-on: ubuntu-latest
+        environment: marketplace-release
+        timeout-minutes: 45
+        permissions:
+            contents: read
+            id-token: write
         env:
             FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+            VSIX_PATH: .vscode-test/live/prerelease.vsix
         steps:
-            - name: Checkout Code
+            - name: Checkout selected prerelease ref
               uses: actions/checkout@v4
 
             - name: Setup Node.js
@@ -18,34 +29,61 @@ jobs:
                   node-version: "24"
                   cache: "npm"
 
-            - name: Install Dependencies
+            - name: Install dependencies
               run: npm ci
 
-            - name: Check Formatting
-              run: npm run format:check
+            - name: Require formatting, lint and offline tests
+              run: npm run check
 
-            - name: Test Extension
-              run: npm test
-
-            - name: Lint Extension
-              run: npm run lint
-
-            - name: Package Pre-Release
-              run: npx @vscode/vsce package --pre-release --no-dependencies
-
-            - name: Resolve Package Path
+            - name: Package prerelease VSIX before cloud authentication
               run: |
-                  package_version=$(node -p "require('./package.json').version")
-                  echo "VSIX_PATH=vertex-ai-models-chat-provider-${package_version}.vsix" >> "$GITHUB_ENV"
+                  mkdir -p .vscode-test/live
+                  npx --no-install vsce package --pre-release --no-dependencies --out "$VSIX_PATH"
 
-            - name: Verify Pre-Release Manifest
-              run: unzip -p "$VSIX_PATH" extension.vsixmanifest | grep -q 'Microsoft.VisualStudio.Code.PreRelease" Value="true'
+            - name: Verify prerelease manifest
+              run: |
+                  node <<'NODE'
+                  const { execFileSync } = require("node:child_process");
+                  const manifest = execFileSync("unzip", ["-p", process.env.VSIX_PATH, "extension.vsixmanifest"], { encoding: "utf8" });
+                  if (!manifest.includes('Id="Microsoft.VisualStudio.Code.PreRelease" Value="true"')) {
+                    console.error("::error::The prerelease artifact is missing its prerelease manifest.");
+                    process.exit(1);
+                  }
+                  NODE
 
-            - name: Publish Pre-Release
+            - name: Require live ADC acceptance
+              id: live-gate
+              uses: ./.github/actions/live-release-gate
+              with:
+                  vsix-path: ${{ env.VSIX_PATH }}
+                  project-id: ${{ secrets.VERTEX_LIVE_PROJECT_ID }}
+                  workload-identity-provider: ${{ secrets.VERTEX_LIVE_WIF_PROVIDER }}
+                  service-account: ${{ secrets.VERTEX_LIVE_SERVICE_ACCOUNT }}
+                  gemini-model: ${{ vars.VERTEX_LIVE_GEMINI_MODEL || 'gemini-3.8-flash' }}
+                  claude-model: ${{ vars.VERTEX_LIVE_CLAUDE_MODEL || 'claude-haiku-5-5' }}
+                  region: ${{ vars.VERTEX_LIVE_REGION || 'global' }}
+                  vscode-version: ${{ vars.VERTEX_LIVE_VSCODE_VERSION || '1.110.0' }}
+
+            - name: Retain sanitized live acceptance report
+              if: ${{ always() }}
+              uses: actions/upload-artifact@v4
+              with:
+                  name: live-prerelease-${{ github.run_id }}-${{ github.run_attempt }}
+                  path: .vscode-test/live/ci.json
+                  if-no-files-found: ignore
+                  retention-days: 14
+
+            - name: Publish the tested prerelease VSIX
+              id: publish
+              if: ${{ success() && steps.live-gate.outcome == 'success' && !inputs.verify_only }}
+              timeout-minutes: 10
               env:
                   VSCE_PAT: ${{ secrets.VSCE_PAT }}
-              run: npx @vscode/vsce publish --pre-release --packagePath "$VSIX_PATH" -p "$VSCE_PAT"
+              run: |
+                  node scripts/verify-live-release.cjs --vsix "$VSIX_PATH" --report .vscode-test/live/ci.json
+                  npx --no-install vsce publish --pre-release --packagePath "$VSIX_PATH"
 
             - name: Wait for Marketplace download availability
+              if: ${{ success() && steps.publish.outcome == 'success' }}
               timeout-minutes: 12
               uses: ./.github/actions/wait-for-marketplace

@@ -96,7 +96,7 @@ function harness(models, regions = ["global"]) {
     };
 }
 
-test("bundled models use 15 literal endpoint probes and keep catalog order across refreshes", async () => {
+test("bundled models probe each literal endpoint once and keep catalog order across refreshes", async () => {
     const models = require("../src/models.json").candidateModels;
     const h = harness(models);
     const requests = [];
@@ -118,10 +118,18 @@ test("bundled models use 15 literal endpoint probes and keep catalog order acros
         const result = await h.dispatcher.discoverModelsAndRegion();
         assert.deepEqual(result.availableModels, models);
         const probes = requests.slice(before);
-        assert.equal(probes.length, 15);
-        assert.equal(new Set(probes.map((target) => JSON.stringify(target))).size, 15);
-        assert.equal(probes.filter(([vendor]) => vendor === "anthropic").length, 10);
-        assert.equal(probes.filter(([vendor]) => vendor === "google").length, 4);
+        assert.deepEqual(
+            probes.map((target) => JSON.stringify(target)).sort(),
+            models
+                .map(({ vendor, version }) =>
+                    JSON.stringify([
+                        vendor,
+                        version,
+                    ]),
+                )
+                .sort(),
+            "Every catalog vendor/backend pair must be probed exactly once",
+        );
         assert.deepEqual(
             probes.filter(([vendor]) => vendor === "grok"),
             [
