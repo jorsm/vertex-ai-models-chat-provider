@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-action.json
+name: Live ADC release gate
+description: Require real Gemini and Claude chat, tool continuation and image checks for the packaged VSIX.
+inputs:
+    vsix-path:
+        description: Exact packaged VSIX that will be published.
+        required: true
+    project-id:
+        description: Google Cloud project with access to both selected models.
+        required: true
+    workload-identity-provider:
+        description: Workload Identity Federation provider resource name.
+        required: true
+    service-account:
+        description: Dedicated CI service account to impersonate and verify.
+        required: true
+    gemini-model:
+        description: Gemini catalog model ID.
+        default: gemini-3.8-flash
+    claude-model:
+        description: Claude catalog model ID.
+        default: claude-haiku-5-5
+    region:
+        description: Vertex model region.
+        default: global
+    vscode-version:
+        description: Pinned desktop VS Code version.
+        default: 1.110.0
+runs:
+    using: composite
+    steps:
+        - name: Validate live release configuration
+          shell: bash
+          env:
+              LIVE_PROJECT_ID: ${{ inputs.project-id }}
+              LIVE_WIF_PROVIDER: ${{ inputs.workload-identity-provider }}
+              LIVE_SERVICE_ACCOUNT: ${{ inputs.service-account }}
+              LIVE_VSIX_PATH: ${{ inputs.vsix-path }}
+          run: |
+              if [[ -z "$LIVE_PROJECT_ID" || -z "$LIVE_WIF_PROVIDER" || -z "$LIVE_SERVICE_ACCOUNT" ]]; then
+                echo "::error::Set VERTEX_LIVE_PROJECT_ID, VERTEX_LIVE_WIF_PROVIDER and VERTEX_LIVE_SERVICE_ACCOUNT repository secrets. Publishing requires live ADC acceptance."
+                exit 1
+              fi
+              if [[ ! -f "$LIVE_VSIX_PATH" ]]; then
+                echo "::error::The packaged VSIX is missing."
+                exit 1
+              fi
+              mkdir -p .vscode-test/live
+              rm -f .vscode-test/live/ci.json
+
+        - name: Prepare headless desktop host before authentication
+          shell: bash
+          env:
+              VERTEX_LIVE_VSCODE_VERSION: ${{ inputs.vscode-version }}
+          run: |
+              if ! command -v xvfb-run >/dev/null 2>&1; then
+                sudo apt-get update
+                sudo apt-get install --yes xvfb
+              fi
+              node scripts/prepare-live-host.cjs
+
+        - name: Authenticate dedicated live-test ADC identity
+          uses: google-github-actions/auth@v3
+          with:
+              project_id: ${{ inputs.project-id }}
+              workload_identity_provider: ${{ inputs.workload-identity-provider }}
+              service_account: ${{ inputs.service-account }}
+              create_credentials_file: true
+              export_environment_variables: true
+              cleanup_credentials: true
+
+        - name: Require six real ADC checks through the installed VSIX
+          shell: bash
+          env:
+              VERTEX_LIVE_PROJECT_ID: ${{ inputs.project-id }}
+              VERTEX_LIVE_EXPECTED_ACCOUNT: ${{ inputs.service-account }}
+              VERTEX_LIVE_GEMINI_MODEL: ${{ inputs.gemini-model }}
+              VERTEX_LIVE_CLAUDE_MODEL: ${{ inputs.claude-model }}
+              VERTEX_LIVE_REGION: ${{ inputs.region }}
+              VERTEX_LIVE_VSCODE_VERSION: ${{ inputs.vscode-version }}
+              LIVE_VSIX_PATH: ${{ inputs.vsix-path }}
+          run: npm run test:live -- --vsix "$LIVE_VSIX_PATH" --report .vscode-test/live/ci.json
+
+        - name: Verify the current run and tested artifact
+          shell: bash
+          env:
+              LIVE_VSIX_PATH: ${{ inputs.vsix-path }}
+          run: node scripts/verify-live-release.cjs --vsix "$LIVE_VSIX_PATH" --report .vscode-test/live/ci.json

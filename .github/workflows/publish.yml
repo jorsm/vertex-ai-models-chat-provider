@@ -1,6 +1,5 @@
 name: Publish to VS Marketplace
 
-# Only trigger this workflow when a new tag is pushed that starts with 'v' (e.g., v1.0.0).
 on:
     push:
         tags:
@@ -8,59 +7,117 @@ on:
     workflow_dispatch:
         inputs:
             source_ref:
-                description: "Tag to publish (for example, v0.6.4)"
+                description: "Version tag to publish (for example, v0.7.5)"
                 required: true
                 type: string
+            verify_only:
+                description: "Run all release checks without publishing"
+                type: boolean
+                default: false
 
 jobs:
     build-and-publish:
         runs-on: ubuntu-latest
+        environment: marketplace-release
+        timeout-minutes: 45
+        permissions:
+            contents: read
+            id-token: write
         env:
             FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+            VSIX_PATH: .vscode-test/live/stable.vsix
         steps:
-            - name: Checkout Code
+            - name: Validate stable release tag
+              id: source
+              env:
+                  SOURCE_REF: ${{ inputs.source_ref || github.ref }}
+              run: |
+                  release_tag="${SOURCE_REF#refs/tags/}"
+                  if [[ ! "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    echo "::error::Stable publishing requires a version tag such as v0.7.5."
+                    exit 1
+                  fi
+                  echo "ref=refs/tags/${release_tag}" >> "$GITHUB_OUTPUT"
+                  echo "version=${release_tag#v}" >> "$GITHUB_OUTPUT"
+
+            - name: Checkout release tag
               uses: actions/checkout@v4
               with:
-                  ref: ${{ inputs.source_ref || github.ref }}
+                  ref: ${{ steps.source.outputs.ref }}
 
-            # Lock the build to a LTS Node version and caches NPM modules to make the pipeline run faster.
+            - name: Verify tag matches extension version
+              env:
+                  RELEASE_VERSION: ${{ steps.source.outputs.version }}
+              run: |
+                  node -e 'if (require("./package.json").version !== process.env.RELEASE_VERSION) { console.error("Release tag and extension version differ."); process.exit(1); }'
+
             - name: Setup Node.js
               uses: actions/setup-node@v4
               with:
                   node-version: "24"
                   cache: "npm"
 
-            # Strict Installation: 'npm ci' (clean install) is safer than 'npm i' for CI/CD.
-            - name: Install Dependencies
+            - name: Install dependencies
               run: npm ci
 
-            - name: Check Formatting
-              run: npm run format:check
+            - name: Require formatting, lint and offline tests
+              run: npm run check
 
-            - name: Compile Extension
-              run: npm run compile
+            - name: Package stable VSIX before cloud authentication
+              run: |
+                  mkdir -p .vscode-test/live
+                  npx --no-install vsce package --no-dependencies --out "$VSIX_PATH"
 
-            - name: Install Marketplace Publisher
-              run: npm install --no-save --package-lock=false @vscode/vsce@4.0.0
+            - name: Verify stable manifest
+              run: |
+                  if unzip -p "$VSIX_PATH" extension.vsixmanifest | rg -q 'Microsoft.VisualStudio.Code.PreRelease" Value="true'; then
+                    echo "::error::The stable artifact has a prerelease manifest."
+                    exit 1
+                  fi
 
-            - name: Publish to Marketplace
+            - name: Require live ADC acceptance
+              id: live-gate
+              uses: ./.github/actions/live-release-gate
+              with:
+                  vsix-path: ${{ env.VSIX_PATH }}
+                  project-id: ${{ secrets.VERTEX_LIVE_PROJECT_ID }}
+                  workload-identity-provider: ${{ secrets.VERTEX_LIVE_WIF_PROVIDER }}
+                  service-account: ${{ secrets.VERTEX_LIVE_SERVICE_ACCOUNT }}
+                  gemini-model: ${{ vars.VERTEX_LIVE_GEMINI_MODEL || 'gemini-3.8-flash' }}
+                  claude-model: ${{ vars.VERTEX_LIVE_CLAUDE_MODEL || 'claude-haiku-5-5' }}
+                  region: ${{ vars.VERTEX_LIVE_REGION || 'global' }}
+                  vscode-version: ${{ vars.VERTEX_LIVE_VSCODE_VERSION || '1.110.0' }}
+
+            - name: Retain sanitized live acceptance report
+              if: ${{ always() }}
+              uses: actions/upload-artifact@v4
+              with:
+                  name: live-stable-${{ github.run_id }}-${{ github.run_attempt }}
+                  path: .vscode-test/live/ci.json
+                  if-no-files-found: ignore
+                  retention-days: 14
+
+            - name: Publish the tested stable VSIX
+              id: publish
+              if: ${{ success() && steps.live-gate.outcome == 'success' && !inputs.verify_only }}
+              timeout-minutes: 10
               env:
                   VSCE_PAT: ${{ secrets.VSCE_PAT }}
               run: |
                   for attempt in 1 2 3; do
-                    if npx --no-install vsce publish --skip-duplicate; then
+                    node scripts/verify-live-release.cjs --vsix "$VSIX_PATH" --report .vscode-test/live/ci.json
+                    if npx --no-install vsce publish --packagePath "$VSIX_PATH" --skip-duplicate; then
                       exit 0
                     fi
-
                     if [ "$attempt" -eq 3 ]; then
                       exit 1
                     fi
-
                     delay=$((attempt * 15))
                     echo "Marketplace publish failed on attempt $attempt; retrying in ${delay}s."
                     sleep "$delay"
                   done
 
             - name: Wait for Marketplace download availability
+              if: ${{ success() && steps.publish.outcome == 'success' }}
               timeout-minutes: 12
               uses: ./.github/actions/wait-for-marketplace

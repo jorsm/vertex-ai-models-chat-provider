@@ -101,7 +101,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
             if (retryError) {
                 throw retryError;
             }
-            this.logger.log(`    🏓 Anthropic ${modelId} → ❌`);
+            this.logger.log(`    🏓 Anthropic ${modelId} → ❌${typeof e.status === "number" ? ` (HTTP ${e.status})` : ""}`);
             return false;
         }
     }

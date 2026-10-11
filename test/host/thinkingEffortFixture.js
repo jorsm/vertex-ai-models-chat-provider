@@ -57,7 +57,7 @@ exports.run = async () => {
             ],
         );
         record("Public provider snapshot and named catalog default");
-        assert.equal((await d.provideLanguageModelChatInformation({}, cancellation.token)).length, 15);
+        assert.equal((await d.provideLanguageModelChatInformation({}, cancellation.token)).length, models.length);
         record("Only canonical models advertised in desktop extension host");
         const quick = vscode.window.createQuickPick();
         quick.title = "Thinking Effort fixture";

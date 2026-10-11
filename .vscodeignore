@@ -3,6 +3,10 @@
 src/**
 playground/**
 test/**
+scripts/**
+gha-creds-*.json
+**/.env
+**/.env.*
 .gitignore
 .yarnrc
 vsc-extension-quickstart.md

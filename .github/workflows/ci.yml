@@ -24,11 +24,5 @@ jobs:
             - name: Install dependencies
               run: npm ci
 
-            - name: Check formatting
-              run: npm run format:check
-
-            - name: Compile
-              run: npm run compile
-
-            - name: Lint
-              run: npm run lint
+            - name: Require formatting, lint and offline tests
+              run: npm run check
