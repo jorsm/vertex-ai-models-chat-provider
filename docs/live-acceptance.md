@@ -2,7 +2,43 @@
 
 `npm run test:live` installs a packaged VSIX into an isolated VS Code instance and exercises Gemini and Claude through the public `vscode.lm` API against real Vertex endpoints. Both providers are required: six checks must pass, with no skipped cases, substitute models or fallback providers. An unavailable model or failed check produces a nonzero exit code; the report retains any partial successes.
 
-Both GitHub publication workflows require the offline suite and these six live checks. Each packages one VSIX before cloud authentication, tests its installed extension, verifies the report and artifact hash, and publishes those same bytes. Missing CI configuration, unavailable models, failed or skipped checks, stale reports and modified packages block publication. Grok is outside the mandatory acceptance scope.
+The updated GitHub publication workflows require the offline suite and these six live checks. Each packages one VSIX before cloud authentication, tests its installed extension, verifies the report and artifact hash, and publishes those same bytes. Missing CI configuration, unavailable models, failed or skipped checks, stale reports and modified packages block publication on refs containing those workflows. Grok is outside the mandatory acceptance scope.
+
+## Rollout status and cutover
+
+As verified on **11 October 2026**, [PR #16](https://github.com/jorsm/vertex-ai-models-chat-provider/pull/16) is a draft targeting `develop`. The repository's stable branch is `main`; there is no `master` branch. The live gate has not been merged into either release branch.
+
+| Ref                           | Current release behavior                                                                                                                      |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main`                        | Existing stable tag/manual release flow, using repository `VSCE_PAT`; no mandatory live ADC checks.                                           |
+| `develop`                     | Existing manual prerelease flow and stable workflow, using repository `VSCE_PAT`; no mandatory live ADC checks.                               |
+| `codex/live-adc-release-gate` | Updated stable/prerelease workflows require all six live checks. GitHub validation currently stops because the CI identity is not configured. |
+
+The repository `VSCE_PAT` is deliberately retained during preparation, so the old release flow remains available. Creating `marketplace-release` and adding the private project secret does not enforce the gate on `main`, `develop` or historical tags. There is currently no repository-wide guarantee that publication has passed live ADC checks.
+
+The environment exists, but its Marketplace token has not been added. `VERTEX_LIVE_PROJECT_ID` is configured; `VERTEX_LIVE_WIF_PROVIDER` and `VERTEX_LIVE_SERVICE_ACCOUNT` are missing. The local account cannot create the WIF pool/custom role or grant the required IAM bindings, so no partial cloud resources were created. A project administrator must run the [cloud setup commands](github-live-setup.md).
+
+All six real checks passed locally through a packaged prerelease VSIX, including the CI-mode runner and artifact guard. [GitHub offline CI passed](https://github.com/jorsm/vertex-ai-models-chat-provider/actions/runs/38177646746). The [GitHub prerelease verification](https://github.com/jorsm/vertex-ai-models-chat-provider/actions/runs/38177663748) passed packaging and manifest checks, then failed at missing CI configuration before authentication or publication. That run does not validate the dedicated GitHub ADC identity.
+
+Use this staged rollout:
+
+1. Have a project administrator configure WIF and the dedicated service account, then inject the missing repository identifiers. Keep the repository Marketplace token during preparation.
+2. Add `VSCE_PAT` to `marketplace-release` using the [token staging command](github-live-setup.md#stage-the-marketplace-token-in-the-release-environment). Retain its repository-level copy so existing release branches continue to work.
+3. Dispatch the updated prerelease workflow on the PR branch with `verify_only=true`. Require all six real checks to pass using the dedicated CI ADC identity. This run does not publish and needs no Marketplace token.
+4. At the planned cutover, finish or cancel queued and running legacy publication jobs and pause new release dispatches/tag pushes. Merge PR #16 into `develop`, then promote the same gate files to `main`. Confirm both branches contain the workflows, shared action, runner/guard scripts and dependency changes, and that their offline CI passes.
+5. Verify the environment Marketplace token exists, then [remove the repository-level copy](github-live-setup.md#complete-the-token-cutover). Updated jobs use the environment token; historical workflows without that environment lose access to publishing credentials.
+6. Resume releases using refs containing the gate. Every stable/prerelease release repeats the live checks and verifies its own report and VSIX hash; earlier green runs cannot authorize a later package.
+
+For preparation step 3, select the PR branch explicitly; the current `main` and `develop` workflows do not support `verify_only`:
+
+```sh
+gh workflow run publish-prerelease.yml \
+  --repo OWNER/REPO \
+  --ref codex/live-adc-release-gate \
+  -f verify_only=true
+```
+
+Treat the cutover as complete only after the dedicated GitHub ADC run passes, both release branches contain the gate, the environment token is present, the repository token is removed and no queued or running legacy publication jobs remain. Update this status section when that happens. Until then, `main` and `develop` retain the old flow.
 
 ## Run it
 
@@ -100,7 +136,7 @@ Add the following repository secrets under **Settings → Secrets and variables 
 | `VERTEX_LIVE_WIF_PROVIDER`    | Full provider name: `projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL/providers/PROVIDER`. |
 | `VERTEX_LIVE_SERVICE_ACCOUNT` | Dedicated CI service-account email. This is also the expected ADC identity.                                   |
 
-Create the `marketplace-release` environment under **Settings → Environments** and store `VSCE_PAT` there as an environment secret. Both updated publication jobs reference this environment; the token is passed only to the publication step. After verifying the environment secret exists, delete the old repository-level `VSCE_PAT`. The [setup commands](github-live-setup.md#move-the-marketplace-token-into-the-release-environment) migrate it without printing or saving the token locally. Keep the three live-test identity identifiers above as repository secrets. See [GitHub's environment documentation](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments).
+Create the `marketplace-release` environment under **Settings → Environments** and store `VSCE_PAT` there as an environment secret. Both updated publication jobs reference this environment; the token is passed only to the publication step. Stage the environment token during preparation and keep the repository-level copy until the [planned cutover](#rollout-status-and-cutover). The [setup commands](github-live-setup.md#stage-the-marketplace-token-in-the-release-environment) separate staging from removal and avoid printing or saving the token locally. Keep the three live-test identity identifiers above as repository secrets. See [GitHub's environment documentation](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments).
 
 Optional repository variables select models and runtime. Defaults are `VERTEX_LIVE_GEMINI_MODEL=gemini-3.8-flash`, `VERTEX_LIVE_CLAUDE_MODEL=claude-haiku-5-5`, `VERTEX_LIVE_REGION=global`, and `VERTEX_LIVE_VSCODE_VERSION=1.110.0`. Model overrides must be supported IDs in the packaged catalog. Do not add `VERTEX_LIVE_ADC_FILE` in CI: the authentication action exports `GOOGLE_APPLICATION_CREDENTIALS`. Conflicting overrides fail before requests. The runner ignores the repository `.env` in CI, and the release action never passes `--env-file`.
 
@@ -110,7 +146,7 @@ Commit the workflows, shared action and scripts on the ref being released. Local
 
 For the first GitHub validation, dispatch **Publish Pre-Release to VS Marketplace** on the updated ref and enable **Run all release checks without publishing** (`verify_only=true`). This executes packaging, WIF authentication and all six live checks, then skips publication. It needs no Marketplace token. A green local run does not prove the dedicated CI identity works; the first successful GitHub validation establishes that path.
 
-For ordinary release runs, leave `verify_only=false`. There is no option to skip live tests. Both workflows check the current GitHub run/attempt, checkout SHA, verified ADC identity and complete result matrix. Immediately before publication, the guard compares the VSIX SHA256 with the passing report. Stable publish retries recheck the hash before every attempt; neither workflow rebuilds during publication.
+For ordinary runs of the updated release workflows, leave `verify_only=false`. Those workflows have no option to skip live tests. Both check the current GitHub run/attempt, checkout SHA, verified ADC identity and complete result matrix. Immediately before publication, the guard compares the VSIX SHA256 with the passing report. Stable publish retries recheck the hash before every attempt; neither workflow rebuilds during publication.
 
 The saved CI report redacts project ID, expected/verified account and credential path, and only that JSON report is uploaded as an artifact. Local reports retain these details in ignored files. Raw host logs, ADC files, `.env` and the complete `.vscode-test` directory are never uploaded. See [GitHub's secrets documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets).
 

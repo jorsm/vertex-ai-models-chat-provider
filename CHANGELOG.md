@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- Local `test:live` acceptance through an installed VSIX and real ADC, requiring Gemini and Claude chat, tool continuation and image checks.
+- Stable and prerelease live release gates with dedicated federated CI credentials, sanitized reports, exact-artifact verification and `verify_only` validation. Enforcement is staged in [PR #16](https://github.com/jorsm/vertex-ai-models-chat-provider/pull/16); `main` and `develop` retain the old flow until the [documented cutover](docs/live-acceptance.md#rollout-status-and-cutover).
+
+### Changed
+
+- Updated offline CI to require formatting, lint and the full test suite when the workflow changes are merged.
+
+### Removed
+
+- Claude Haiku 4.5 from the bundled model catalog. The default live Claude checks use Haiku 5.5.
+
 ## [0.7.5] — 2026-10-11 (Pre-release)
 
 ### Added
