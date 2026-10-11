@@ -2,11 +2,15 @@ import * as vscode from "vscode";
 import { runGcloud } from "../utils/gcloud";
 import { Logger } from "../utils/Logger";
 import { DirectGcpAuth } from "./DirectGcpAuth";
-import type { AuthMethod, AuthOptions } from "./DirectGcpAuth";
+import { AuthConfigurationError } from "./AuthCredentials";
+import type { AuthMethod, AuthOptions } from "./AuthCredentials";
 import { ProxyAuth } from "./ProxyAuth";
 
-export { AuthConfigurationError } from "./DirectGcpAuth";
-export type { AuthMethod, AuthMethodType, AuthOptions } from "./DirectGcpAuth";
+export { AuthConfigurationError };
+export type { AuthMethod, AuthMethodType, AuthOptions } from "./AuthCredentials";
+
+/** Duration of a successfully resolved client-identity cache entry. */
+const IDENTITY_CACHE_TTL_MS = 60_000;
 
 /**
  * Coordinates direct credentials, independent proxy authentication, and shared client identity metadata.
@@ -18,14 +22,8 @@ export type { AuthMethod, AuthMethodType, AuthOptions } from "./DirectGcpAuth";
 export class AuthManager {
     private readonly logger = new Logger("AuthManager");
 
-    private readonly _onAuthUpdated = new vscode.EventEmitter<void>();
-
-    /**
-     * Fires when workspace authentication is updated, after the identity cache is cleared.
-     *
-     * @eventProperty
-     */
-    public readonly onAuthUpdated = this._onAuthUpdated.event;
+    private readonly directAuth: DirectGcpAuth;
+    private readonly proxyAuth: ProxyAuth;
 
     /** Identity and expiry cached for one minute after a successful lookup. */
     private identityCache: { value: string; expires: number } | undefined;
@@ -48,23 +46,23 @@ export class AuthManager {
      */
     private gcloudOperationQueue: Promise<void> = Promise.resolve();
 
-    private readonly directAuth: DirectGcpAuth;
-    private readonly proxyAuth: ProxyAuth;
+    private readonly _onAuthUpdated = new vscode.EventEmitter<void>();
 
-    /** Creates the authentication components with one shared CLI operation queue. */
+    /**
+     * Fires when workspace authentication is updated, after the identity cache is cleared.
+     *
+     * @eventProperty
+     */
+    public readonly onAuthUpdated = this._onAuthUpdated.event;
+
+    /**
+     * Creates the authentication components with one shared CLI operation queue.
+     *
+     * @param context - Owns stored credentials and the workspace authentication selection.
+     */
     constructor(context: vscode.ExtensionContext) {
         this.directAuth = new DirectGcpAuth(context, () => this.notifyAuthUpdated(), this.logger);
         this.proxyAuth = new ProxyAuth((operation) => this.runGcloudOperation(operation), this.logger);
-    }
-
-    /** Invalidates cached proxy tokens, including acquisitions already in progress. */
-    public clearProxyToken(): void {
-        this.proxyAuth.clearProxyToken();
-    }
-
-    /** Gets a personal proxy ID token independently of the selected direct credentials. */
-    public getProxyIdToken(): Promise<string> {
-        return this.proxyAuth.getProxyIdToken();
     }
 
     /**
@@ -83,9 +81,8 @@ export class AuthManager {
      * selected files, throw AuthConfigurationError.
      *
      * @returns Credential options, or `undefined` when ADC should be used.
-     * @throws {@link AuthConfigurationError}
-     * If a selected secret is missing or invalid, or a selected file is
-     *     unavailable or cannot be parsed.
+     * @throws An {@link AuthConfigurationError} if a selected secret is missing or
+     * invalid, or a selected file is unavailable or cannot be parsed.
      */
     public async getResolvedAuthOptions(): Promise<AuthOptions | undefined> {
         return this.directAuth.getResolvedAuthOptions();
@@ -178,6 +175,16 @@ export class AuthManager {
         return this.directAuth.getGcloudLoginActionLabel();
     }
 
+    /** Invalidates cached proxy tokens, including acquisitions already in progress. */
+    public clearProxyToken(): void {
+        this.proxyAuth.clearProxyToken();
+    }
+
+    /** Gets a personal proxy ID token independently of the selected direct credentials. */
+    public getProxyIdToken(): Promise<string> {
+        return this.proxyAuth.getProxyIdToken();
+    }
+
     /**
      * Gets the identity associated with the active authentication source,
      * caching it briefly to avoid repeated CLI calls. Service Account selections
@@ -207,6 +214,69 @@ export class AuthManager {
         return this.identityPromise;
     }
 
+    /** Invalidates cached identity results and notifies authentication listeners. */
+    private notifyAuthUpdated(): void {
+        this.identityCache = undefined;
+        this.identityPromise = undefined;
+        this.identityRevision++;
+        this._onAuthUpdated.fire();
+    }
+
+    /**
+     * Resolves `client_email` from credentials when available, otherwise the
+     * account reported by gcloud.
+     *
+     * @param revision - Identity cache generation captured when lookup started.
+     * @returns The account email, or `undefined` when none is available or the lookup is stale.
+     * @throws An {@link AuthConfigurationError} if a selected secret is missing or
+     * invalid, or a selected file cannot be resolved.
+     * @remarks
+     * Results from outdated revisions are discarded. A gcloud command
+     * failure may preserve the previous identity.
+     */
+    private async resolveIdentity(revision: number): Promise<string | undefined> {
+        const authOptions = await this.getResolvedAuthOptions();
+        const credentialIdentity = authOptions?.credentials?.client_email;
+        if (typeof credentialIdentity === "string" && credentialIdentity) {
+            return this.cacheIdentity(credentialIdentity, revision);
+        }
+
+        const previousIdentity = this.identityCache?.value;
+        try {
+            const { stdout } = await this.runGcloudOperation(() =>
+                runGcloud([
+                    "config",
+                    "get-value",
+                    "account",
+                ]),
+            );
+            const email = stdout.split(/\r?\n/, 1)[0]?.trim();
+            if (email && email !== "(unset)" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                return this.cacheIdentity(email, revision);
+            }
+            this.logger.log("Could not extract email from gcloud account output.");
+            return this.cacheIdentity(undefined, revision);
+        } catch {
+            this.logger.log(`Failed to refresh gcloud account email${previousIdentity ? "; keeping the last valid identity" : ""}.`);
+            return revision === this.identityRevision ? previousIdentity : undefined;
+        }
+    }
+
+    /**
+     * Caches or clears an identity only while its originating revision is current.
+     *
+     * @param identity - Resolved account email, or `undefined` to clear an invalid account.
+     * @param revision - Identity generation captured before the lookup began.
+     * @returns The supplied identity, or `undefined` when the lookup is stale.
+     */
+    private cacheIdentity(identity: string | undefined, revision: number): string | undefined {
+        if (revision !== this.identityRevision) {
+            return undefined;
+        }
+        this.identityCache = identity ? { value: identity, expires: Date.now() + IDENTITY_CACHE_TTL_MS } : undefined;
+        return identity;
+    }
+
     /**
      * Runs one Cloud SDK operation after the preceding operation settles.
      *
@@ -224,65 +294,5 @@ export class AuthManager {
             () => undefined,
         );
         return result;
-    }
-
-    /** Invalidates cached identity results and notifies authentication listeners. */
-    private notifyAuthUpdated(): void {
-        this.identityCache = undefined;
-        this.identityPromise = undefined;
-        this.identityRevision++;
-        this._onAuthUpdated.fire();
-    }
-
-    /**
-     * Resolves `client_email` from credentials when available, otherwise the
-     * account reported by gcloud.
-     *
-     * @param revision - Identity cache generation captured when lookup started.
-     * @returns The account email, or `undefined` when none is available or the lookup is stale.
-     * @throws {@link AuthConfigurationError}
-     * If a selected secret is missing or invalid, or a selected file cannot be
-     *     resolved.
-     * @remarks
-     * Results from outdated revisions are discarded. A gcloud command
-     * failure may preserve the previous identity.
-     */
-    private async resolveIdentity(revision: number): Promise<string | undefined> {
-        const authOptions = await this.getResolvedAuthOptions();
-        if (authOptions?.credentials?.client_email) {
-            const identity = authOptions.credentials.client_email;
-            if (revision === this.identityRevision) {
-                this.identityCache = { value: identity, expires: Date.now() + 60_000 };
-            }
-            return revision === this.identityRevision ? identity : undefined;
-        }
-
-        // Fallback to gcloud if using ADC. Keep the last valid identity only when
-        // the subprocess fails transiently; an explicit unset/invalid account clears it.
-        const previousIdentity = this.identityCache?.value;
-        try {
-            const { stdout } = await this.runGcloudOperation(() =>
-                runGcloud([
-                    "config",
-                    "get-value",
-                    "account",
-                ]),
-            );
-            const email = stdout.split(/\r?\n/, 1)[0]?.trim();
-            if (email && email !== "(unset)" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                if (revision === this.identityRevision) {
-                    this.identityCache = { value: email, expires: Date.now() + 60_000 };
-                }
-                return revision === this.identityRevision ? email : undefined;
-            }
-            if (revision === this.identityRevision) {
-                this.identityCache = undefined;
-            }
-            this.logger.log("Could not extract email from gcloud account output.");
-        } catch (e) {
-            this.logger.log(`Failed to refresh gcloud account email${previousIdentity ? "; keeping the last valid identity" : ""}.`);
-            return revision === this.identityRevision ? previousIdentity : undefined;
-        }
-        return undefined;
     }
 }

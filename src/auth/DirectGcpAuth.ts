@@ -1,53 +1,19 @@
-import * as fs from "fs";
+import { readFile } from "node:fs/promises";
 import * as vscode from "vscode";
 import type { Logger } from "../utils/Logger";
+import { AuthConfigurationError, parseCredentialJson, parseServiceAccount } from "./AuthCredentials";
+import type { AuthMethod, AuthOptions } from "./AuthCredentials";
+import { openGcloudLoginTerminal } from "./GcloudLogin";
 
-/** Supported sources for authenticating Vertex AI requests. */
-export type AuthMethodType = "secret" | "file" | "adc";
+export { AuthConfigurationError } from "./AuthCredentials";
+export type { AuthMethod, AuthMethodType, AuthOptions } from "./AuthCredentials";
 
-/**
- * Describes the authentication source selected for the current workspace.
- *
- * @remarks
- * `value` is a stored Service Account name for `secret`, a credential path for
- * `file`, and unused for `adc`.
- */
-export interface AuthMethod {
-    type: AuthMethodType;
-    value?: string;
-}
+/** Actions carried by authentication picker rows independently of their display labels. */
+type AuthPickerAction = { type: "adc" | "import" | "remove" } | { type: "secret"; name: string };
 
-/**
- * Google authentication options passed to the Vertex AI client.
- *
- * @remarks
- * An undefined result from {@link DirectGcpAuth.getResolvedAuthOptions} means to use ADC.
- */
-export interface AuthOptions {
-    /** Parsed Service Account JSON credentials, when using a key. */
-    credentials?: any;
-    /** Path to a Service Account JSON key file, when credentials are read from disk. */
-    keyFilename?: string;
-    /** Project associated with the selected credentials, when available. */
-    projectId?: string;
-}
-
-/**
- * Raised when a workspace's explicitly selected credential is unavailable or invalid.
- *
- * @remarks
- * This error preserves explicit credential selection instead of allowing fallback to ambient ADC.
- */
-export class AuthConfigurationError extends Error {
-    /**
-     * Creates an error for a credential that cannot be resolved as selected.
-     *
-     * @param message - User-facing explanation of the authentication configuration problem.
-     */
-    constructor(message: string) {
-        super(message);
-        this.name = "AuthConfigurationError";
-    }
+/** Separators carry no action and cannot change the selected authentication method. */
+interface AuthPickerItem extends vscode.QuickPickItem {
+    action?: AuthPickerAction;
 }
 
 const SECRETS_PREFIX = "sa_key_";
@@ -55,15 +21,6 @@ const SECRETS_PREFIX = "sa_key_";
 const GLOBAL_INDEX_KEY = "vertexAiChat.serviceAccountNames";
 
 const WORKSPACE_AUTH_METHOD_KEY = "vertexAiChat.activeAuthMethod";
-
-/** Required identity and key fields validated before a credential is stored. */
-interface ServiceAccountCredentials {
-    type: "service_account";
-    project_id: string;
-    client_email: string;
-    private_key: string;
-    [key: string]: unknown;
-}
 
 /**
  * Manages direct Vertex authentication selection and Service Account credentials.
@@ -77,6 +34,11 @@ interface ServiceAccountCredentials {
  * parsed; otherwise it uses ADC. See {@link DirectGcpAuth.getResolvedAuthOptions}.
  */
 export class DirectGcpAuth {
+    /**
+     * @param context - Owns stored keys and the workspace authentication selection.
+     * @param notifyAuthUpdated - Invalidates shared identity data after a selection changes.
+     * @param logger - Receives credential-source diagnostics without credential contents.
+     */
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly notifyAuthUpdated: () => void,
@@ -99,34 +61,16 @@ export class DirectGcpAuth {
      * selected files, throw AuthConfigurationError.
      *
      * @returns Credential options, or `undefined` when ADC should be used.
-     * @throws {@link AuthConfigurationError}
-     * If a selected secret is missing or invalid, or a selected file is
-     *     unavailable or cannot be parsed.
+     * @throws An {@link AuthConfigurationError} if a selected secret is missing or
+     * invalid, or a selected file is unavailable or cannot be parsed.
      */
     public async getResolvedAuthOptions(): Promise<AuthOptions | undefined> {
-        const authMethod = this.context.workspaceState.get<AuthMethod>(WORKSPACE_AUTH_METHOD_KEY);
+        const authMethod = this.getActiveMethod();
 
         // Explicit selections fail closed. Never replace a missing selected
         // credential with an ambient ADC identity.
         if (authMethod?.type === "secret") {
-            if (!authMethod.value) {
-                this.logger.log("Secret auth selected but no name provided.");
-                throw new AuthConfigurationError("The selected Service Account is missing its stored name. Select an authentication method to continue.");
-            }
-            const secret = await this.context.secrets.get(SECRETS_PREFIX + authMethod.value);
-            if (!secret) {
-                this.logger.log(`Secret '${authMethod.value}' not found in storage.`);
-                throw new AuthConfigurationError(`Stored Service Account '${authMethod.value}' is unavailable. Select an authentication method to continue.`);
-            }
-
-            try {
-                const credentials = this.parseServiceAccount(secret);
-                this.logger.log(`Using Service Account secret: ${authMethod.value}`);
-                return { credentials, projectId: credentials.project_id };
-            } catch (e) {
-                this.logger.log(`Error parsing secret '${authMethod.value}': ${e}`);
-                throw new AuthConfigurationError(`Stored Service Account '${authMethod.value}' is invalid. Re-import or remove it before continuing.`);
-            }
+            return this.resolveStoredServiceAccount(authMethod.value);
         }
 
         if (authMethod?.type === "file") {
@@ -134,7 +78,7 @@ export class DirectGcpAuth {
                 this.logger.log("File auth selected but no path provided.");
                 throw new AuthConfigurationError("The legacy Service Account file selection has no path. Select an authentication method to continue.");
             }
-            const options = this.resolveFromFile(authMethod.value);
+            const options = await this.resolveFromFile(authMethod.value);
             if (!options) {
                 throw new AuthConfigurationError(`Legacy Service Account file '${authMethod.value}' is unavailable or invalid. Select an authentication method to continue.`);
             }
@@ -146,10 +90,10 @@ export class DirectGcpAuth {
             return undefined;
         }
 
-        // 2. Default Behavior: Environment Variable Fallback
+        // With no selection, try the environment credential file before ambient ADC.
         const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
         if (envPath) {
-            const options = this.resolveFromFile(envPath);
+            const options = await this.resolveFromFile(envPath);
             if (options) {
                 this.logger.log(`Using GOOGLE_APPLICATION_CREDENTIALS: ${envPath}`);
                 return options;
@@ -173,10 +117,10 @@ export class DirectGcpAuth {
             password: true,
             validateInput: (value) => {
                 try {
-                    this.parseServiceAccount(value);
+                    parseServiceAccount(value);
                     return null;
-                } catch (e: any) {
-                    return e.message || "Invalid service account JSON";
+                } catch (error) {
+                    return error instanceof Error ? error.message : "Invalid service account JSON";
                 }
             },
         });
@@ -185,7 +129,7 @@ export class DirectGcpAuth {
             return false;
         }
 
-        const credentials = this.parseServiceAccount(json);
+        const credentials = parseServiceAccount(json);
         return this.storeServiceAccount(json, credentials.project_id || vscode.workspace.name || "default");
     }
 
@@ -215,11 +159,12 @@ export class DirectGcpAuth {
         try {
             const bytes = await vscode.workspace.fs.readFile(uri);
             const json = new TextDecoder().decode(bytes);
-            const credentials = this.parseServiceAccount(json);
+            const credentials = parseServiceAccount(json);
             return await this.storeServiceAccount(json, credentials.project_id || vscode.workspace.name || "default", true);
-        } catch (e: any) {
-            this.logger.log(`Failed to import service account file '${uri.toString()}': ${e}`);
-            void vscode.window.showErrorMessage(`Vertex AI: Could not import the service account file. ${e.message || e}`);
+        } catch (error) {
+            this.logger.log("Failed to import the Service Account file.");
+            const message = error instanceof Error ? error.message : "The file could not be imported.";
+            void vscode.window.showErrorMessage(`Vertex AI: Could not import the service account file. ${message}`);
             return false;
         }
     }
@@ -291,14 +236,16 @@ export class DirectGcpAuth {
         const names = this.context.globalState.get<string[]>(GLOBAL_INDEX_KEY) || [];
         const current = this.context.workspaceState.get<AuthMethod>(WORKSPACE_AUTH_METHOD_KEY);
 
-        const items: vscode.QuickPickItem[] = [
+        const items: AuthPickerItem[] = [
             {
                 label: "$(cloud) Use Default Credentials (gcloud login)",
+                action: { type: "adc" },
                 description: current?.type === "adc" || !current ? "(Current)" : "",
                 alwaysShow: true,
             },
             {
                 label: "$(file) Import Service Account JSON File...",
+                action: { type: "import" },
                 description: "Store a secure snapshot in VS Code",
             },
         ];
@@ -308,11 +255,13 @@ export class DirectGcpAuth {
             for (const name of names) {
                 items.push({
                     label: `$(key) ${name}`,
+                    action: { type: "secret", name },
                     description: current?.type === "secret" && current.value === name ? "(Current)" : "",
                 });
             }
             items.push({
                 label: "$(trash) Remove Stored Service Account...",
+                action: { type: "remove" },
                 description: "Delete a credential from VS Code Secret Storage",
             });
         }
@@ -321,19 +270,21 @@ export class DirectGcpAuth {
             placeHolder: "Select Authentication Method for this Workspace",
         });
 
-        if (!selection) {
+        if (!selection?.action) {
             return false;
         }
 
-        if (selection.label.includes("gcloud login")) {
-            await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "adc" });
-        } else if (selection.label.includes("Import Service Account")) {
-            return this.importServiceAccountFile();
-        } else if (selection.label.includes("Remove Stored Service Account")) {
-            return this.removeServiceAccount();
-        } else if (selection.label.startsWith("$(key)")) {
-            const name = selection.label.replace("$(key) ", "");
-            await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "secret", value: name });
+        switch (selection.action.type) {
+            case "import":
+                return this.importServiceAccountFile();
+            case "remove":
+                return this.removeServiceAccount();
+            case "secret":
+                await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "secret", value: selection.action.name });
+                break;
+            case "adc":
+                await this.activateAdc();
+                return true;
         }
 
         this.notifyAuthUpdated();
@@ -347,8 +298,7 @@ export class DirectGcpAuth {
      * Stored Service Account credentials remain available for later selection.
      */
     public async clearAuthMethod(): Promise<void> {
-        await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "adc" });
-        this.notifyAuthUpdated();
+        await this.activateAdc();
         void vscode.window.showInformationMessage("Vertex AI: Authentication reset to Application Default Credentials.");
     }
 
@@ -362,7 +312,15 @@ export class DirectGcpAuth {
      * @returns Resolves after the terminal command is started, not after login completes.
      */
     public async reauthenticate(projectId: string, onSuccess?: () => void | Promise<void>): Promise<void> {
-        this.openGcloudLoginTerminal(projectId, onSuccess);
+        openGcloudLoginTerminal(
+            projectId,
+            async () => {
+                await this.activateAdc();
+                void vscode.window.showInformationMessage("Vertex AI: Application Default Credentials updated successfully. Refreshing models…");
+                await onSuccess?.();
+            },
+            this.logger,
+        );
     }
 
     /**
@@ -375,50 +333,55 @@ export class DirectGcpAuth {
     }
 
     /**
-     * Resolves a credential file reference used by a legacy selection or the
-     * `GOOGLE_APPLICATION_CREDENTIALS` environment variable.
+     * Resolves a selected stored key without substituting another credential source.
      *
-     * @param filePath - Path to the Service Account JSON file.
-     * @returns Credential options when the file exists and contains parseable JSON; otherwise `undefined`.
+     * @param name - Stored name from the workspace selection, including legacy missing values.
+     * @returns Validated Service Account credentials and their project ID.
+     * @throws An {@link AuthConfigurationError} if the selected key is missing or invalid.
      */
-    private resolveFromFile(filePath: string): AuthOptions | undefined {
-        if (fs.existsSync(filePath)) {
-            try {
-                const content = fs.readFileSync(filePath, "utf8");
-                const credentials = JSON.parse(content);
-                return { keyFilename: filePath, credentials, projectId: credentials.project_id };
-            } catch (e) {
-                this.logger.log(`Error reading/parsing file '${filePath}': ${e}`);
-            }
+    private async resolveStoredServiceAccount(name?: string): Promise<AuthOptions> {
+        if (!name) {
+            this.logger.log("Secret auth selected but no name provided.");
+            throw new AuthConfigurationError("The selected Service Account is missing its stored name. Select an authentication method to continue.");
         }
-        return undefined;
+        const secret = await this.context.secrets.get(SECRETS_PREFIX + name);
+        if (!secret) {
+            this.logger.log(`Secret '${name}' not found in storage.`);
+            throw new AuthConfigurationError(`Stored Service Account '${name}' is unavailable. Select an authentication method to continue.`);
+        }
+
+        try {
+            const credentials = parseServiceAccount(secret);
+            this.logger.log(`Using Service Account secret: ${name}`);
+            return { credentials, projectId: credentials.project_id };
+        } catch {
+            this.logger.log(`Stored Service Account '${name}' is invalid.`);
+            throw new AuthConfigurationError(`Stored Service Account '${name}' is invalid. Re-import or remove it before continuing.`);
+        }
     }
 
     /**
-     * Parses Service Account JSON and checks its required identity and key fields.
+     * Reads a legacy or environment credential file without blocking the extension host.
      *
-     * @param json - Raw Service Account JSON text.
-     * @returns Parsed credentials containing the project, client email, and private key.
-     * @throws {@link Error}
-     * If the JSON is malformed or required Service Account fields are missing.
+     * @remarks
+     * Service Account secrets require stricter validation through {@link parseServiceAccount}.
+     * Files preserve other Google auth formats, including authorized-user and external accounts.
+     *
+     * @param filePath - Credential file to read.
+     * @returns Parsed credential options, or `undefined` if the file is unavailable or invalid.
      */
-    private parseServiceAccount(json: string): ServiceAccountCredentials {
-        let parsed: unknown;
+    private async resolveFromFile(filePath: string): Promise<AuthOptions | undefined> {
         try {
-            parsed = JSON.parse(json);
+            const credentials = parseCredentialJson(await readFile(filePath, "utf8"));
+            const options: AuthOptions = { keyFilename: filePath, credentials };
+            if (typeof credentials.project_id === "string") {
+                options.projectId = credentials.project_id;
+            }
+            return options;
         } catch {
-            throw new Error("Invalid JSON format");
+            this.logger.log("Could not read or parse the credential file.");
+            return undefined;
         }
-
-        if (typeof parsed !== "object" || parsed === null || (parsed as Record<string, unknown>).type !== "service_account") {
-            throw new Error("Not a valid service account JSON (missing type: service_account)");
-        }
-
-        const credentials = parsed as ServiceAccountCredentials;
-        if (typeof credentials.project_id !== "string" || typeof credentials.client_email !== "string" || typeof credentials.private_key !== "string" || !credentials.project_id || !credentials.client_email || !credentials.private_key) {
-            throw new Error("Service account JSON is missing project_id, client_email, or private_key");
-        }
-        return credentials;
     }
 
     /**
@@ -436,10 +399,10 @@ export class DirectGcpAuth {
             placeHolder: "e.g. Client-A, Personal-Lab",
             validateInput: (value) => (value.trim().length === 0 ? "Enter a non-empty name" : null),
         });
-        if (!enteredName) {
+        const name = enteredName?.trim();
+        if (!name) {
             return false;
         }
-        const name = enteredName.trim();
 
         const names = this.context.globalState.get<string[]>(GLOBAL_INDEX_KEY) || [];
         if (names.includes(name)) {
@@ -462,92 +425,6 @@ export class DirectGcpAuth {
         const sourceFileNotice = importedFromFile ? " The original credential file was not modified; delete it yourself if it is no longer needed." : "";
         void vscode.window.showInformationMessage(`Vertex AI: Service Account '${name}' securely stored and activated for this workspace.${sourceFileNotice}`);
         return true;
-    }
-
-    /**
-     * Builds arguments for `gcloud auth application-default login`.
-     *
-     * @param projectId - Optional project ID to include in the command.
-     * @returns The command arguments, including `--quiet` and `--project` when applicable.
-     */
-    private getGcloudLoginArgs(projectId: string): string[] {
-        const args = [
-            "auth",
-            "application-default",
-            "login",
-        ];
-        if (projectId) {
-            args.push("--project", projectId);
-        }
-        args.push("--quiet");
-        return args;
-    }
-
-    /**
-     * Starts ADC login in a dedicated VS Code terminal and observes shell integration events.
-     *
-     * @param projectId - Project ID to pass to the login command, if non-empty.
-     * @param onSuccess - Optional callback to run after successful login and ADC activation.
-     * @remarks
-     * If shell integration does not report completion, the user must refresh models manually.
-     * @see {@link DirectGcpAuth.reauthenticate}
-     */
-    private openGcloudLoginTerminal(projectId: string, onSuccess?: () => void | Promise<void>): void {
-        const terminal = vscode.window.createTerminal({
-            name: "Vertex AI: Authentication",
-            iconPath: new vscode.ThemeIcon("key"),
-        });
-
-        const args = this.getGcloudLoginArgs(projectId);
-        const command = [
-            "gcloud",
-            ...args.map((arg) => this.quoteShellArgument(arg)),
-        ].join(" ");
-        let completed = false;
-        const cleanup = () => {
-            endListener.dispose();
-            closeListener.dispose();
-        };
-        const endListener = vscode.window.onDidEndTerminalShellExecution((event) => {
-            if (event.terminal !== terminal || completed || !event.execution.commandLine.value.includes("gcloud auth application-default login")) {
-                return;
-            }
-            completed = true;
-            cleanup();
-            if (event.exitCode !== 0) {
-                void vscode.window.showErrorMessage(`Vertex AI: gcloud authentication failed${event.exitCode === undefined ? "" : ` with exit code ${event.exitCode}`}. Review the authentication terminal for details.`);
-                return;
-            }
-
-            void (async () => {
-                await this.activateAdc();
-                void vscode.window.showInformationMessage("Vertex AI: Application Default Credentials updated successfully. Refreshing models…");
-                await onSuccess?.();
-            })().catch((error) => this.logger.log(`Post-authentication refresh failed: ${error}`));
-        });
-        const closeListener = vscode.window.onDidCloseTerminal((closedTerminal) => {
-            if (closedTerminal === terminal) {
-                cleanup();
-            }
-        });
-
-        terminal.show();
-        terminal.sendText(command);
-        void vscode.window.showInformationMessage("Vertex AI: Complete gcloud authentication in the terminal. Models will refresh automatically when shell integration reports success; otherwise run Refresh Models.");
-    }
-
-    /**
-     * Formats one argument for inclusion in the gcloud terminal command.
-     *
-     * @param value - Argument value to format.
-     * @returns The original value when it contains only whitelisted characters,
-     *     or a single-quoted form with embedded single quotes escaped otherwise.
-     */
-    private quoteShellArgument(value: string): string {
-        if (/^[A-Za-z0-9._:/=-]+$/.test(value)) {
-            return value;
-        }
-        return `'${value.replace(/'/g, `'\\''`)}'`;
     }
 
     /** Selects ADC for this workspace and invalidates cached identity data. */

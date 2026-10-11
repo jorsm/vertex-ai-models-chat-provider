@@ -27,7 +27,6 @@ class DataPart {
 class CancellationError extends Error {}
 const rootA = { fsPath: "/a" },
     rootB = { fsPath: "/b" };
-let sourceDisposed = false;
 const vscode = {
     StatusBarAlignment: { Right: 1 },
     MarkdownString: class {
@@ -46,9 +45,7 @@ const vscode = {
         cancel() {
             this.source.cancel();
         }
-        dispose() {
-            sourceDisposed = true;
-        }
+        dispose() {}
     },
     LanguageModelChatMessage: class {
         constructor(role, content) {
@@ -1319,7 +1316,6 @@ test("SCM command uses shared inference, target repository and cancellable progr
         Object.assign(vscode.window, originalWindow);
         vscode.extensions.getExtension = originalGetExtension;
     });
-    sourceDisposed = false;
     const repo = { rootUri: rootB, state: { indexChanges: [{ uri: { fsPath: "/b/file.ts" } }] }, inputBox: { value: "" }, diffIndexWithHEAD: async () => "+code" };
     vscode.extensions.getExtension = () => ({ isActive: true, exports: { getAPI: () => ({ getRepository: () => repo }) } });
     let errors = 0;
@@ -1333,10 +1329,11 @@ test("SCM command uses shared inference, target repository and cancellable progr
     let count = 0;
     await generateCommitMessage(
         {
-            async infer(modelId, _messages, _options, progress, _token, resource) {
+            async infer(modelId, _messages, _options, progress, token, resource) {
                 count++;
                 assert.equal(modelId, "company-gemini");
                 assert.equal(resource, rootB);
+                assert.equal(token, progressCancel.token);
                 progress.report(new TextPart("feat: change"));
             },
         },
@@ -1346,7 +1343,6 @@ test("SCM command uses shared inference, target repository and cancellable progr
     assert.equal(count, 1);
     assert.equal(progressOptions.cancellable, true);
     assert.equal(progressCancel.listeners.size, 0);
-    assert.equal(sourceDisposed, true);
     await generateCommitMessage(
         {
             async infer(_modelId, _messages, _options, _progress, token) {
@@ -1357,7 +1353,7 @@ test("SCM command uses shared inference, target repository and cancellable progr
         },
         rootB,
     );
-    assert.equal(repo.inputBox.value, "");
+    assert.equal(repo.inputBox.value, "feat: change");
     assert.equal(errors, 0);
     assert.equal(progressCancel.listeners.size, 0);
 });

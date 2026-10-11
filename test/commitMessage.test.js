@@ -12,8 +12,9 @@ class TextPart {
 const rootA = { fsPath: "/a" },
     rootB = { fsPath: "/b" };
 let userSettings, workspaceSettings, folderSettings, configurations, errors, repo, diffReads;
-let pickerCalls, pickerSelection, updates, warnings;
+let pickerCalls, pickerSelection, updates, warnings, information, gitAPI, gitExtension, progressToken;
 const vscode = {
+    env: { remoteName: undefined },
     ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
     LanguageModelTextPart: TextPart,
     LanguageModelChatMessage: class {
@@ -27,32 +28,18 @@ const vscode = {
     },
     LanguageModelChatToolMode: { Auto: 1 },
     CancellationError: class extends Error {},
-    CancellationTokenSource: class {
-        token = { isCancellationRequested: false };
-        cancel() {
-            this.token.isCancellationRequested = true;
-        }
-        dispose() {}
-    },
     ProgressLocation: { Notification: 1 },
     window: {
         activeTextEditor: { document: { uri: rootA } },
         createOutputChannel: () => ({ appendLine() {} }),
         showErrorMessage: (message) => errors.push(message),
-        showInformationMessage() {},
+        showInformationMessage: (message) => information.push(message),
         showWarningMessage: (message) => warnings.push(message),
         showQuickPick: async (items, options) => {
             pickerCalls.push({ items, options });
             return items.find((item) => item.modelId === pickerSelection);
         },
-        withProgress: async (_options, callback) =>
-            callback(
-                {},
-                {
-                    isCancellationRequested: false,
-                    onCancellationRequested: () => ({ dispose() {} }),
-                },
-            ),
+        withProgress: async (_options, callback) => callback({}, progressToken),
     },
     workspace: {
         getConfiguration: (section, resource) => {
@@ -87,7 +74,7 @@ const vscode = {
         getWorkspaceFolder: (resource) => vscode.workspace.workspaceFolders?.find((folder) => folder.uri === resource),
     },
     extensions: {
-        getExtension: () => ({ isActive: true, exports: { getAPI: () => ({ getRepository: () => repo }) } }),
+        getExtension: () => gitExtension,
     },
 };
 
@@ -101,7 +88,9 @@ let resolveCommitMessageResourceUri;
 let generateCommitMessage;
 let selectCommitMessageModel;
 try {
-    ({ DEFAULT_SYSTEM_PROMPT, resolveCommitMessageResourceUri, generateCommitMessage } = require("../out/commitMessage/CommitMessage.js"));
+    ({ generateCommitMessage } = require("../out/commitMessage/CommitMessage.js"));
+    ({ DEFAULT_SYSTEM_PROMPT } = require("../out/commitMessage/CommitMessagePrompts.js"));
+    ({ resolveCommitMessageResourceUri } = require("../out/commitMessage/CommitMessageContext.js"));
     ({ selectCommitMessageModel } = require("../out/commitMessage/CommitMessageModelSelection.js"));
 } finally {
     Module._load = originalLoad;
@@ -114,6 +103,7 @@ test.beforeEach(() => {
     configurations = [];
     errors = [];
     warnings = [];
+    information = [];
     updates = [];
     pickerCalls = [];
     pickerSelection = undefined;
@@ -133,6 +123,14 @@ test.beforeEach(() => {
             return "+new code";
         },
     };
+    gitAPI = {
+        repositories: [repo],
+        getRepository(resource) {
+            return this.repositories.find((repository) => resource.fsPath === repository.rootUri.fsPath || resource.fsPath.startsWith(`${repository.rootUri.fsPath}/`));
+        },
+    };
+    gitExtension = { isActive: true, exports: { getAPI: () => gitAPI } };
+    progressToken = { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }) };
 });
 
 function inferenceHarness(error) {
@@ -147,6 +145,14 @@ function inferenceHarness(error) {
     };
 }
 
+function deferred() {
+    let resolve;
+    const promise = new Promise((done) => {
+        resolve = done;
+    });
+    return { promise, resolve };
+}
+
 test("exports default conventional commit system prompt", () => {
     assert.ok(DEFAULT_SYSTEM_PROMPT);
     assert.match(DEFAULT_SYSTEM_PROMPT, /Conventional Commits/);
@@ -158,7 +164,15 @@ test("resolves the repository URI from an SCM title command context", () => {
 
     assert.equal(resolveCommitMessageResourceUri({ rootUri }), rootUri);
     assert.equal(resolveCommitMessageResourceUri(rootUri), rootUri);
-    assert.equal(resolveCommitMessageResourceUri(undefined), undefined);
+});
+
+test("resource inference prefers the active editor, then the first workspace folder", () => {
+    assert.equal(resolveCommitMessageResourceUri(), rootA);
+    assert.equal(resolveCommitMessageResourceUri({ rootUri: rootB }), rootB);
+    vscode.window.activeTextEditor = undefined;
+    assert.equal(resolveCommitMessageResourceUri(), rootA);
+    vscode.workspace.workspaceFolders = undefined;
+    assert.equal(resolveCommitMessageResourceUri(), undefined);
 });
 
 for (const scope of [
@@ -250,6 +264,222 @@ test("an unavailable saved model reports the shared inference error without retr
     assert.equal(userSettings.commitMessageModel, "previously-available-model");
 });
 
+test("a failed diff read prevents inference from using an incomplete staged diff", async () => {
+    repo.inputBox.value = "existing draft";
+    repo.state.indexChanges.push({ uri: { fsPath: "/b/unreadable.ts" } });
+    repo.diffIndexWithHEAD = async (path) => {
+        if (path.endsWith("unreadable.ts")) throw new Error("Git index is locked");
+        return "+readable change";
+    };
+    const h = inferenceHarness();
+    await generateCommitMessage(h, rootB);
+    assert.equal(h.calls.length, 0);
+    assert.equal(repo.inputBox.value, "existing draft");
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /Could not read staged diff for 'unreadable.ts'/);
+    assert.deepEqual(information, []);
+});
+
+test("empty staged diffs preserve the draft and report an empty diff without inference", async () => {
+    repo.inputBox.value = "existing draft";
+    repo.diffIndexWithHEAD = async () => "";
+    const h = inferenceHarness();
+    await generateCommitMessage(h, rootB);
+    assert.equal(h.calls.length, 0);
+    assert.equal(repo.inputBox.value, "existing draft");
+    assert.match(information[0], /All staged diffs are empty/);
+    assert.deepEqual(errors, []);
+});
+
+test("an inference failure preserves the existing draft and releases the repository for another run", async () => {
+    repo.inputBox.value = "existing draft";
+    await generateCommitMessage(inferenceHarness(new Error("Inference failed")), rootB);
+    assert.equal(repo.inputBox.value, "existing draft");
+    assert.equal(errors.length, 1);
+    const retry = inferenceHarness();
+    await generateCommitMessage(retry, rootB);
+    assert.equal(retry.calls.length, 1);
+    assert.equal(repo.inputBox.value, "feat: change");
+});
+
+test("a successful request with no usable text preserves the draft and reports an error", async () => {
+    repo.inputBox.value = "existing draft";
+    await generateCommitMessage(
+        {
+            async infer(_model, _messages, _options, progress) {
+                progress.report(new TextPart("  \n "));
+                progress.report({ value: "non-text response" });
+            },
+        },
+        rootB,
+    );
+    assert.equal(repo.inputBox.value, "existing draft");
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /empty commit message/);
+});
+
+test("streamed text is combined and trimmed before replacing an unchanged draft", async () => {
+    repo.inputBox.value = "existing draft";
+    await generateCommitMessage(
+        {
+            async infer(_model, _messages, _options, progress) {
+                progress.report(new TextPart("  feat: "));
+                progress.report({ value: "ignored" });
+                progress.report(new TextPart("change\n"));
+            },
+        },
+        rootB,
+    );
+    assert.equal(repo.inputBox.value, "feat: change");
+    assert.deepEqual(errors, []);
+});
+
+test("cancellation before inference preserves the draft without an error notification", async () => {
+    repo.inputBox.value = "existing draft";
+    progressToken.isCancellationRequested = true;
+    const h = inferenceHarness();
+    await generateCommitMessage(h, rootB);
+    assert.equal(h.calls.length, 0);
+    assert.equal(repo.inputBox.value, "existing draft");
+    assert.deepEqual(errors, []);
+});
+
+test("late cancellation discards streamed output even if inference resolves normally", async () => {
+    repo.inputBox.value = "existing draft";
+    await generateCommitMessage(
+        {
+            async infer(_model, _messages, _options, progress, token) {
+                assert.equal(token, progressToken);
+                progress.report(new TextPart("feat: cancelled"));
+                progressToken.isCancellationRequested = true;
+            },
+        },
+        rootB,
+    );
+    assert.equal(repo.inputBox.value, "existing draft");
+    assert.deepEqual(errors, []);
+});
+
+test("user edits made during inference are kept instead of overwritten by the result", async () => {
+    repo.inputBox.value = "existing draft";
+    const started = deferred();
+    const finish = deferred();
+    const generation = generateCommitMessage(
+        {
+            async infer(_model, _messages, _options, progress) {
+                started.resolve();
+                await finish.promise;
+                progress.report(new TextPart("feat: generated"));
+            },
+        },
+        rootB,
+    );
+    await started.promise;
+    assert.equal(repo.inputBox.value, "existing draft");
+    repo.inputBox.value = "user's newer draft";
+    finish.resolve();
+    await generation;
+    assert.equal(repo.inputBox.value, "user's newer draft");
+    assert.match(warnings[0], /Your edits were kept/);
+    assert.deepEqual(errors, []);
+});
+
+test("overlapping requests for one repository send only one inference request", async () => {
+    const started = deferred();
+    const finish = deferred();
+    let calls = 0;
+    const provider = {
+        async infer(_model, _messages, _options, progress) {
+            calls++;
+            started.resolve();
+            await finish.promise;
+            progress.report(new TextPart("feat: change"));
+        },
+    };
+    const first = generateCommitMessage(provider, rootB);
+    await started.promise;
+    await generateCommitMessage(provider, rootB);
+    assert.equal(calls, 1);
+    assert.equal(diffReads, 1);
+    assert.match(information[0], /already being generated/);
+    finish.resolve();
+    await first;
+    assert.equal(repo.inputBox.value, "feat: change");
+});
+
+test("requests for different repositories can run concurrently", async () => {
+    const otherRepo = {
+        ...repo,
+        rootUri: rootA,
+        inputBox: { value: "" },
+        state: { indexChanges: [{ uri: { fsPath: "/a/file.ts" } }] },
+    };
+    gitAPI.repositories.push(otherRepo);
+    const started = deferred();
+    const finish = deferred();
+    const roots = [];
+    const provider = {
+        async infer(_model, _messages, _options, progress, _token, root) {
+            roots.push(root);
+            if (roots.length === 2) started.resolve();
+            await finish.promise;
+            progress.report(new TextPart(`feat: change ${root.fsPath}`));
+        },
+    };
+    const generations = Promise.all([
+        generateCommitMessage(provider, rootA),
+        generateCommitMessage(provider, rootB),
+    ]);
+    await started.promise;
+    finish.resolve();
+    await generations;
+    assert.equal(otherRepo.inputBox.value, "feat: change /a");
+    assert.equal(repo.inputBox.value, "feat: change /b");
+    assert.deepEqual(information, []);
+    assert.deepEqual(errors, []);
+});
+
+test("an unmatched resource does not generate for an unrelated open repository", async () => {
+    const h = inferenceHarness();
+    await generateCommitMessage(h, { fsPath: "/outside/file.ts" });
+    assert.equal(h.calls.length, 0);
+    assert.equal(diffReads, 0);
+    assert.match(warnings[0], /No Git repository found/);
+    assert.deepEqual(errors, []);
+});
+
+test("a missing or failed Git extension reports unavailability without losing the draft", async () => {
+    repo.inputBox.value = "existing draft";
+    const h = inferenceHarness();
+    gitExtension = undefined;
+    await generateCommitMessage(h, rootB);
+    gitExtension = {
+        isActive: false,
+        async activate() {
+            throw new Error("Git activation failed");
+        },
+    };
+    await generateCommitMessage(h, rootB);
+    assert.equal(h.calls.length, 0);
+    assert.equal(repo.inputBox.value, "existing draft");
+    assert.equal(warnings.length, 2);
+    assert.match(warnings[0], /Git extension API cannot be reached/);
+    assert.match(warnings[1], /Git extension API cannot be reached/);
+    assert.deepEqual(errors, []);
+});
+
+test("repository-state failures are reported by the command handler", async () => {
+    Object.defineProperty(repo, "state", {
+        get() {
+            throw new Error("Repository is closed");
+        },
+    });
+    const h = inferenceHarness();
+    await generateCommitMessage(h, rootB);
+    assert.equal(h.calls.length, 0);
+    assert.match(errors[0], /Repository is closed/);
+});
+
 function discoveryHarness(
     models = [
         { id: "grok-test", displayName: "Grok", vendor: "x-ai", family: "grok" },
@@ -264,6 +494,31 @@ function discoveryHarness(
         },
     };
 }
+
+test("model selection and generation without explicit context use the same active repository", async () => {
+    const otherRepo = { ...repo, rootUri: rootA, inputBox: { value: "" } };
+    gitAPI.repositories = [
+        otherRepo,
+        repo,
+    ];
+    vscode.window.activeTextEditor = { document: { uri: rootB } };
+    pickerSelection = "grok-test";
+    await selectCommitMessageModel(discoveryHarness());
+    const h = inferenceHarness();
+    await generateCommitMessage(h);
+    assert.equal(updates[0].resource, rootB);
+    assert.equal(h.calls[0][0], "grok-test");
+    assert.equal(h.calls[0][5], rootB);
+    assert.equal(otherRepo.inputBox.value, "");
+    assert.equal(repo.inputBox.value, "feat: change");
+});
+
+test("a new selection for a resource outside open folders uses workspace settings", async () => {
+    const outside = { fsPath: "/outside/file.ts" };
+    pickerSelection = "grok-test";
+    await selectCommitMessageModel(discoveryHarness(), outside);
+    assert.deepEqual(updates, [{ key: "commitMessageModel", value: "grok-test", target: 2, resource: outside }]);
+});
 
 test("the model picker shows the complete current catalog and puts the configured default first", async () => {
     const h = discoveryHarness();

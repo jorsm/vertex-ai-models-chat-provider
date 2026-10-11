@@ -20,6 +20,7 @@ let quickPick;
 let gcloudResult;
 let commands;
 let terminal;
+let information, errors, logs, inputValues, inputOptions, selectedFiles;
 const shellListeners = new Set();
 const closeListeners = new Set();
 const subscribe = (listeners, listener) => {
@@ -31,10 +32,19 @@ const vscode = {
     QuickPickItemKind: { Separator: -1 },
     ThemeIcon: class {},
     window: {
-        showQuickPick: async () => quickPick,
+        showQuickPick: async (items) => {
+            if (typeof quickPick === "function") return quickPick(items);
+            if (typeof quickPick === "string") return quickPick;
+            return items.find((item) => item.label === quickPick?.label);
+        },
         showWarningMessage: async () => "Remove",
-        showInformationMessage() {},
-        showErrorMessage() {},
+        showInformationMessage: (message) => information.push(message),
+        showErrorMessage: (message) => errors.push(message),
+        showInputBox: async (options) => {
+            inputOptions.push(options);
+            return inputValues.shift();
+        },
+        showOpenDialog: async () => selectedFiles,
         createTerminal: () =>
             (terminal = {
                 show() {},
@@ -44,6 +54,10 @@ const vscode = {
             }),
         onDidEndTerminalShellExecution: (listener) => subscribe(shellListeners, listener),
         onDidCloseTerminal: (listener) => subscribe(closeListeners, listener),
+    },
+    workspace: {
+        name: "fixture-workspace",
+        fs: { readFile: async (uri) => fs.promises.readFile(uri.fsPath) },
     },
 };
 
@@ -55,7 +69,9 @@ try {
         if (request.endsWith("/Logger"))
             return {
                 Logger: class {
-                    log() {}
+                    log(message) {
+                        logs.push(message);
+                    }
                 },
             };
         if (request.endsWith("/utils/gcloud")) {
@@ -121,7 +137,7 @@ function harness(method, secrets = {}) {
     const context = {
         workspaceState: memento(workspace),
         globalState: memento(global),
-        secrets: { get: async (key) => stored.get(key), delete: async (key) => stored.delete(key) },
+        secrets: { get: async (key) => stored.get(key), store: async (key, value) => stored.set(key, value), delete: async (key) => stored.delete(key) },
     };
     return { auth: new AuthManager(context), context, stored, global };
 }
@@ -132,6 +148,12 @@ test.beforeEach(() => {
     gcloudResult = "cli@example.com";
     commands = [];
     terminal = undefined;
+    information = [];
+    errors = [];
+    logs = [];
+    inputValues = [];
+    inputOptions = [];
+    selectedFiles = undefined;
     shellListeners.clear();
     closeListeners.clear();
 });
@@ -251,6 +273,105 @@ test("selection changes invalidate pending identity lookups before notifying sub
     assert.equal(nextReads, 1);
 });
 
+test("stored credential names containing action labels still select the credential", async () => {
+    const name = "gcloud login and Import Service Account";
+    const { auth } = harness({ type: "adc" }, { [name]: JSON.stringify(credentials()) });
+    quickPick = { label: `$(key) ${name}` };
+    assert.equal(await auth.selectAuthMethod(), true);
+    assert.deepEqual(auth.getActiveMethod(), { type: "secret", value: name });
+});
+
+test("picker actions remain valid when display labels change and separators cannot select auth", async () => {
+    const { auth } = harness({ type: "adc" }, { selected: JSON.stringify(credentials()) });
+    quickPick = (items) => ({ ...items.find((item) => item.action?.type === "secret"), label: "Renamed display label" });
+    assert.equal(await auth.selectAuthMethod(), true);
+    assert.deepEqual(auth.getActiveMethod(), { type: "secret", value: "selected" });
+    quickPick = { label: "Stored Secrets" };
+    assert.equal(await auth.selectAuthMethod(), false);
+    assert.deepEqual(auth.getActiveMethod(), { type: "secret", value: "selected" });
+});
+
+test("credential paste validates without exposing JSON fragments and rejects blank stored names", async () => {
+    const { auth, stored } = harness({ type: "adc" });
+    inputValues = [
+        JSON.stringify(credentials()),
+        "   ",
+    ];
+    assert.equal(await auth.setServiceAccountKey(), false);
+    assert.equal(inputOptions[0].password, true);
+    const validation = inputOptions[0].validateInput('{"private_key":"fixture-secret-fragment"');
+    assert.match(validation, /Invalid JSON/);
+    assert.ok(!validation.includes("fixture-secret-fragment"));
+    assert.equal(stored.size, 0);
+    assert.deepEqual(auth.getActiveMethod(), { type: "adc" });
+});
+
+test("imported credentials remain a stored snapshot when the source file changes", async () => {
+    const sourceFile = path.join(tempDir, "imported.json");
+    const original = credentials("imported@example.iam.gserviceaccount.com");
+    fs.writeFileSync(sourceFile, JSON.stringify(original));
+    selectedFiles = [{ fsPath: sourceFile }];
+    inputValues = ["imported"];
+    const { auth, stored } = harness({ type: "adc" });
+    assert.equal(await auth.importServiceAccountFile(), true);
+    fs.writeFileSync(sourceFile, JSON.stringify(credentials("changed@example.iam.gserviceaccount.com")));
+    assert.deepEqual(await auth.getResolvedAuthOptions(), { credentials: original, projectId: original.project_id });
+    assert.equal(stored.get("sa_key_imported"), JSON.stringify(original));
+});
+
+test("credential files preserve authorized-user formats and reject non-object JSON", async () => {
+    const file = path.join(tempDir, "other-credentials.json");
+    const authorizedUser = { type: "authorized_user", client_id: "fixture-client", refresh_token: "fixture-refresh" };
+    fs.writeFileSync(file, JSON.stringify(authorizedUser));
+    const { auth } = harness({ type: "file", value: file });
+    assert.deepEqual(await auth.getResolvedAuthOptions(), { keyFilename: file, credentials: authorizedUser });
+    assert.equal(await auth.getIdentity(), "cli@example.com");
+    for (const invalid of [
+        "null",
+        "[]",
+        "42",
+        '"fixture-string"',
+    ]) {
+        fs.writeFileSync(file, invalid);
+        await assert.rejects(harness({ type: "file", value: file }).auth.getResolvedAuthOptions(), AuthConfigurationError);
+        process.env.GOOGLE_APPLICATION_CREDENTIALS = file;
+        assert.equal(await harness(undefined).auth.getResolvedAuthOptions(), undefined);
+    }
+});
+
+test("expired identity cache survives a CLI failure but clears an explicitly unset account", async (t) => {
+    const realNow = Date.now;
+    let now = realNow();
+    Date.now = () => now;
+    t.after(() => {
+        Date.now = realNow;
+    });
+    const { auth } = harness({ type: "adc" });
+    assert.equal(await auth.getIdentity(), "cli@example.com");
+    now += 60_001;
+    gcloudResult = () => {
+        throw new Error("Fixture CLI failure");
+    };
+    assert.equal(await auth.getIdentity(), "cli@example.com");
+    gcloudResult = "(unset)";
+    assert.equal(await auth.getIdentity(), undefined);
+    assert.equal(commands.length, 3);
+});
+
+test("invalid claim shapes and overflowing expiration fail with sanitized proxy errors", async () => {
+    const { auth } = harness({ type: "adc" });
+    for (const claims of [
+        "null",
+        "[]",
+        '"fixture-string"',
+        '{"email":"fixture@example.com","email_verified":true,"exp":1e400}',
+    ]) {
+        gcloudResult = `header.${Buffer.from(claims).toString("base64url")}.signature`;
+        await assert.rejects(auth.getProxyIdToken(), (error) => error instanceof GatewayError && error.status === 401 && !error.message.includes(claims));
+        assert.ok(logs.every((message) => !message.includes(gcloudResult)));
+    }
+});
+
 test("auth-change subscribers can invalidate a proxy acquisition already in progress", async () => {
     const { auth } = harness({ type: "adc" });
     const entered = deferred(),
@@ -314,3 +435,73 @@ for (const exitCode of [
         assert.equal(closeListeners.size, 0);
     });
 }
+
+test("closing the login terminal releases subscriptions and ignores its late completion", async () => {
+    const { auth } = harness({ type: "secret", value: "selected" });
+    let refreshed = 0;
+    await auth.reauthenticate("", () => {
+        refreshed++;
+    });
+    const completion = [...shellListeners][0];
+    for (const listener of closeListeners) listener(terminal);
+    assert.equal(shellListeners.size, 0);
+    assert.equal(closeListeners.size, 0);
+    completion({ terminal, execution: { commandLine: { value: terminal.command } }, exitCode: 0 });
+    await flush();
+    assert.equal(auth.getActiveMethod().type, "secret");
+    assert.equal(refreshed, 0);
+});
+
+test("unrelated terminal commands are ignored and successful login refreshes once", async () => {
+    const { auth } = harness({ type: "secret", value: "selected" });
+    let refreshed = 0;
+    await auth.reauthenticate("", () => {
+        refreshed++;
+    });
+    const completion = [...shellListeners][0];
+    completion({ terminal: {}, execution: { commandLine: { value: terminal.command } }, exitCode: 0 });
+    completion({ terminal, execution: { commandLine: { value: "echo fixture" } }, exitCode: 0 });
+    assert.equal(shellListeners.size, 1);
+    assert.equal(auth.getActiveMethod().type, "secret");
+    const success = { terminal, execution: { commandLine: { value: terminal.command } }, exitCode: 0 };
+    completion(success);
+    completion(success);
+    await flush();
+    assert.equal(refreshed, 1);
+    assert.equal(auth.getActiveMethod().type, "adc");
+    assert.equal(shellListeners.size, 0);
+    assert.equal(closeListeners.size, 0);
+});
+
+test("terminal setup failures release listeners without changing the auth selection", async (t) => {
+    const create = vscode.window.createTerminal;
+    t.after(() => {
+        vscode.window.createTerminal = create;
+    });
+    vscode.window.createTerminal = () => {
+        const result = create();
+        result.sendText = () => {
+            throw new Error("Fixture terminal setup failed");
+        };
+        return result;
+    };
+    const { auth } = harness({ type: "secret", value: "selected" });
+    await assert.rejects(auth.reauthenticate("fixture-project"), /Fixture terminal setup failed/);
+    assert.equal(shellListeners.size, 0);
+    assert.equal(closeListeners.size, 0);
+    assert.equal(auth.getActiveMethod().type, "secret");
+});
+
+test("post-login refresh failures are logged without exposing callback error contents", async () => {
+    const { auth } = harness({ type: "secret", value: "selected" });
+    await auth.reauthenticate("", () => {
+        throw new Error("fixture-sensitive-fragment");
+    });
+    for (const listener of shellListeners) listener({ terminal, execution: { commandLine: { value: terminal.command } }, exitCode: 0 });
+    await flush();
+    assert.equal(auth.getActiveMethod().type, "adc");
+    assert.ok(logs.some((message) => message.includes("Post-authentication")));
+    assert.ok(logs.every((message) => !message.includes("fixture-sensitive-fragment")));
+    assert.equal(shellListeners.size, 0);
+    assert.equal(closeListeners.size, 0);
+});
