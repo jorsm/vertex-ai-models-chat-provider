@@ -11,7 +11,7 @@ import { UsageTrackerService } from "./UsageTrackerService";
 import { Logger } from "./utils/Logger";
 import { DISCOVERY_PROBE_TIMEOUT_MS, getDiscoveryStartDelayMs, probeWithRetries, resolveDiscoveryTimeoutMs, runDiscoveryQueue } from "./utils/discovery";
 import { estimateTokens } from "./utils/tokens";
-import { EffortCatalog, type EffortPreferenceSnapshot, resolveEffort, snapshot } from "./effort/Effort";
+import { EffortCatalog, type EffortPreferenceSnapshot, resolveEffort } from "./effort/Effort";
 import { captureEffortPreferences } from "./effort/EffortConfiguration";
 import { cancellableRequest, requestCancellation } from "./utils/cancellation";
 
@@ -53,7 +53,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         return this.catalogIndex;
     }
     public getEffortModelSnapshot() {
-        return snapshot({ models: this.currentEffortCatalog().models, connectionRevision: this.connectionRevision, catalogRevision: this.catalogRevision });
+        return { models: this.currentEffortCatalog().models, connectionRevision: this.connectionRevision, catalogRevision: this.catalogRevision };
     }
     public async ensureInitialDiscovery(token: vscode.CancellationToken): Promise<void> {
         if (!this.discoveryDone && !this._discoveryPromise) {

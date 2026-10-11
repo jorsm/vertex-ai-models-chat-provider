@@ -31,7 +31,7 @@ The command uses the Chat header brain icon and Command Palette. Model rows show
 
 ## Request behavior
 
-The public callback captures preferences before waiting for labels/discovery. Catalog definitions and resolved requests are frozen snapshots. Retries retain their payload and client; destination changes cancel in-flight requests and prevent accounting against a different connection.
+The public callback copies preference maps before waiting for labels/discovery. Catalog definitions are copied and frozen once when indexed; requests and picker snapshots reuse those definitions. Each request retains its resolved effort. Retries retain their payload and client; destination changes cancel in-flight requests and prevent accounting against a different connection.
 
 Adapters use the literal `spec.version` and serialize effort as follows:
 

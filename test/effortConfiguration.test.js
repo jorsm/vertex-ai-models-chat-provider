@@ -76,7 +76,6 @@ test("invalid higher scope stays invalid; unrelated invalid values remain stored
     user.unknown = "high";
     assert.equal(captured.preferences.a, "invalid");
     assert.equal(captured.preferences.unknown, "invalid");
-    assert(Object.isFrozen(captured.preferences));
 });
 test("malformed shape reports configuration problem", () => {
     for (const value of [

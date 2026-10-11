@@ -12,7 +12,7 @@ export interface ModelEffortSpec {
 export type EffortPreferenceSource = "user" | "workspace";
 
 /**
- * Detached configuration captured before asynchronous work.
+ * Preference maps copied before asynchronous work.
  *
  * @remarks
  * Workspace overrides User per model. Invalid values remain in the snapshot so
@@ -61,7 +61,8 @@ export class EffortError extends Error {
  *
  * @remarks
  * Catalog ingestion validates model structure and effort metadata. This index
- * preserves catalog order and uses literal IDs without backend aliases.
+ * copies and freezes definitions once; requests and picker snapshots reuse them.
+ * It preserves catalog order and uses literal IDs without backend aliases.
  */
 export class EffortCatalog {
     private readonly byId: Map<string, ModelSpec>;
@@ -75,7 +76,9 @@ export class EffortCatalog {
      * @param models - Catalog entries to detach and freeze before indexing.
      */
     constructor(models: readonly ModelSpec[]) {
-        this.models = snapshot(models);
+        const copy = structuredClone(models);
+        freezeCatalog(copy);
+        this.models = copy;
         this.byId = new Map(
             this.models.map((model) => [
                 model.id,
@@ -105,7 +108,8 @@ export class EffortCatalog {
  * @param catalog - Immutable index of the models available for this invocation.
  * @param modelId - Exact catalog ID, independent of the backend version sent by the adapter.
  * @param preferences - Captured public-request settings; omit for catalog-only internal requests.
- * @returns Detached, frozen model metadata and effort, with effort absent for a model without effort metadata.
+ * @returns The catalog's frozen model definition and a captured effort decision,
+ * with effort absent for a model without effort metadata.
  * @throws An {@link EffortError} if the model is unavailable, its preference is
  * malformed, or the choice is not allowed by its catalog.
  */
@@ -122,7 +126,7 @@ export function resolveEffort(catalog: EffortCatalog, modelId: string, preferenc
         if (preference !== undefined) {
             throw new EffortError("unsupported", `Model '${modelId}' does not declare configurable thinking effort in the current catalog.`);
         }
-        return snapshot({ spec });
+        return { spec };
     }
 
     let value = spec.effort.default;
@@ -134,36 +138,16 @@ export function resolveEffort(catalog: EffortCatalog, modelId: string, preferenc
     if (!spec.effort.values.includes(value)) {
         throw new EffortError("unsupported", `Model '${modelId}': effort '${value}' is not permitted by the current catalog. Allowed: ${spec.effort.values.join(", ")}. Choose a value in the picker.`);
     }
-    return snapshot({ spec, effort: { value, source } });
+    return { spec, effort: { value, source } };
 }
 
-/**
- * Copies JSON data and recursively freezes it for asynchronous work and retries.
- *
- * @remarks
- * Uses JSON serialization: undefined object properties are omitted and other
- * values follow JSON conversion rules. Runtime freezing does not change the
- * caller's static type to readonly.
- *
- * @typeParam T - Type of the serializable input and returned snapshot.
- * @param value - JSON-serializable catalog metadata or preference data.
- * @returns A detached, recursively frozen copy.
- * @throws A serialization or parsing error for unsupported input, such as circular
- * references, BigInt values, or a root value of `undefined`.
- */
-export function snapshot<T>(value: T): T {
-    const copy: unknown = JSON.parse(JSON.stringify(value));
-    freezeSnapshot(copy);
-    return copy as T;
-}
-
-/** Recursively freezes parsed JSON objects and arrays. */
-function freezeSnapshot(value: unknown): void {
+/** Guards catalog definitions against accidental writes after indexing. */
+function freezeCatalog(value: unknown): void {
     if (typeof value !== "object" || value === null) {
         return;
     }
     for (const child of Object.values(value)) {
-        freezeSnapshot(child);
+        freezeCatalog(child);
     }
     Object.freeze(value);
 }

@@ -10,6 +10,7 @@ test("every bundled default is a named choice and the catalog preserves model me
     for (const model of bundled.candidateModels) {
         assert.deepEqual(catalog.get(model.id), model);
         const request = resolveEffort(catalog, model.id);
+        assert.strictEqual(request.spec, catalog.get(model.id));
         assert.deepEqual(request.spec, model);
         if (model.effort) {
             assert(model.effort.values.includes(model.effort.default));
@@ -63,7 +64,7 @@ test("custom backend names are literal and custom effort strings are catalog cho
     assert.equal(resolveEffort(new EffortCatalog([{ ...custom, effort: undefined }]), custom.id).spec.version, custom.version);
 });
 
-test("catalog and resolved requests are detached recursively frozen snapshots", () => {
+test("catalog definitions are detached and recursively frozen for requests to reuse", () => {
     const model = structuredClone(bundled.candidateModels[0]);
     const index = new EffortCatalog([model]);
     const request = resolveEffort(index, model.id, preferences(model.id, "high"));

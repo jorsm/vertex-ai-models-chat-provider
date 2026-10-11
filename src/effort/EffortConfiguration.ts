@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { EffortError, snapshot } from "./Effort";
+import { EffortError } from "./Effort";
 import type { EffortPreferenceSnapshot, EffortPreferenceSource } from "./Effort";
 
 const EFFORT_SETTING_KEY = "thinkingEffortByModel";
@@ -14,7 +14,7 @@ let preferenceWriteQueue: Promise<void> = Promise.resolve();
  * Workspace entries override User entries per model; values stay unknown until request resolution.
  * Call before awaiting other work so a public invocation retains its initial settings.
  *
- * @returns A detached, frozen snapshot of effective values and their supplying scopes.
+ * @returns Copied maps of effective values and their supplying scopes.
  * @throws An {@link EffortError} if the effective setting or an inspected scope is not an object.
  */
 export function captureEffortPreferences(): EffortPreferenceSnapshot {
@@ -31,7 +31,7 @@ export function captureEffortPreferences(): EffortPreferenceSnapshot {
             Object.hasOwn(workspace, id) ? "workspace" : "user",
         ]),
     );
-    return snapshot({ preferences, sourceByModel });
+    return { preferences, sourceByModel };
 }
 /**
  * Chooses the initial write scope for a model.
