@@ -54,11 +54,11 @@ The provider entry points retain their existing paths and coordinate configurati
 
 This organization preserves existing business logic. The [provider follow-up topics](providers-follow-up.md) record observed behaviors and unresolved design choices for separate discussion, including signature identity, malformed tool arguments, retries, usage contracts, and schema discovery.
 
-The dispatcher groups models by vendor and literal catalog `version`, then schedules one discovery operation per backend in each region, with at most three concurrent endpoints and staggered starts. Each operation calls `pingModel()` without effort settings and retries transient failures within the endpoint deadline. A 429 preserves reachability. Entries sharing the same vendor/version share availability; each request resolves its effort independently.
+The dispatcher groups models by vendor and resolved catalog backend, decoding older effort suffix aliases when effort metadata is absent, then schedules one discovery operation per backend in each region, with at most three concurrent endpoints and staggered starts. Each operation calls `pingModel()` without effort settings and retries transient failures within the endpoint deadline. A 429 preserves reachability. Entries sharing the same vendor/backend share availability; each request resolves its effort independently.
 
 - **Google Gemini Integration**: Managed by `VertexGoogleProvider`, using model versions and effort defaults from the active catalog.
 - **Anthropic Claude Integration**: Managed by `VertexAnthropicProvider`, using model versions and effort defaults from the active catalog.
-- **xAI Grok Integration**: Managed by `VertexGrokProvider` through Vertex AI's OpenAI-compatible endpoint, using literal backend paths and effort defaults from the active catalog.
+- **xAI Grok Integration**: Managed by `VertexGrokProvider` through Vertex AI's OpenAI-compatible endpoint, using resolved backend paths and effort settings from the active catalog.
 - **Thinking Models**: Bundled models use independent effort configuration: Gemini sends `thinkingConfig.thinkingLevel` and Claude sends adaptive thinking with `output_config.effort`.
 - **Thought Signatures**: Provider-specific mechanisms maintain reasoning continuity across tool calls by caching and re-injecting Gemini signatures or Claude signed thinking/redacted-thinking blocks.
 - **Parallel Tool Execution**: Implementation of tool call buffering and message merging to satisfy Gemini's requirements for grouped function responses.
@@ -117,7 +117,7 @@ Handles chat inference for Anthropic models. This method:
 5. Manages streaming responses, reporting text deltas and tool call progress to VS Code after parsing partial JSON tool inputs. Signed `thinking`, `signature_delta`, and `redacted_thinking` data remains hidden, but complete content-block sequences are retained in a bounded in-memory cache and restored unchanged when VS Code returns tool results. Models that emit no thinking blocks use the same stream path without creating replay state.
 6. Captures and returns detailed usage statistics, including `input`, `output`, `cache_read`, and `cache_create` token metrics. It also reports these statistics back to VS Code via a `LanguageModelDataPart` (MIME type `usage`) containing `prompt_tokens`, `completion_tokens`, `total_tokens`, and `cached_tokens` to update the native Copilot Chat usage indicator.
 7. Attaches metadata labels (provided via the `labels` parameter or the provider's internal state) through `X-Vertex-AI-Labels`, enabling Google Cloud Billing attribution for Anthropic PayGo requests. The SDK request options preserve this custom header.
-8. Uses the literal catalog version and sends the selected effort with adaptive thinking and `display: "omitted"`. Availability probes omit effort settings.
+8. Uses the resolved catalog version and sends the selected effort with adaptive thinking and `display: "omitted"`. Availability probes omit effort settings.
 
 ### VertexGoogleProvider
 
@@ -143,7 +143,7 @@ Configures the provider with a set of labels to be attached to Gemini generation
 [source](../src/providers/VertexGoogleProvider.ts)
 `pingModel(modelId: string, options?: DiscoveryProbeOptions): Promise<boolean>`
 
-Attempts a minimal request to the specified model ID to verify availability and permissions in the current GCP project using the provided `DiscoveryProbeOptions`. The dispatcher supplies the literal catalog backend version. The ping omits thinking settings and surfaces transient failures as `DiscoveryRetryableError` for the shared retry policy.
+Attempts a minimal request to the specified model ID to verify availability and permissions in the current GCP project using the provided `DiscoveryProbeOptions`. The dispatcher supplies the resolved catalog backend version. The ping omits thinking settings and surfaces transient failures as `DiscoveryRetryableError` for the shared retry policy.
 
 #### provideTokenCount
 
@@ -233,7 +233,7 @@ Handles Grok 4.6 chat inference using an OpenAI client. This method:
 
 1. Maps VS Code messages to OpenAI chat completion parameters. It supports `LanguageModelTextPart`, `LanguageModelToolCallPart`, `LanguageModelToolResultPart` (transformed into discrete `tool` role messages), and `LanguageModelDataPart` (including base64 image conversion or UTF-8 decoding for other data types).
 2. Looks up the output budget from the provided `spec` or the effective model catalog and requests streaming usage.
-3. Uses the literal catalog backend path and sends the selected `reasoning_effort`.
+3. Uses the resolved catalog backend path and sends the selected `reasoning_effort`.
 4. Preserves a leading system prompt and inserts a placeholder user turn only if the first conversation turn is missing or is not a user turn.
 5. Executes requests using a retry mechanism to handle transient failures.
 6. Streams final text and accumulates incremental tool call deltas until `finish_reason` is received. It implements a custom stream transformer to filter out malformed `data: : keepalive` heartbeat events occasionally sent by the Vertex Grok endpoint, which are not valid JSON and would otherwise cause the OpenAI SDK parser to fail.
@@ -245,7 +245,7 @@ Handles Grok 4.6 chat inference using an OpenAI client. This method:
 
 `ModelSpec` optionally declares `effort: { values, default }`. Values are unique, nonempty strings; the named default must belong to that list. The [schema](../schemas/models.schema.json) supplies editing validation and is executed by [ModelCatalogParser](../src/ModelCatalogParser.ts) at catalog ingestion, with separate checks for unique model IDs and default membership. [Effort.ts](../src/effort/Effort.ts) contains the shared types, immutable model index and pure request resolution without repeating catalog validation. Backend APIs decide which model/effort combinations they support. A malformed definition in a readable local catalog is excluded and reported while that catalog remains authoritative. Invalid JSON/root-shape fallback behavior is unchanged; proxy catalogs fail as a whole.
 
-Adapters accept `request?: ResolvedModelRequest` after `spec`, carrying a frozen spec/price snapshot and optional effort. They use `spec.version` literally: Claude sends adaptive thinking plus `output_config.effort`, Google sends `thinkingConfig.thinkingLevel`, and Grok sends `reasoning_effort`. Calls without a request snapshot use the supplied spec's named default. A model without effort metadata sends no override.
+Adapters accept `request?: ResolvedModelRequest` after `spec`, carrying a frozen spec/price snapshot and optional effort. They use the resolved `spec.version`: Claude sends adaptive thinking plus `output_config.effort`, Google sends `thinkingConfig.thinkingLevel`, and Grok sends `reasoning_effort`. Calls without a request snapshot resolve the supplied catalog spec in the same way. Explicit effort metadata keeps the backend version literal and supplies the named default. Older entries without metadata decode Claude `-low`/`-medium`/`-high`/`-xhigh`/`-max`, Gemini `-high`, and Grok 4.6 `-low`/`-medium`/`-high` suffixes into a base backend and fixed effort. Other models without effort metadata send no override.
 
 Custom model IDs and backend names are independent. Grok backend paths, including the `xai/` namespace, are specified in the catalog rather than inferred. Grok proxy transport remains unsupported and fails before creating a direct client. API errors are surfaced without selecting a different model or effort.
 

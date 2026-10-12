@@ -267,7 +267,7 @@ At discovery ingestion, the client uses the same [catalog schema](../schemas/mod
 
 The incoming path carries the user's configured `projectId` and the first region from the server's `regionPriority`, which the proxy forwards upstream. Check the location against your approved regions and the model against your allowlist, authorize the caller for the requested project, and never let a client path select an arbitrary hostname or upstream URL. If the proxy's runtime identity cannot call Vertex in that project, the upstream error is returned and shown in VS Code.
 
-The `{model}` path component is the catalog's literal `version`. Effort is an independent JSON request field. Authorize that backend model and the effort choices you enforce. The UI `id` is independent of the upstream route.
+The `{model}` path component is the catalog's literal `version`, except for older effort suffix aliases without `effort` metadata. Those entries route to the base backend and send the suffix's fixed effort, without requiring `effort-v1` negotiation. Explicit effort metadata always keeps `version` literal. Effort is an independent JSON request field. Authorize that backend model and the effort choices you enforce. The UI `id` is independent of the upstream route.
 
 Preserve SDK-native requests:
 
