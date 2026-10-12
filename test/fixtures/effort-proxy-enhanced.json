@@ -1,5 +1,4 @@
 {
-    "catalogCapabilities": ["effort-v1"],
     "candidateModels": [
         {
             "id": "server-gemini",

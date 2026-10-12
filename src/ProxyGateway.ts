@@ -103,11 +103,6 @@ export function parseProxyCatalog(payload: unknown): ModelCatalog {
     // Accept either envelope, preserving the server's routing configuration.
     const entries = "candidateModels" in payload ? payload.candidateModels : "models" in payload ? payload.models : undefined;
     const regions = "regionPriority" in payload ? payload.regionPriority : undefined;
-    const capabilities = "catalogCapabilities" in payload ? payload.catalogCapabilities : undefined;
-    if (capabilities !== undefined && (!Array.isArray(capabilities) || capabilities.some((value) => value !== "effort-v1") || new Set(capabilities).size !== capabilities.length)) {
-        throw new GatewayError("Invalid proxy catalog capabilities: expected effort-v1 acknowledgement.");
-    }
-    const enhanced = Array.isArray(capabilities) && capabilities.includes("effort-v1");
     if (!Array.isArray(entries) || ("candidateModels" in payload && "models" in payload)) {
         throw new GatewayError("Invalid proxy discovery response: expected candidateModels or a legacy models array.");
     }
@@ -116,9 +111,6 @@ export function parseProxyCatalog(payload: unknown): ModelCatalog {
         catalog = parseModelCatalog({ candidateModels: entries, regionPriority: regions });
     } catch (error) {
         throw new GatewayError(`Invalid proxy catalog: ${error instanceof Error ? error.message : error}`);
-    }
-    if (!enhanced && catalog.candidateModels.some((model) => model.effort !== undefined)) {
-        throw new GatewayError("Proxy effort metadata requires catalogCapabilities: ['effort-v1'].");
     }
     return catalog;
 }
@@ -183,7 +175,7 @@ export class ProxyGateway {
             });
             controller.signal.throwIfAborted();
             const response = await this.fetch(`${this.url}/discovery`, {
-                headers: { Authorization: `Bearer ${token}`, "X-Vertex-AI-Catalog-Capabilities": "effort-v1" },
+                headers: { Authorization: `Bearer ${token}` },
                 signal: controller.signal,
             });
             if (!response.ok) {

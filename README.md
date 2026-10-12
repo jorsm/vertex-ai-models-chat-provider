@@ -138,7 +138,7 @@ Older catalog entries without `effort` metadata still support suffix aliases: Cl
 
 Bundled defaults follow the documented model defaults: Medium for Claude Opus 5.5, Haiku 5.5 and Gemini 3.7/3.8 Flash; High for the other configured Claude models, Gemini 3 Flash preview and Grok 4.6. Sources: [Claude effort](https://platform.claude.com/docs/en/build-with-claude/effort), [Gemini thinking](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/thinking), [Grok reasoning](https://docs.x.ai/developers/model-capabilities/text/reasoning). Grok's named default follows xAI documentation; Vertex omission behavior is not independently documented here.
 
-Proxy catalogs remain authoritative for models and effort choices. They must acknowledge `effort-v1` to advertise effort metadata. The extension never imports bundled choices into a server catalog. See the [proxy contract](docs/proxy.md), [provider contracts](docs/providers.md), and [verification](docs/thinking-effort-verification.md).
+Proxy catalogs remain authoritative for models and effort choices. Optional effort metadata is accepted directly after catalog validation, without a capability-negotiation header or acknowledgement. The extension never imports bundled choices into a server catalog. See the [proxy contract](docs/proxy.md), [provider contracts](docs/providers.md), and [verification](docs/thinking-effort-verification.md).
 
 ## 🤖 Supported models
 

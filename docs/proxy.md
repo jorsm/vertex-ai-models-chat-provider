@@ -261,13 +261,13 @@ Filter discovery using the authenticated caller's permissions. Return an empty `
 
 The extension publishes only the variants explicitly returned. It does not synthesize variants or supplement an empty catalog. Duplicate IDs, malformed vendor identifiers, invalid metadata, malformed JSON, or a response larger than 1 MiB invalidate the whole response. Discovery initializes all registered adapters with the configured gateway; individual adapters report unsupported transports during inference. Discovery uses `vertexAiChat.modelDiscoveryTimeoutSeconds` (45 seconds by default), including token acquisition and response reading. The server's prices drive model information and local usage estimates, with each request retaining its selected rate card.
 
-At discovery ingestion, the client uses the same [catalog schema](../schemas/models.schema.json) and [parser](../src/ModelCatalogParser.ts) as local catalog files. Structural checks run once, with separate checks for unique IDs and effort-default membership. The proxy envelope handles capability acknowledgement; internal consumers do not repeat catalog validation. Unsupported effort names remain the backend API's responsibility.
+At discovery ingestion, the client uses the same [catalog schema](../schemas/models.schema.json) and [parser](../src/ModelCatalogParser.ts) as local catalog files. Structural checks run once, with separate checks for unique IDs and effort-default membership. Optional effort metadata is accepted directly; internal consumers do not repeat catalog validation. Unsupported effort names remain the backend API's responsibility.
 
 ### Route rewriting and request bodies
 
 The incoming path carries the user's configured `projectId` and the first region from the server's `regionPriority`, which the proxy forwards upstream. Check the location against your approved regions and the model against your allowlist, authorize the caller for the requested project, and never let a client path select an arbitrary hostname or upstream URL. If the proxy's runtime identity cannot call Vertex in that project, the upstream error is returned and shown in VS Code.
 
-The `{model}` path component is the catalog's literal `version`, except for older effort suffix aliases without `effort` metadata. Those entries route to the base backend and send the suffix's fixed effort, without requiring `effort-v1` negotiation. Explicit effort metadata always keeps `version` literal. Effort is an independent JSON request field. Authorize that backend model and the effort choices you enforce. The UI `id` is independent of the upstream route.
+The `{model}` path component is the catalog's literal `version`, except for older effort suffix aliases without `effort` metadata. Those entries route to the base backend and send the suffix's fixed effort. Explicit effort metadata always keeps `version` literal. Effort is an independent JSON request field. Authorize that backend model and the effort choices you enforce. The UI `id` is independent of the upstream route.
 
 Preserve SDK-native requests:
 
@@ -373,9 +373,9 @@ consumer can implement its own retry policy; some Copilot versions convert all
 external-provider errors to a generic failure regardless of the error code.
 The extension cannot guarantee that those consumers stop retrying.
 
-## Independent thinking effort (`effort-v1`)
+## Independent thinking effort
 
-The client sends `X-Vertex-AI-Catalog-Capabilities: effort-v1` on authenticated **GET /discovery only**, with no billing attribution. A server advertising effort metadata acknowledges with top-level `"catalogCapabilities": ["effort-v1"]`. See the [effort fixture](../test/fixtures/effort-proxy-enhanced.json) and [basic fixture](../test/fixtures/effort-proxy-basic.json). This acknowledgement is a wire-envelope field, not a field in local `models.json`. Unknown capabilities, unacknowledged effort metadata, malformed configuration, redirects or duplicate IDs fail the response without local fallback.
+The client sends its personal ID token on **GET /discovery**, with no capability-negotiation or billing headers. A server can include optional per-model effort metadata directly. See the [effort fixture](../test/fixtures/effort-proxy-enhanced.json) and [basic fixture](../test/fixtures/effort-proxy-basic.json). Older servers may still return `catalogCapabilities`; the client ignores that envelope field. Malformed configuration, redirects or duplicate IDs fail the response without local fallback.
 
 Models use literal backend `version` names. Optional `effort` contains named `values` and a `default` from that list. Every request for a model with effort metadata sends its resolved named level, including when no preference is saved. A model without effort metadata sends no override. Saved preferences cannot widen server choices or populate an empty catalog. Grok proxy transport remains unsupported.
 
