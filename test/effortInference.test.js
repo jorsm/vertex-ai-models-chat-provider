@@ -65,6 +65,8 @@ try {
 const { EffortCatalog, resolveEffort } = require("../out/effort/Effort.js");
 const models = require("../src/models.json").candidateModels;
 const catalog = new EffortCatalog(models);
+const legacyAliases = require("./fixtures/legacy-effort-aliases.json");
+const legacyModel = (alias) => ({ ...models.find((m) => m.vendor === alias.vendor && m.version === alias.backend), id: alias.id, version: alias.version, effort: undefined });
 const flush = () => new Promise(setImmediate);
 const deferred = () => {
     let resolve;
@@ -75,14 +77,14 @@ const token = () => ({ isCancellationRequested: false, onCancellationRequested: 
 const progress = { report() {} };
 const messages = [{ role: 1, content: [new TextPart("hello")] }];
 const usage = { usage: { input: 3, output: 1, cache_read: 0, cache_create: 0 }, charCount: {} };
-function harness() {
+function harness(catalogModels = models) {
     class D extends Dispatcher {
         registerProviders() {}
     }
     const records = [],
         requests = [];
-    const d = new D("test-project", { recordUsage: async (...args) => records.push(args) }, { onAuthUpdated() {}, getResolvedAuthOptions: async () => undefined }, { getEffectiveCatalog: async () => ({ candidateModels: models, regionPriority: ["global"] }) });
-    d.availableModels = models;
+    const d = new D("test-project", { recordUsage: async (...args) => records.push(args) }, { onAuthUpdated() {}, getResolvedAuthOptions: async () => undefined }, { getEffectiveCatalog: async () => ({ candidateModels: catalogModels, regionPriority: ["global"] }) });
+    d.availableModels = catalogModels;
     d.discoveryDone = true;
     for (const vendor of [
         "anthropic",
@@ -214,6 +216,44 @@ function adapter(vendor, onRequest) {
     if (vendor === "grok") provider.getClient = async () => ({ chat: { completions: { create: capture } } });
     return { provider, requests };
 }
+
+for (const alias of legacyAliases) {
+    test(`${alias.id} sends its historical effort and backend through public and internal requests`, async () => {
+        const model = legacyModel(alias);
+        const h = harness([model]);
+        const a = adapter(model.vendor);
+        h.d.activeProviders.set(model.vendor, a.provider);
+        prefs = { [alias.backend]: "invalid" };
+        await h.d.provideLanguageModelChatResponse({ id: model.id }, messages, {}, progress, token());
+        await h.d.infer(model.id, messages, {}, progress, token());
+        for (const body of a.requests) {
+            assert.equal(body.model, alias.backend);
+            if (model.vendor === "anthropic") {
+                assert.equal(body.output_config.effort, alias.effort);
+                assert.deepEqual(body.thinking, { type: "adaptive", display: "omitted" });
+            } else if (model.vendor === "google") assert.equal(body.config.thinkingConfig.thinkingLevel, alias.effort.toUpperCase());
+            else assert.equal(body.reasoning_effort, alias.effort);
+        }
+        assert.equal(a.requests.length, 2);
+        assert.equal(h.d.getEffortModelSnapshot().models[0].version, alias.version);
+    });
+}
+
+for (const vendor of [
+    "anthropic",
+    "google",
+    "grok",
+]) {
+    test(`${vendor} resolves legacy catalog specs when the adapter has no request snapshot`, async () => {
+        const alias = legacyAliases.find((a) => a.vendor === vendor);
+        const h = adapter(vendor);
+        await h.provider.provideLanguageModelChatResponse(alias.id, messages, {}, progress, token(), {}, legacyModel(alias));
+        const body = h.requests[0];
+        assert.equal(body.model, alias.backend);
+        assert.equal(vendor === "anthropic" ? body.output_config.effort : vendor === "google" ? body.config.thinkingConfig.thinkingLevel : body.reasoning_effort, vendor === "google" ? alias.effort.toUpperCase() : alias.effort);
+    });
+}
+
 for (const model of models.filter((m) => m.effort))
     test(`${model.id} sends every named effort and the catalog default`, async () => {
         const h = adapter(model.vendor);

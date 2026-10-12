@@ -1960,6 +1960,37 @@ for (const [
             assert.equal(new Headers(wire.init.headers).get("X-Vertex-AI-Catalog-Capabilities"), null);
         }
     });
+for (const [
+    vendor,
+    Provider,
+] of [
+    [
+        "google",
+        VertexGoogleProvider,
+    ],
+    [
+        "anthropic",
+        VertexAnthropicProvider,
+    ],
+]) {
+    test(`${vendor} unnegotiated legacy catalogs serialize their base route and fixed effort`, async (t) => {
+        const alias = require("./fixtures/legacy-effort-aliases.json").find((a) => a.vendor === vendor);
+        const legacySpec = { ...model(alias.id, vendor, alias.version) };
+        const parsed = parseProxyCatalog({ candidateModels: [legacySpec], regionPriority: ["global"] });
+        const request = resolveEffort(new EffortCatalog(parsed.candidateModels), alias.id);
+        const requests = streamingFetch(t, vendor === "google" ? [geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: "ok" }] } }] })] : [claudeEvent({ type: "message_stop" })]);
+        const provider = new Provider();
+        provider.initialize("test-project", "global", undefined, new ProxyGateway("https://gateway.test/base", async () => "token"));
+        await provider.provideLanguageModelChatResponse(alias.id, userMessage(), {}, { report() {} }, cancellation().token, {}, request.spec, request);
+        const wire = requests[0];
+        assert(wire.url.includes(`/models/${alias.backend}`));
+        assert(!wire.url.includes(alias.version));
+        assert.equal(vendor === "google" ? wire.body.generationConfig.thinkingConfig.thinkingLevel : wire.body.output_config.effort, vendor === "google" ? alias.effort.toUpperCase() : alias.effort);
+        assert.equal(new Headers(wire.init.headers).get("X-Vertex-AI-Catalog-Capabilities"), null);
+        assert.equal(parsed.candidateModels[0].version, alias.version);
+    });
+}
+
 test("Claude effort change on a tool continuation retains signed and redacted blocks in serialized payload", async (t) => {
     const events = [
         { type: "message_start", message: { id: "msg", role: "assistant", content: [], usage: { input_tokens: 1, output_tokens: 0 } } },

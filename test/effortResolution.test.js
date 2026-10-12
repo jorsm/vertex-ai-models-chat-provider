@@ -4,6 +4,8 @@ const { EffortCatalog, resolveEffort } = require("../out/effort/Effort.js");
 const bundled = require("../src/models.json");
 const preferences = (id, value, source = "user") => ({ preferences: { [id]: value }, sourceByModel: { [id]: source } });
 const catalog = new EffortCatalog(bundled.candidateModels);
+// Historical IDs/versions and their expected routes from 6ec5990^:src/models.json.
+const legacyAliases = require("./fixtures/legacy-effort-aliases.json");
 
 test("every bundled default is a named choice and the catalog preserves model metadata", () => {
     assert.equal(catalog.models.length, 15);
@@ -62,6 +64,76 @@ test("custom backend names are literal and custom effort strings are catalog cho
     assert.equal(resolveEffort(index, custom.id).spec.version, custom.version);
     assert.equal(resolveEffort(index, custom.id, preferences(custom.id, "ultra")).effort.value, "ultra");
     assert.equal(resolveEffort(new EffortCatalog([{ ...custom, effort: undefined }]), custom.id).spec.version, custom.version);
+});
+
+test("historical aliases without effort metadata pin their suffix and preserve catalog identity", () => {
+    for (const alias of legacyAliases) {
+        const model = { ...bundled.candidateModels.find((m) => m.vendor === alias.vendor && m.version === alias.backend), id: alias.id, version: alias.version, effort: undefined };
+        const index = new EffortCatalog([model]);
+        const request = resolveEffort(index, model.id, preferences(alias.backend, "invalid"));
+        assert.deepEqual(request.effort, { value: alias.effort, source: "legacy-alias" });
+        assert.equal(request.spec.version, alias.backend);
+        assert.equal(request.spec.id, alias.id);
+        assert.deepEqual(request.spec.pricing, model.pricing);
+        assert(Object.isFrozen(request.spec));
+        assert(Object.isFrozen(request.spec.pricing));
+        assert.equal(index.get(model.id).version, alias.version);
+        assert.equal(model.version, alias.version);
+        assert.throws(() => resolveEffort(index, model.id, preferences(model.id, "high")), /does not declare/);
+        assert.throws(() => resolveEffort(catalog, model.id), /Model not available/);
+    }
+});
+
+test("explicit effort metadata takes precedence over legacy suffixes", () => {
+    const model = { ...bundled.candidateModels[0], id: "claude-opus-5-5-max", version: "claude-opus-5-5-max" };
+    const index = new EffortCatalog([model]);
+    const request = resolveEffort(index, model.id, preferences(model.id, "high"));
+    assert.strictEqual(request.spec, index.get(model.id));
+    assert.equal(request.spec.version, model.version);
+    assert.deepEqual(request.effort, { value: "high", source: "user" });
+});
+
+test("legacy decoding is limited to the supported vendor, model family and suffix", () => {
+    for (const [
+        vendor,
+        version,
+    ] of [
+        [
+            "anthropic",
+            "company-reasoner-high",
+        ],
+        [
+            "google",
+            "gemini-3.8-flash-low",
+        ],
+        [
+            "google",
+            "claude-opus-5-5-max",
+        ],
+        [
+            "grok",
+            "xai/grok-4.6-xhigh",
+        ],
+        [
+            "grok",
+            "xai/company-reasoner-high",
+        ],
+        [
+            "custom",
+            "claude-opus-5-5-max",
+        ],
+        [
+            "anthropic",
+            "claude-opus-5-5-ultra",
+        ],
+    ]) {
+        const model = { ...bundled.candidateModels[0], id: version, vendor, version, effort: undefined };
+        const index = new EffortCatalog([model]);
+        const request = resolveEffort(index, model.id);
+        assert.strictEqual(request.spec, index.get(model.id));
+        assert.equal(request.spec.version, version);
+        assert.equal(request.effort, undefined);
+    }
 });
 
 test("catalog definitions are detached and recursively frozen for requests to reuse", () => {

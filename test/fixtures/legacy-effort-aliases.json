@@ -1,0 +1,107 @@
+[
+    {
+        "id": "claude-opus-5-5-high",
+        "vendor": "anthropic",
+        "version": "claude-opus-5-5-high",
+        "backend": "claude-opus-5-5",
+        "effort": "high"
+    },
+    {
+        "id": "claude-opus-5-5-max",
+        "vendor": "anthropic",
+        "version": "claude-opus-5-5-max",
+        "backend": "claude-opus-5-5",
+        "effort": "max"
+    },
+    {
+        "id": "claude-opus-5-max",
+        "vendor": "anthropic",
+        "version": "claude-opus-5-max",
+        "backend": "claude-opus-5",
+        "effort": "max"
+    },
+    {
+        "id": "claude-opus-4-8-max",
+        "vendor": "anthropic",
+        "version": "claude-opus-4-8-max",
+        "backend": "claude-opus-4-8",
+        "effort": "max"
+    },
+    {
+        "id": "claude-fable-5-1-max",
+        "vendor": "anthropic",
+        "version": "claude-fable-5-1-max",
+        "backend": "claude-fable-5-1",
+        "effort": "max"
+    },
+    {
+        "id": "claude-fable-5-max",
+        "vendor": "anthropic",
+        "version": "claude-fable-5-max",
+        "backend": "claude-fable-5",
+        "effort": "max"
+    },
+    {
+        "id": "claude-sonnet-5-5-high",
+        "vendor": "anthropic",
+        "version": "claude-sonnet-5-5-high",
+        "backend": "claude-sonnet-5-5",
+        "effort": "high"
+    },
+    {
+        "id": "claude-sonnet-5-5-medium",
+        "vendor": "anthropic",
+        "version": "claude-sonnet-5-5-medium",
+        "backend": "claude-sonnet-5-5",
+        "effort": "medium"
+    },
+    {
+        "id": "claude-sonnet-5-5-max",
+        "vendor": "anthropic",
+        "version": "claude-sonnet-5-5-max",
+        "backend": "claude-sonnet-5-5",
+        "effort": "max"
+    },
+    {
+        "id": "claude-sonnet-5-max",
+        "vendor": "anthropic",
+        "version": "claude-sonnet-5-max",
+        "backend": "claude-sonnet-5",
+        "effort": "max"
+    },
+    {
+        "id": "gemini-3.8-flash-high",
+        "vendor": "google",
+        "version": "gemini-3.8-flash-high",
+        "backend": "gemini-3.8-flash",
+        "effort": "high"
+    },
+    {
+        "id": "gemini-3.7-flash-high",
+        "vendor": "google",
+        "version": "gemini-3.7-flash-high",
+        "backend": "gemini-3.7-flash",
+        "effort": "high"
+    },
+    {
+        "id": "gemini-3-flash-preview-high",
+        "vendor": "google",
+        "version": "gemini-3-flash-preview-high",
+        "backend": "gemini-3-flash-preview",
+        "effort": "high"
+    },
+    {
+        "id": "grok-4.6-low",
+        "vendor": "grok",
+        "version": "xai/grok-4.6-low",
+        "backend": "xai/grok-4.6",
+        "effort": "low"
+    },
+    {
+        "id": "grok-4.6-medium",
+        "vendor": "grok",
+        "version": "xai/grok-4.6-medium",
+        "backend": "xai/grok-4.6",
+        "effort": "medium"
+    }
+]

@@ -212,6 +212,52 @@ test("custom catalogs use version rather than UI ID and keep vendor/version boun
     );
 });
 
+test("historical effort aliases share base endpoint probes and retain catalog order", async () => {
+    const aliases = require("./fixtures/legacy-effort-aliases.json");
+    const entries = aliases.map((alias) => ({ ...model(alias.id, alias.vendor), version: alias.version, effort: undefined }));
+    const expected = [
+        ...new Map(
+            aliases.map((alias) => [
+                JSON.stringify([
+                    alias.vendor,
+                    alias.backend,
+                ]),
+                [
+                    alias.vendor,
+                    alias.backend,
+                ],
+            ]),
+        ).values(),
+    ];
+    const bases = expected.map(
+        ([
+            vendor,
+            version,
+        ]) => ({ ...model(version, vendor), effort: undefined }),
+    );
+    const models = [
+        ...entries,
+        ...bases,
+    ];
+    const h = harness(models);
+    const probes = [];
+    for (const vendor of [
+        "anthropic",
+        "google",
+        "grok",
+    ]) {
+        h.add(vendor, async (id) => {
+            probes.push([
+                vendor,
+                id,
+            ]);
+            return true;
+        });
+    }
+    assert.deepEqual((await h.dispatcher.discoverModelsAndRegion()).availableModels, models);
+    assert.deepEqual(probes, expected);
+});
+
 test("one timed-out backend excludes every entry sharing that version even if it succeeds late", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const entries = [
