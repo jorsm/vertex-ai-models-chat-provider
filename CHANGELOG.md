@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.7.6] — 2026-10-12
+
+### Fixed
+
+- Restore legacy thinking-effort suffix aliases for Claude, Gemini, and Grok in older local and proxy catalogs without effort metadata. Requests use the base backend with the suffix's fixed effort; explicit effort metadata takes precedence.
+- Share discovery probes across legacy effort aliases and their base model, preserving catalog order and model availability.
+- Exclude local environment files from packaged extensions.
+
 ## [0.7.5] — 2026-10-11 (Pre-release)
 
 ### Added

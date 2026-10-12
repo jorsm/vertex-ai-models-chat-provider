@@ -1,5 +1,7 @@
 .vscode/**
 .vscode-test/**
+**/.env
+**/.env.*
 src/**
 playground/**
 test/**
