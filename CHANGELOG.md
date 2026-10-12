@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.7.7] — 2026-10-12
+
+### Fixed
+
+- Accept proxy effort metadata directly without a capability-negotiation header or acknowledgement, allowing model selection with existing proxy discovery responses.
+
 ## [0.7.6] — 2026-10-12
 
 ### Fixed

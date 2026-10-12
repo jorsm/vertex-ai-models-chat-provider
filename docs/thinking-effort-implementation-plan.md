@@ -45,7 +45,7 @@ No explicit named value is silently replaced. Backend errors reach the caller. C
 
 ## Proxy protocol
 
-Discovery advertises `X-Vertex-AI-Catalog-Capabilities: effort-v1`; a server including effort metadata acknowledges `catalogCapabilities: ["effort-v1"]`. Basic catalogs may omit effort. Both formats use literal backend versions. Saved preferences must belong to server-advertised choices. Server-side authorization remains mandatory; client choice validation is not an enforcement boundary. Client implementation does not deploy the separate proxy application.
+Discovery accepts optional effort metadata directly from the validated server catalog, without a capability-negotiation header or acknowledgement. Basic catalogs may omit effort. Both formats use literal backend versions, except for older suffix aliases without effort metadata. Saved preferences must belong to server-advertised choices. Server-side authorization remains mandatory; client choice validation is not an enforcement boundary. Client implementation does not deploy the separate proxy application.
 
 ## Acceptance checks
 

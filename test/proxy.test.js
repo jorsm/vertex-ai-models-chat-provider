@@ -1855,7 +1855,7 @@ for (const changed of [
 const { EffortCatalog, resolveEffort } = require("../out/effort/Effort.js");
 const enhancedFixture = require("./fixtures/effort-proxy-enhanced.json");
 
-test("enhanced proxy policies survive parsing only after exact capability acknowledgement", () => {
+test("proxy effort policies are accepted directly and legacy capability metadata is ignored", () => {
     const basic = require("./fixtures/effort-proxy-basic.json");
     assert.deepEqual(parseProxyCatalog(basic), basic);
     const parsed = parseProxyCatalog(enhancedFixture);
@@ -1864,10 +1864,9 @@ test("enhanced proxy policies survive parsing only after exact capability acknow
         new EffortCatalog(parsed.candidateModels).models.map((m) => m.id),
         parsed.candidateModels.map((m) => m.id),
     );
-    const unacknowledged = { ...enhancedFixture };
-    delete unacknowledged.catalogCapabilities;
-    assert.throws(() => parseProxyCatalog(unacknowledged), /requires catalogCapabilities/);
+    assert.deepEqual(parsed, enhancedFixture);
     for (const caps of [
+        ["effort-v1"],
         ["effort-v2"],
         [
             "effort-v1",
@@ -1875,7 +1874,7 @@ test("enhanced proxy policies survive parsing only after exact capability acknow
         ],
         "effort-v1",
     ])
-        assert.throws(() => parseProxyCatalog({ ...enhancedFixture, catalogCapabilities: caps }), /capabilities/);
+        assert.deepEqual(parseProxyCatalog({ ...enhancedFixture, catalogCapabilities: caps }), parsed);
     const invalid = structuredClone(enhancedFixture);
     invalid.candidateModels[0].effort.default = "low";
     assert.throws(() => parseProxyCatalog(invalid), /default must belong/);
@@ -1883,7 +1882,7 @@ test("enhanced proxy policies survive parsing only after exact capability acknow
     collision.candidateModels[0].id = collision.candidateModels[1].id;
     assert.throws(() => parseProxyCatalog(collision), /Duplicate model ID/);
 });
-test("capability header is discovery-only protocol metadata and carries no billing labels", async (t) => {
+test("discovery accepts effort metadata with only authentication and no capability or billing headers", async () => {
     const requests = [];
     const gateway = new ProxyGateway(
         "https://gateway.test/base",
@@ -1893,8 +1892,17 @@ test("capability header is discovery-only protocol metadata and carries no billi
             return Response.json(enhancedFixture);
         },
     );
-    await gateway.discover(500);
-    assert.equal(requests[0].headers.get("X-Vertex-AI-Catalog-Capabilities"), "effort-v1");
+    assert.deepEqual(await gateway.discover(500), enhancedFixture);
+    assert.deepEqual(
+        [...requests[0].headers],
+        [
+            [
+                "authorization",
+                "Bearer personal-token",
+            ],
+        ],
+    );
+    assert.equal(requests[0].headers.get("X-Vertex-AI-Catalog-Capabilities"), null);
     assert.equal(requests[0].headers.get("X-Vertex-AI-Labels"), null);
     assert.equal(requests[0].headers.get("x-goog-user-project"), null);
     await gateway.fetch("https://gateway.test/base/v1/request", { headers: { Authorization: "Bearer personal-token" } });
@@ -1909,6 +1917,10 @@ test("server-only IDs and restricted policies remain authoritative over saved lo
     });
     const h = harness([model("local-only")]);
     await h.dispatcher.discoverModelsAndRegion();
+    assert.deepEqual(
+        (await h.dispatcher.provideLanguageModelChatInformation()).map((m) => m.id),
+        enhancedFixture.candidateModels.map((m) => m.id),
+    );
     settings.thinkingEffortByModel = { "server-gemini": "low" };
     inspections.thinkingEffortByModel = { globalValue: settings.thinkingEffortByModel };
     await assert.rejects(h.dispatcher.provideLanguageModelChatResponse({ id: "server-gemini" }, userMessage(), {}, { report() {} }, cancellation().token), /not permitted/);
@@ -1919,7 +1931,7 @@ test("server-only IDs and restricted policies remain authoritative over saved lo
     const request = h.calls.find((c) => c[0] === "infer");
     assert.equal(request.at(-1).effort.value, "high");
     assert.equal(request.at(-1).spec.version, "gemini-3.8-flash");
-    global.fetch = async () => Response.json({ catalogCapabilities: ["effort-v1"], candidateModels: [], regionPriority: [] });
+    global.fetch = async () => Response.json({ candidateModels: [], regionPriority: [] });
     await h.dispatcher.discoverModelsAndRegion();
     assert.deepEqual(h.dispatcher.getEffortModelSnapshot().models, []);
     await assert.rejects(h.dispatcher.provideLanguageModelChatResponse({ id: "server-gemini" }, userMessage(), {}, { report() {} }, cancellation().token), /not available/);
