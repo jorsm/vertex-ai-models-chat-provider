@@ -4,6 +4,7 @@
 > This module serves as the primary entry point for the Vertex AI Models Chat Provider extension. It manages the extension's lifecycle, handles configuration migration, initializes core services, and registers commands and providers with VS Code.
 
 ## Table of Contents
+
 - [Table of Contents](#table-of-contents)
 - [Core Concepts](#core-concepts)
 - [API Reference](#api-reference)
@@ -14,26 +15,30 @@
 ---
 
 ## Core Concepts
+
 The extension follows a standard VS Code extension architecture with several specialized components:
 
-*   **Extension Activation**: Uses VS Code's contribution-based activation. The extension initializes its services even when `projectId` is unset, then discovery reports the configuration issue if a project is required.
-*   **Settings Migration**: Automatically migrates `projectId` and `hideBillingWarning` settings from the legacy `vertexAnthropic` configuration namespace to the current `vertexAiChat` namespace.
-*   **Service Initialization**: Orchestrates the `ModelCatalogResolver`, `UsageTrackerService`, `CostStatusBar`, and `VertexChatModelDispatcher`.
-*   **Provider Registration**: Registers a `LanguageModelChatProvider` for the `google-vertex` vendor, displayed as "Google Agent Platform (Vertex AI)", allowing the models to be used within the native VS Code Chat interface.
-*   **Model Discovery**: Implements a discovery mechanism that probes GCP regions to identify available models. This process is triggered on activation, configuration changes, or manually via command.
-*   **Remote Host Support**: Runs in the workspace extension host. In a remote window, the extension must be installed remotely and uses authentication available in that environment.
-*   **Command Registration**: Exposes commands for dashboard access, model refresh, tool debugging, Service Account lifecycle management, and optional AI-powered commit-message generation.
+- **Extension Activation**: Uses VS Code's contribution-based activation. The extension initializes its services even when `projectId` is unset, then discovery reports that the required project is missing, with or without a proxy.
+- **Settings Migration**: Automatically migrates `projectId` and `hideBillingWarning` settings from the legacy `vertexAnthropic` configuration namespace to the current `vertexAiChat` namespace.
+- **Service Initialization**: Orchestrates the `ModelCatalogResolver`, `UsageTrackerService`, `CostStatusBar`, and `VertexChatModelDispatcher`.
+- **Provider Registration**: Registers a `LanguageModelChatProvider` for the `google-vertex` vendor, displayed as "Google Agent Platform (Vertex AI)", allowing the models to be used within the native VS Code Chat interface.
+- **Model Discovery**: Direct mode probes GCP regions; [proxy mode](proxy.md) authenticates `GET /discovery` and uses the server's complete authorized catalog without inference probes. Discovery runs on activation, configuration changes, or manually via command.
+- **Remote Host Support**: Runs in the workspace extension host. In a remote window, the extension must be installed remotely and uses authentication available in that environment.
+- **Command Registration**: Exposes commands for dashboard access, model refresh, tool debugging, Service Account lifecycle management, and optional AI-powered commit-message generation.
 
 ## API Reference
 
 ### activate
+
 [source](../src/extension.ts)
 Initializes the extension's internal state and registers its contributions with VS Code.
 
 **Parameters:**
+
 - `context`: `vscode.ExtensionContext` - The context in which the extension is running, used for subscriptions and storage.
 
 **Functionality:**
+
 1.  Loads `vertexAiChat` configuration.
 2.  Performs migration from `vertexAnthropic` if necessary.
 3.  Initializes the `UsageTrackerService` and `CostStatusBar`.
@@ -52,16 +57,19 @@ Initializes the extension's internal state and registers its contributions with 
     - `vertexAiChat.openWorkspaceModelsFile`: Creates or opens the workspace `.vscode/models.json` model catalog.
 6.  Registers the chat provider with the `vscode.lm` API.
 7.  Starts an initial background discovery of models.
-8.  Sets up a listener for `onDidChangeConfiguration` to update the project ID and re-run discovery if changed.
+8.  Sets up configuration listeners to reset the connection and re-run discovery when `projectId`, `proxyUrl`, or the discovery timeout changes. `projectId` is always required and names the project on which Vertex is invoked; `proxyUrl` is optional and, when set, routes calls client → proxy → Vertex instead of client → Vertex.
 
 ### runDiscovery
+
 [source](../src/extension.ts)
 An internal helper function that coordinates with the `VertexChatModelDispatcher` to find available models in supported GCP regions.
 
 **Parameters:**
+
 - `provider`: `VertexChatModelDispatcher` - The dispatcher instance used to perform the discovery.
 
 **Behavior:**
+
 - Calls `provider.discoverModelsAndRegion()`.
 - Displays an information message listing the available models and the discovered region upon success.
 - Displays a warning if no models are found or an error message if the discovery process fails.
@@ -71,12 +79,24 @@ An internal helper function that coordinates with the `VertexChatModelDispatcher
 ## Examples
 
 ### Manual Model Refresh
+
 Users can manually trigger the discovery process if they have recently updated their GCP Model Garden or changed project permissions.
+
 1. Open the Command Palette (`Ctrl+Shift+P`).
 2. Run `Google Agent Platform: Refresh Models`.
 
 ### Debugging LM Tools
+
 To see which tools are currently available to the language models:
+
 1. Open the Command Palette (`Ctrl+Shift+P`).
 2. Run `Google Agent Platform: Dump Installed Tools Schema`.
 3. The **Google Agent Platform: Tools Dump** output channel will show the names, descriptions, and input schemas of all registered tools.
+
+## Thinking Effort command
+
+Activation registers `vertexAiChat.configureThinkingEffort` once for both the Palette contribution (**Google Agent Platform: Thinking Effort**) and `view/title` Chat header contribution. It uses stable QuickPick/configuration APIs and no native per-model proposal. The header's `view == workbench.panel.chat.view.copilot` condition requires host UI verification; the Palette path remains available where the header surface differs.
+
+The window setting `thinkingEffortByModel` fires `refreshModelInformation()` only. It does not call `setProjectId`, reinitialize SDKs or initiate discovery. The disposable command owns its picker/listeners and cancels an older invocation. Settings-write errors keep the picker open with the real effective state. Workspace scope is unavailable without an open workspace; active source-editor changes do not affect effort scope. Named model defaults share one picker row with their matching effort value.
+
+The existing Refresh Models management contribution now resides at the provider's top level. Effort configuration is independent of that deprecated management entry point. See [README](../README.md#thinking-effort) for persistence and compact-mode recovery, and [verification](thinking-effort-verification.md) for actual host evidence and untested surfaces.

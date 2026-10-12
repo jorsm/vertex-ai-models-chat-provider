@@ -1,5 +1,7 @@
 .vscode/**
 .vscode-test/**
+**/.env
+**/.env.*
 src/**
 playground/**
 test/**
@@ -21,4 +23,8 @@ node_modules/**
 TODO.MD
 CHANGELOG.md
 eslint.config.mjs
+.prettierrc.json
+.prettierignore
+.editorconfig
+.gitattributes
 tsconfig.json

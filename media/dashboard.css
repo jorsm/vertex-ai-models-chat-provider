@@ -23,7 +23,7 @@ body {
     border-radius: 6px;
     align-items: center;
     gap: 15px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 .warning-icon {
     font-size: 28px;
@@ -79,7 +79,7 @@ body {
     color: var(--vscode-button-secondaryForeground);
     border-radius: 5px;
     border: 1px solid var(--border-color);
-    box-shadow: 1px 1px 1px rgba(0,0,0,0.2);
+    box-shadow: 1px 1px 1px rgba(0, 0, 0, 0.2);
     white-space: nowrap;
     cursor: pointer;
     text-decoration: none;
@@ -88,7 +88,7 @@ body {
 }
 #billing-btn:hover {
     background: var(--vscode-button-secondaryHoverBackground);
-    box-shadow: 1px 2px 4px rgba(0,0,0,0.3);
+    box-shadow: 1px 2px 4px rgba(0, 0, 0, 0.3);
 }
 #billing-btn .btn-icon {
     display: flex;
@@ -105,7 +105,7 @@ body {
     padding: 0 16px;
     font-size: 13px;
     font-weight: bold;
-    font-family: 'Roboto', Arial, sans-serif;
+    font-family: "Roboto", Arial, sans-serif;
     color: var(--vscode-button-secondaryForeground);
 }
 
@@ -131,7 +131,8 @@ body {
     gap: 10px;
 }
 
-.date-range input, .model-dropdown {
+.date-range input,
+.model-dropdown {
     background: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
     border: 1px solid var(--vscode-input-border);
@@ -153,7 +154,7 @@ body {
     border-radius: 6px;
     padding: 30px 20px;
     text-align: center;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .card-title {
@@ -210,7 +211,8 @@ table {
     border-collapse: collapse;
 }
 
-th, td {
+th,
+td {
     padding: 12px;
     text-align: left;
     border-bottom: 1px solid var(--border-color);
