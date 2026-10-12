@@ -46,12 +46,13 @@ export interface ChatInferenceResult {
 }
 
 /**
- * One canonical model entry from the effective catalog.
+ * One model entry from the effective catalog.
  *
  * @remarks
  * The public {@link ModelSpec.id | id} identifies the model in VS Code;
- * {@link ModelSpec.version | version} is the literal backend model path.
- * Thinking effort is configured separately and does not alter either identity.
+ * {@link ModelSpec.version | version} is the backend model path. Modern catalogs
+ * configure thinking effort separately; older catalogs may encode a fixed effort
+ * suffix in the version that is stripped when resolving the backend endpoint.
  */
 export interface ModelSpec {
     /** Optional supported effort values and the catalog default. */
@@ -62,7 +63,7 @@ export interface ModelSpec {
     vendor: string;
     displayName: string;
     family: string;
-    /** Literal model identifier sent to the vendor endpoint. */
+    /** Backend identifier; old effort aliases are resolved before contacting the endpoint. */
     version: string;
     maxInputTokens: number;
     maxOutputTokens: number;

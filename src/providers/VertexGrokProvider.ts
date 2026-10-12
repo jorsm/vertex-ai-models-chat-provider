@@ -9,7 +9,7 @@ import { estimateTokens } from "../utils/tokens";
 import type { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
 import type { ProxyGateway } from "../ProxyGateway";
 import type { ModelSpec } from "./VertexModelProvider";
-import type { ResolvedModelRequest } from "../effort/Effort";
+import { resolveCatalogModel, type ResolvedModelRequest } from "../effort/Effort";
 import { requestCancellation, cancellableRequest } from "../utils/cancellation";
 
 import { mapGrokMessages, mapGrokTools } from "./grok/GrokMessages";
@@ -140,8 +140,9 @@ export class VertexGrokProvider implements VertexModelProvider {
         if (!modelSpec) {
             throw new Error(`Model spec not found in catalog for: ${modelId}`);
         }
-        const modelPath = modelSpec.version;
-        const effort = request?.effort?.value ?? modelSpec.effort?.default;
+        const resolved = request ?? resolveCatalogModel(modelSpec);
+        const modelPath = resolved.spec.version;
+        const effort = resolved.effort?.value ?? modelSpec.effort?.default;
 
         this.logger.log(`▶ Grok provider response — model: ${modelId} (${modelPath}), region: ${this.region}, messages: ${messages.length}`);
 

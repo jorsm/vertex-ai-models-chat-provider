@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { Logger } from "../utils/Logger";
 import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryableError } from "../utils/discovery";
 import { checkAuthError, withRetry } from "../utils/retry";
-import type { ResolvedModelRequest } from "../effort/Effort";
+import { resolveCatalogModel, type ResolvedModelRequest } from "../effort/Effort";
 import { estimateTokens } from "../utils/tokens";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 import { ProxyGateway, isGatewayRetryable, normalizeGatewayError, gatewayRetryDelayMs } from "../ProxyGateway";
@@ -137,8 +137,9 @@ export class VertexGoogleProvider implements VertexModelProvider {
         spec?: ModelSpec,
         request?: ResolvedModelRequest,
     ): Promise<ChatInferenceResult> {
-        const actualId = request?.spec.version ?? spec?.version ?? modelId;
-        const effort = request?.effort?.value ?? spec?.effort?.default;
+        const resolved = request ?? (spec ? resolveCatalogModel(spec) : undefined);
+        const actualId = resolved?.spec.version ?? modelId;
+        const effort = resolved?.effort?.value ?? spec?.effort?.default;
         const config = effort ? { thinkingConfig: { thinkingLevel: effort.toUpperCase() } } : undefined;
         const gateway = this.gateway;
         const cancellation = requestCancellation(token, gateway?.signal);

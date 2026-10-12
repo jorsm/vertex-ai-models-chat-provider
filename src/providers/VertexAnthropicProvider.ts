@@ -9,7 +9,7 @@ import { ClaudeThinkingReplayCache, claudeEffortConfig } from "./ClaudeThinking"
 import { mapClaudeMessages, mapClaudeTools, logClaudeMessages } from "./anthropic/ClaudeMessages";
 import { restoreClaudeThinking, applyClaudeCacheControl } from "./anthropic/ClaudeRequestContext";
 import { processClaudeStream } from "./anthropic/ClaudeStream";
-import type { ResolvedModelRequest } from "../effort/Effort";
+import { resolveCatalogModel, type ResolvedModelRequest } from "../effort/Effort";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 import { ProxyGateway, isGatewayRetryable, normalizeGatewayError, gatewayRetryDelayMs } from "../ProxyGateway";
 import { requestCancellation, cancellableRequest } from "../utils/cancellation";
@@ -138,8 +138,9 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         const replayCache = this.thinkingReplayCache;
         const gateway = this.gateway;
         const cancellation = requestCancellation(token, gateway?.signal);
-        const actualId = request?.spec.version ?? spec?.version ?? modelId;
-        const effort = request?.effort?.value ?? spec?.effort?.default;
+        const resolved = request ?? (spec ? resolveCatalogModel(spec) : undefined);
+        const actualId = resolved?.spec.version ?? modelId;
+        const effort = resolved?.effort?.value ?? spec?.effort?.default;
         const requestConfig = effort ? claudeEffortConfig(effort) : undefined;
         this.logger.log(`▶ Anthropic Plugin provideLanguageModelChatResponse called — requested: ${modelId} -> executed: ${actualId}${effort ? ` (${effort} effort)` : ""}, region: ${this.region}, messages: ${messages.length}`);
 

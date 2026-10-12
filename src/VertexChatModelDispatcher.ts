@@ -12,7 +12,7 @@ import { UsageTrackerService } from "./UsageTrackerService";
 import { Logger } from "./utils/Logger";
 import { DISCOVERY_PROBE_TIMEOUT_MS, getDiscoveryStartDelayMs, probeWithRetries, resolveDiscoveryTimeoutMs, runDiscoveryQueue } from "./utils/discovery";
 import { estimateTokens } from "./utils/tokens";
-import { EffortCatalog, type EffortPreferenceSnapshot, resolveEffort } from "./effort/Effort";
+import { EffortCatalog, type EffortPreferenceSnapshot, resolveCatalogModel, resolveEffort } from "./effort/Effort";
 import { captureEffortPreferences } from "./effort/EffortConfiguration";
 import { cancellableRequest, requestCancellation } from "./utils/cancellation";
 
@@ -328,7 +328,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
         this.logger.log(`Starting model discovery for project "${effectiveProjectId}"…`);
 
-        // Probe each distinct vendor/backend pair once, using the literal catalog version.
+        // Probe each distinct vendor/backend pair once, resolving old effort aliases first.
         const targets = new Map<string, { provider: VertexModelProvider; modelId: string; models: ModelSpec[] }>();
         for (const model of candidates) {
             const provider = this.activeProviders.get(model.vendor);
@@ -336,7 +336,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
                 this.logger.log(`  ⚠️  No provider registered for vendor "${model.vendor}", skipping ${model.id}`);
                 continue;
             }
-            const modelId = model.version;
+            const modelId = resolveCatalogModel(model).spec.version;
             const key = JSON.stringify([
                 model.vendor,
                 modelId,

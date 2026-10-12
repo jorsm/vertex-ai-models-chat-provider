@@ -27,15 +27,15 @@ export interface EffortPreferenceSnapshot {
 
 /** Named effort selected for one request, together with its configuration source. */
 export interface ResolvedEffort {
-    /** A value from the selected model's catalog choices, before vendor-specific payload mapping. */
+    /** A catalog choice or fixed legacy suffix, before vendor-specific payload mapping. */
     readonly value: string;
-    /** `catalog` means no saved preference supplied a value and the named default was selected. */
-    readonly source: EffortPreferenceSource | "catalog";
+    /** `catalog` selects the named default; `legacy-alias` pins the effort encoded in the backend version. */
+    readonly source: EffortPreferenceSource | "catalog" | "legacy-alias";
 }
 
 /** Model configuration and effort decision passed to a provider for one invocation. */
 export interface ResolvedModelRequest {
-    /** Absent when the model declares no configurable effort, so no effort override is sent. */
+    /** Absent when the model has neither effort metadata nor a legacy suffix, so no effort override is sent. */
     readonly effort?: ResolvedEffort;
     /** Captured backend identity, capabilities and prices retained by the invocation and its retries. */
     readonly spec: ModelSpec;
@@ -99,6 +99,31 @@ export class EffortCatalog {
 }
 
 /**
+ * Resolves catalog defaults and the fixed effort suffixes used by older catalogs.
+ *
+ * @remarks
+ * Explicit effort metadata keeps backend versions literal. Without it, legacy
+ * Claude, Gemini and Grok aliases resolve to their base endpoint and pinned effort.
+ * The catalog entry remains unchanged; only the request's backend version differs.
+ */
+export function resolveCatalogModel(spec: ModelSpec): ResolvedModelRequest {
+    if (spec.effort) {
+        return { spec, effort: { value: spec.effort.default, source: "catalog" } };
+    }
+    const pattern = spec.vendor === "anthropic" ? /^(claude-.+)-(low|medium|high|xhigh|max)$/ : spec.vendor === "google" ? /^(gemini-.+)-(high)$/ : spec.vendor === "grok" ? /^((?:xai\/)?grok-4\.6)-(low|medium|high)$/ : undefined;
+    const [
+        ,
+        backend,
+        effort,
+    ] = pattern?.exec(spec.version) ?? [];
+    if (!backend || !effort) {
+        return { spec };
+    }
+    const version = spec.vendor === "grok" ? "xai/grok-4.6" : backend;
+    return { spec: Object.freeze({ ...spec, version }), effort: { value: effort, source: "legacy-alias" } };
+}
+
+/**
  * Resolves one model and its saved effort, using the catalog default when no value is saved.
  *
  * @remarks
@@ -108,8 +133,8 @@ export class EffortCatalog {
  * @param catalog - Immutable index of the models available for this invocation.
  * @param modelId - Exact catalog ID, independent of the backend version sent by the adapter.
  * @param preferences - Captured public-request settings; omit for catalog-only internal requests.
- * @returns The catalog's frozen model definition and a captured effort decision,
- * with effort absent for a model without effort metadata.
+ * @returns A frozen model definition and a captured effort decision,
+ * with effort absent unless the model declares metadata or a legacy effort suffix.
  * @throws An {@link EffortError} if the model is unavailable, its preference is
  * malformed, or the choice is not allowed by its catalog.
  */
@@ -126,7 +151,7 @@ export function resolveEffort(catalog: EffortCatalog, modelId: string, preferenc
         if (preference !== undefined) {
             throw new EffortError("unsupported", `Model '${modelId}' does not declare configurable thinking effort in the current catalog.`);
         }
-        return { spec };
+        return resolveCatalogModel(spec);
     }
 
     let value = spec.effort.default;
