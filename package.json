@@ -3,7 +3,7 @@
     "displayName": "Google Agent Platform for Copilot Chat (Vertex AI Models Chat Provider)",
     "description": "Native Gemini, Claude, and Grok models, powered by Google Agent Platform (Vertex AI) for Copilot Chat",
     "publisher": "jorsm",
-    "version": "0.7.7",
+    "version": "0.7.8",
     "icon": "images/logo.png",
     "repository": {
         "type": "git",
@@ -239,11 +239,11 @@
         "typescript": "^5.9.2"
     },
     "dependencies": {
-        "@anthropic-ai/vertex-sdk": "^0.14.4",
-        "@google/genai": "^2.6.0",
+        "@anthropic-ai/vertex-sdk": "^0.20.4",
+        "@google/genai": "^2.29.1",
         "@modelcontextprotocol/sdk": "^1.27.1",
         "ajv": "^8.20.0",
-        "google-auth-library": "^9.15.1",
+        "google-auth-library": "^10.9.1",
         "openai": "^4.104.0",
         "zod": "^3.25.0",
         "zod-to-json-schema": "^3.25.2"
