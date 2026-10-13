@@ -287,6 +287,33 @@
             }
         },
         {
+            "id": "gemini-4-argon",
+            "vendor": "google",
+            "displayName": "Gemini 4 Argon",
+            "family": "gemini",
+            "version": "gemini-4-argon",
+            "maxInputTokens": 983040,
+            "maxOutputTokens": 65536,
+            "capabilities": {
+                "imageInput": true,
+                "toolCalling": true
+            },
+            "pricing": {
+                "input": 2.0,
+                "output": 10.0,
+                "cache_read": 0.1,
+                "cache_create": 0.0
+            },
+            "effort": {
+                "values": [
+                    "low",
+                    "medium",
+                    "high"
+                ],
+                "default": "medium"
+            }
+        },
+        {
             "id": "gemini-3.8-flash",
             "vendor": "google",
             "displayName": "Gemini 3.8 Flash",

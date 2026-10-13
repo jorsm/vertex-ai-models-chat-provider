@@ -31,6 +31,9 @@ export class VertexGoogleProvider implements VertexModelProvider {
     /** Tool-call signatures retained by call ID until {@link initialize} clears the map. */
     private readonly thoughtSignatureCache = new Map<string, string>();
 
+    /** IDs supplied by the API, distinguished from local fallback IDs during replay. */
+    private readonly apiToolCallIds = new Set<string>();
+
     /** Text signatures retained by the first 120 answer characters until reinitialization. */
     private readonly textSignatureCache = new Map<string, string>();
 
@@ -49,6 +52,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
         this.authOptions = authOptions;
         this.gateway = gateway;
         this.thoughtSignatureCache.clear();
+        this.apiToolCallIds.clear();
         this.textSignatureCache.clear();
         // Clear the cached client so it gets re-created with new auth/project options on next use
         this.client = undefined;
@@ -78,6 +82,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
                 contents: [{ role: "user", parts: [{ text: "ping" }] }],
                 config: {
                     maxOutputTokens: 1,
+                    automaticContinuation: false,
                     abortSignal: options?.signal,
                     httpOptions: { timeout: options?.timeoutMs ?? DISCOVERY_PROBE_TIMEOUT_MS, retryOptions: { attempts: 1 } },
                 },
@@ -153,10 +158,13 @@ export class VertexGoogleProvider implements VertexModelProvider {
         const cacheCreate = 0;
 
         try {
-            const { mappedContents, systemInstruction } = new GeminiMessages(this.thoughtSignatureCache, this.textSignatureCache, this, this.logger).extractMessages(messages, charCount, modelId, actualId);
+            const { mappedContents, systemInstruction } = new GeminiMessages(this.thoughtSignatureCache, this.textSignatureCache, this, this.logger, this.apiToolCallIds).extractMessages(messages, charCount, modelId, actualId);
 
             const generationConfig: any = { ...config };
             generationConfig.abortSignal = cancellation.signal;
+            // Keep one inference stream: SDK continuation can issue additional requests
+            // after checkpoints or failures, outside the provider/proxy retry contract.
+            generationConfig.automaticContinuation = false;
 
             if (spec?.maxOutputTokens) {
                 generationConfig.maxOutputTokens = spec.maxOutputTokens;
@@ -208,6 +216,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
                 logger: this.logger,
                 signal: cancellation.signal,
                 thoughtSignatureCache: this.thoughtSignatureCache,
+                apiToolCallIds: this.apiToolCallIds,
                 textSignatureCache: this.textSignatureCache,
                 reasoningHeaders: this,
             });
@@ -269,7 +278,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
                 project: this.projectId,
                 location: this.region,
                 googleAuthOptions: this.gateway ? { authClient: this.gateway.authClient } : this.authOptions,
-                // In 2.6.0, omitting retryOptions disables SDK retries and preserves HTTP errors.
+                // Omitting retryOptions disables SDK retries and preserves HTTP errors.
                 ...(this.gateway ? { httpOptions: { baseUrl: this.gateway.url, apiVersion: "v1" } } : {}),
             });
         }

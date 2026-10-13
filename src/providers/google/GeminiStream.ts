@@ -14,14 +14,16 @@ export interface GeminiStreamContext {
     charCount: CharacterCounts;
     logger: Logger;
     signal: AbortSignal;
-    /** Provider-owned tool-call cache; receives signatures keyed by generated call ID. */
+    /** Provider-owned tool-call cache; receives signatures keyed by the API or generated call ID. */
     thoughtSignatureCache: Map<string, string>;
+    /** API-provided call IDs eligible for replay in subsequent request history. */
+    apiToolCallIds: Set<string>;
     /** Provider-owned text cache; receives signatures keyed by the first 120 answer characters. */
     textSignatureCache: Map<string, string>;
     reasoningHeaders: GeminiReasoningHeaders;
 }
 
-/** Latest prompt, candidate, and cache counters reported by the stream. */
+/** Latest prompt, candidate plus thinking, and cache counters reported by the stream. */
 export interface GeminiStreamUsage {
     inputTokens: number;
     outputTokens: number;
@@ -32,17 +34,19 @@ export interface GeminiStreamUsage {
  * Reports answer text as it arrives and emits collected function calls after the stream.
  *
  * @remarks
- * Inline signatures remain indexed by function name within each chunk, with a pending
- * preceding signature as fallback. Signature caches are updated only after the final
- * cancellation check. Token fields carry forward when later chunks omit them.
+ * Inline signatures stay attached to their individual function-call parts, with a pending
+ * preceding signature as fallback. API call IDs are retained when present. Signature
+ * caches are updated only after the final cancellation check. Token fields carry
+ * forward independently when later chunks omit them.
  */
 export async function processGeminiStream(stream: AsyncIterable<any>, context: GeminiStreamContext): Promise<GeminiStreamUsage> {
-    const { modelId, actualId, progress, charCount, logger, signal, thoughtSignatureCache, textSignatureCache, reasoningHeaders } = context;
+    const { modelId, actualId, progress, charCount, logger, signal, thoughtSignatureCache, apiToolCallIds, textSignatureCache, reasoningHeaders } = context;
     let inputTokens = 0,
-        outputTokens = 0,
+        candidateTokens = 0,
+        thinkingTokens = 0,
         cacheRead = 0;
     const processor = new StreamPartProcessor(reasoningHeaders, modelId, actualId, progress, charCount, logger);
-    const bufferedCalls: Array<{ callId: string; callName: string; args: any; signature: string | undefined }> = [];
+    const bufferedCalls: Array<{ callId: string; callName: string; args: any; signature: string | undefined; hasApiId: boolean }> = [];
 
     for await (const chunk of stream) {
         if (signal.aborted) {
@@ -50,28 +54,33 @@ export async function processGeminiStream(stream: AsyncIterable<any>, context: G
         }
 
         const rawParts: any[] | undefined = chunk.candidates?.[0]?.content?.parts;
-        const inlineSignatureByName = new Map<string, string>();
-
         if (rawParts) {
             logRawParts(rawParts, logger);
-            processor.processRawParts(rawParts, inlineSignatureByName);
+            processor.processRawParts(rawParts);
         }
 
-        const functionCalls = chunk.functionCalls;
-        if (functionCalls && functionCalls.length > 0) {
-            for (const fc of functionCalls) {
+        // The SDK functionCalls getter drops each enclosing part's signature.
+        // Read raw parts when available so duplicate function names retain their
+        // own signature; support SDK-shaped responses without candidate parts too.
+        const rawCalls = rawParts?.filter((part) => part.functionCall);
+        const callParts = rawCalls?.length ? rawCalls : (chunk.functionCalls?.map((functionCall: any) => ({ functionCall })) ?? []);
+        if (callParts.length > 0) {
+            for (const part of callParts) {
+                const fc = part.functionCall;
                 const callName = fc.name || "unknown";
-                const callId = `${callName}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-                const signature = inlineSignatureByName.get(callName) ?? processor.pendingThoughtSignature;
-                logger.log(`  🔧 FunctionCall buffered: name=${callName} callId=${callId} inlineSig=${inlineSignatureByName.has(callName)} pendingSig=${!!processor.pendingThoughtSignature}`);
-                bufferedCalls.push({ callId, callName, args: fc.args ?? {}, signature });
+                const hasApiId = typeof fc.id === "string" && fc.id.length > 0;
+                const callId = hasApiId ? fc.id : `${callName}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+                const signature = part.thoughtSignature ?? processor.pendingThoughtSignature;
+                logger.log(`  🔧 FunctionCall buffered: name=${callName} callId=${callId} inlineSig=${!!part.thoughtSignature} pendingSig=${!!processor.pendingThoughtSignature}`);
+                bufferedCalls.push({ callId, callName, args: fc.args ?? {}, signature, hasApiId });
             }
             processor.pendingThoughtSignature = undefined;
         }
 
         if (chunk.usageMetadata) {
             inputTokens = chunk.usageMetadata.promptTokenCount ?? inputTokens;
-            outputTokens = chunk.usageMetadata.candidatesTokenCount ?? outputTokens;
+            candidateTokens = chunk.usageMetadata.candidatesTokenCount ?? candidateTokens;
+            thinkingTokens = chunk.usageMetadata.thoughtsTokenCount ?? thinkingTokens;
             cacheRead = chunk.usageMetadata.cachedContentTokenCount ?? cacheRead;
         }
     }
@@ -83,7 +92,10 @@ export async function processGeminiStream(stream: AsyncIterable<any>, context: G
     // a single model turn, matching the API's parallel-call expectations.
     if (bufferedCalls.length > 0) {
         logger.log(`  🔧 Emitting ${bufferedCalls.length} buffered function call(s)`);
-        for (const { callId, callName, args, signature } of bufferedCalls) {
+        for (const { callId, callName, args, signature, hasApiId } of bufferedCalls) {
+            if (hasApiId) {
+                apiToolCallIds.add(callId);
+            }
             if (signature) {
                 thoughtSignatureCache.set(callId, signature);
                 logger.log(`    💾 Cached thought signature for callId=${callId} (${signature.length} chars)`);
@@ -103,7 +115,7 @@ export async function processGeminiStream(stream: AsyncIterable<any>, context: G
 
     logger.log(`  ✅ Stream finished successfully`);
 
-    return { inputTokens, outputTokens, cacheRead };
+    return { inputTokens, outputTokens: candidateTokens + thinkingTokens, cacheRead };
 }
 
 function logRawParts(rawParts: any[], logger: Logger): void {
@@ -156,33 +168,26 @@ class StreamPartProcessor {
      * Extracts thought signatures and handles skipping/reporting of text chunks.
      *
      * @param rawParts - The raw part objects array returned by the API.
-     * @param inlineSignatureByName - A map to associate inline signatures with tool call names.
      */
-    public processRawParts(rawParts: any[], inlineSignatureByName: Map<string, string>): void {
+    public processRawParts(rawParts: any[]): void {
         for (const part of rawParts) {
-            this.extractSignatures(part, inlineSignatureByName);
+            this.extractSignatures(part);
             this.processTextPart(part);
         }
     }
 
     /**
-     * Identifies and stores any legacy (preceding thought part) or inline thought signatures
-     * present on the given part so they can be cached and re-injected in later history turns.
+     * Identifies and stores preceding thought signatures and signed answer text.
+     * Inline function-call signatures are read directly from each call's own part.
      *
      * @param part - The raw part object being inspected.
-     * @param inlineSignatureByName - A map to associate inline signatures with tool call names.
      */
-    private extractSignatures(part: any, inlineSignatureByName: Map<string, string>): void {
+    private extractSignatures(part: any): void {
         // Legacy: separate thought part with signature (Gemini 2.x thinking)
         if (part.thought === true && part.thoughtSignature) {
             this.pendingThoughtSignature = part.thoughtSignature;
             this.latestTextSignature = part.thoughtSignature;
             this.logger.log(`    ✍️  Captured preceding thought signature (${part.thoughtSignature.length} chars)`);
-        }
-        // Gemini 3: signature embedded directly on the functionCall part
-        if (part.functionCall?.name && part.thoughtSignature) {
-            inlineSignatureByName.set(part.functionCall.name, part.thoughtSignature);
-            this.logger.log(`    ✍️  Captured inline thought signature for ${part.functionCall.name} (${part.thoughtSignature.length} chars)`);
         }
         // Capture optional signature on final text parts (non-functionCall turns)
         if (part.text !== undefined && part.thoughtSignature && !part.thought) {

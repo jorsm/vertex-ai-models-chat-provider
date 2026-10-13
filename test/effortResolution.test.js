@@ -8,7 +8,7 @@ const catalog = new EffortCatalog(bundled.candidateModels);
 const legacyAliases = require("./fixtures/legacy-effort-aliases.json");
 
 test("every bundled default is a named choice and the catalog preserves model metadata", () => {
-    assert.equal(catalog.models.length, 15);
+    assert.equal(catalog.models.length, 16);
     for (const model of bundled.candidateModels) {
         assert.deepEqual(catalog.get(model.id), model);
         const request = resolveEffort(catalog, model.id);

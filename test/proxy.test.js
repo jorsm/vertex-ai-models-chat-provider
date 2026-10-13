@@ -2082,6 +2082,64 @@ test("Gemini effort change on a tool continuation preserves the thought signatur
     assert.equal(requests[1].body.contents[1].parts[0].thoughtSignature, "effort-signed");
 });
 
+for (const modelId of [
+    "gemini-3.1-pro-preview",
+    "gemini-3-flash-preview",
+    "gemini-3.7-flash",
+    "gemini-3.8-flash",
+    "gemini-4-argon",
+])
+    test(`${modelId} SDK transport preserves tool IDs and reasoning usage without following checkpoints`, async (t) => {
+        const requests = streamingFetch(t, [
+            geminiEvent({
+                candidates: [
+                    {
+                        content: { role: "model", parts: [{ functionCall: { id: "argon-call-1", name: "lookup", args: { query: "value" } }, thoughtSignature: "argon-signed" }] },
+                        finishReason: "CONTINUATION",
+                        continuationToken: "checkpoint-token",
+                    },
+                ],
+                usageMetadata: { promptTokenCount: 9, candidatesTokenCount: 2, thoughtsTokenCount: 5, cachedContentTokenCount: 3 },
+            }),
+        ]);
+        const spec = require("../src/models.json").candidateModels.find((m) => m.id === modelId);
+        const provider = new VertexGoogleProvider();
+        provider.initialize("gateway", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
+        const parts = [];
+        const run = (messages) =>
+            provider.provideLanguageModelChatResponse(
+                spec.id,
+                messages,
+                {},
+                {
+                    report(p) {
+                        parts.push(p);
+                    },
+                },
+                cancellation().token,
+                {},
+                spec,
+            );
+        const result = await run(userMessage());
+        assert.equal(requests.length, 1);
+        assert.ok(requests[0].url.includes(`/v1/projects/gateway/locations/global/publishers/google/models/${modelId}:streamGenerateContent`));
+        assert.equal(requests[0].body.generationConfig.maxOutputTokens, 65536);
+        assert.deepEqual(requests[0].body.generationConfig.thinkingConfig, { thinkingLevel: spec.effort.default.toUpperCase() });
+        assert.equal(requests[0].body.automaticContinuation, undefined);
+        assert.equal(requests[0].body.generationConfig.automaticContinuation, undefined);
+        assert.deepEqual(result.usage, { input: 6, output: 7, cache_read: 3, cache_create: 0 });
+        const call = parts.find((p) => p instanceof ToolCallPart);
+        assert.equal(call.callId, "argon-call-1");
+        await run([
+            ...userMessage(),
+            { role: 2, content: [call] },
+            { role: 1, content: [new ToolResultPart(call.callId, [new TextPart('{"value":42}')])] },
+        ]);
+        assert.equal(requests.length, 2);
+        assert.deepEqual(requests[1].body.contents[1].parts[0], { functionCall: { id: "argon-call-1", name: "lookup", args: { query: "value" } }, thoughtSignature: "argon-signed" });
+        assert.deepEqual(requests[1].body.contents[2].parts[0].functionResponse, { id: "argon-call-1", name: "lookup", response: { value: 42 } });
+    });
+
 test("malformed local definitions are excluded at ingestion without falling through to User/bundle", async (t) => {
     const resolver = Object.create(ModelCatalogResolver.prototype);
     resolver.cached = null;

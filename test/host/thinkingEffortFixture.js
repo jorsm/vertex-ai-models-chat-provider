@@ -57,8 +57,18 @@ exports.run = async () => {
             ],
         );
         record("Public provider snapshot and named catalog default");
-        assert.equal((await d.provideLanguageModelChatInformation({}, cancellation.token)).length, 15);
+        const information = await d.provideLanguageModelChatInformation({}, cancellation.token);
+        assert.equal(information.length, 16);
         record("Only canonical models advertised in desktop extension host");
+        const argon = information.find((model) => model.id === "gemini-4-argon");
+        assert(argon);
+        assert.equal(argon.name, "Gemini 4 Argon");
+        assert.equal(argon.family, "gemini");
+        assert.equal(argon.version, "gemini-4-argon");
+        assert.equal(argon.maxInputTokens, 983040);
+        assert.equal(argon.maxOutputTokens, 65536);
+        assert.deepEqual(argon.capabilities, { imageInput: true, toolCalling: true });
+        record("Gemini 4 Argon identity, limits and capabilities in desktop provider metadata");
         const quick = vscode.window.createQuickPick();
         quick.title = "Thinking Effort fixture";
         quick.items = [
