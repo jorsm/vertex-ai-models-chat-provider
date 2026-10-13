@@ -239,6 +239,26 @@ for (const alias of legacyAliases) {
     });
 }
 
+test("Argon uses a single-stream output limit without continuation or unsupported controls", async () => {
+    const h = adapter("google");
+    const request = resolveEffort(catalog, "gemini-4-argon");
+    await h.provider.provideLanguageModelChatResponse(request.spec.id, messages, {}, progress, token(), {}, request.spec, request);
+    const { model, config } = h.requests[0];
+    assert.equal(model, "gemini-4-argon");
+    assert.equal(config.maxOutputTokens, 65536);
+    assert.equal(config.automaticContinuation, false);
+    assert.deepEqual(config.thinkingConfig, { thinkingLevel: "MEDIUM" });
+    for (const field of [
+        "thinkingBudget",
+        "candidateCount",
+        "presencePenalty",
+        "frequencyPenalty",
+        "cachedContent",
+    ]) {
+        assert.equal(config[field], undefined);
+    }
+});
+
 for (const vendor of [
     "anthropic",
     "google",

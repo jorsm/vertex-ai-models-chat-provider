@@ -71,13 +71,13 @@ export function validateProxyUrl(value: string): string {
     return url.toString().replace(/\/+$/, "");
 }
 
-/** ID token headers are compatible with both Google auth-library SDK generations. */
+/** Supplies ID-token headers using the Google auth-library v10 Headers contract. */
 class GatewayAuthClient extends OAuth2Client {
     constructor(private readonly gateway: ProxyGateway) {
         super();
     }
 
-    override async getRequestHeaders(url?: string): Promise<any> {
+    override async getRequestHeaders(url?: string): Promise<Headers> {
         if (url) {
             this.gateway.assertDestination(url);
         }
@@ -86,13 +86,7 @@ class GatewayAuthClient extends OAuth2Client {
             this.gateway.assertDestination(url);
         }
         this.gateway.signal.throwIfAborted();
-        const headers = { Authorization: `Bearer ${token}` };
-        Object.defineProperty(headers, Symbol.iterator, {
-            value: function* () {
-                yield* Object.entries(headers);
-            },
-        });
-        return headers;
+        return new Headers({ Authorization: `Bearer ${token}` });
     }
 }
 

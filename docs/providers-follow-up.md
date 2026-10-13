@@ -1,6 +1,6 @@
 # Provider follow-up topics
 
-This is a discussion backlog from the provider code-quality review. The accompanying refactor separates responsibilities and documents contracts while preserving existing business logic. The behaviors below remain in place; each needs a separate decision before implementation.
+This is a discussion backlog from the provider code-quality review. The accompanying refactor separates responsibilities and documents contracts while preserving existing business logic. Resolved items are marked below; remaining behaviors need a separate decision before implementation.
 
 The observations distinguish local payload/stream fixtures from live API evidence. Reproducing a payload locally does not establish that a remote service rejects it.
 
@@ -8,11 +8,7 @@ The observations distinguish local payload/stream fixtures from live API evidenc
 
 Code: [GeminiStream.ts](../src/providers/google/GeminiStream.ts).
 
-**Current behavior:** During each stream chunk, inline signatures are indexed by function name. Every buffered call with that name receives the same lookup result, with a preceding thought signature as fallback. A local fixture with two parallel calls to the same function and a signature on only the first raw part assigned that signature to both calls.
-
-**Decision:** Should replay preserve the original signed part and its position instead of matching by name? We need to define how raw candidate parts correspond to the SDK's `functionCalls` convenience view, including duplicate names and calls arriving across chunks.
-
-**Validation for a future change:** Capture a first turn and its tool continuation with duplicate function names, different arguments, and a signature on only one part. Compare the exact outgoing parts, then verify the continuation against an opt-in live endpoint. [Google's thought-signature documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/thinking/thought-signatures) describes preserving signatures with their original parts.
+**Resolved with Argon support:** Inline signatures are read from each original function-call part instead of indexing by name. API call IDs are retained, and Gemini history echoes API-supplied call/response IDs and restores response order, including for Gemini 3 models. Locally generated fallback IDs stay internal when the API supplied no ID. Local stream/history fixtures cover duplicate names with separate signatures, unsigned duplicates, and multiple chunks; actual SDK proxy fixtures cover serialized replay. Live API replay remains unverified. See [Argon support](gemini-4-argon.md) and [Google's thought-signature documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/thinking/thought-signatures).
 
 ## 2. Malformed streamed tool arguments
 
@@ -28,7 +24,7 @@ Code: [ClaudeThinking.ts](../src/providers/ClaudeThinking.ts), [ClaudeStream.ts]
 
 Code: [VertexGoogleProvider.ts](../src/providers/VertexGoogleProvider.ts), [GeminiMessages.ts](../src/providers/google/GeminiMessages.ts).
 
-**Current behavior:** Tool signatures are keyed by generated call ID. Text signatures are keyed by the first 120 characters of the clean answer. Both maps remain in memory until provider initialization clears them; conversation-window size does not evict entries. Text keys do not include model or conversation identity.
+**Current behavior:** Tool signatures are keyed by the API call ID when present, with generated IDs as fallback. Text signatures are keyed by the first 120 characters of the clean answer. The signature maps and API-ID provenance set remain in memory until provider initialization clears them; conversation-window size does not evict entries. Text keys do not include model or conversation identity.
 
 **Decision:** Choose a replay identity and eviction policy. A bounded cache limits memory but can remove signatures still needed by a continuation. Model/conversation keys reduce accidental matches but require a reliable source of conversation identity.
 
@@ -56,9 +52,9 @@ Code: [VertexAnthropicProvider.ts](../src/providers/VertexAnthropicProvider.ts),
 
 Code: [VertexModelProvider.ts](../src/providers/VertexModelProvider.ts), vendor message/stream helpers, and [UsageTrackerService.ts](../src/UsageTrackerService.ts).
 
-**Current behavior:** Character counters use different units across vendors. Gemini counts tool-result parts and raw image bytes; Claude and Grok count tool-result text and base64 image characters. Gemini decodes non-image data into text without incrementing the corresponding text counter. Input/cache normalization and the `usage` display payload are also vendor-specific. Grok has an exact `xai/grok-4.6` branch for reasoning/output normalization. Gemini currently reads prompt, candidate, and cached token counts, leaving other SDK usage fields unused.
+**Current behavior:** Character counters use different units across vendors. Gemini counts tool-result parts and raw image bytes; Claude and Grok count tool-result text and base64 image characters. Gemini decodes non-image data into text without incrementing the corresponding text counter. Input/cache normalization and the `usage` display payload are also vendor-specific. Grok has an exact `xai/grok-4.6` branch for reasoning/output normalization. Gemini reads prompt and cached counts and sums candidate plus thinking tokens for billed output, as verified against the Argon billing contract. Other SDK usage fields remain unused.
 
-**Decision:** Separate diagnostic measurements from billable token categories, and define each field's unit and source. Decide whether additional Gemini usage fields belong in output, separate categories, or diagnostics after verifying their current API/billing contracts. Avoid a generic normalization rule that changes existing Grok behavior.
+**Decision:** Separate diagnostic measurements from billable token categories, and define each field's unit and source. Decide whether remaining Gemini usage fields belong in separate categories or diagnostics after verifying their current API/billing contracts. Avoid a generic normalization rule that changes existing Grok behavior.
 
 **Validation for a future change:** Use captured usage fixtures for each backend, cache hits, reasoning, images, tools, and long context. Verify both tracker inputs and the VS Code display payload.
 

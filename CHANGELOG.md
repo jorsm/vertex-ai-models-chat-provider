@@ -4,7 +4,21 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.7.8] — 2026-10-13
+
+### Added
+
+- Gemini 4 Argon with Low/Medium/High thinking effort (Medium default), vision, tool calling, and a 65,536-token reasoning/output limit. Reserve that output budget within its shared 1,048,576-token context and estimate costs using the global promotional pricing through November 30, 2026.
+
+### Changed
+
+- Update Google Gen AI to 2.29.1, Anthropic Vertex SDK to 0.20.4, and Google authentication library to compatible 10.9.1. Use standard `Headers` for proxy authentication with the newer clients.
+- Disable Gemini SDK automatic continuation to retain single-stream inference and the existing retry/proxy contract; defer Argon's long decoding up to 1M output tokens.
+
+### Fixed
+
+- Preserve API-supplied Gemini tool-call IDs and response order across continuations, including Gemini 3 models, and retain separate signatures for parallel Gemini calls sharing a function name.
+- Include Gemini reasoning tokens in reported output usage and cost estimates.
 
 ## [0.7.7] — 2026-10-12
 

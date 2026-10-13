@@ -10,6 +10,7 @@ test("bundles the focused Gemini coding catalog", () => {
     assert.deepEqual(
         googleModels.map((model) => model.id),
         [
+            "gemini-4-argon",
             "gemini-3.8-flash",
             "gemini-3.7-flash",
             "gemini-3-flash-preview",
@@ -32,4 +33,23 @@ test("bundles the focused Gemini coding catalog", () => {
         },
     });
     assert.equal(pro.displayName, "Gemini 3.1 Pro");
+});
+
+test("Argon reserves its single-stream thinking and answer budget within the shared context", () => {
+    const argon = new EffortCatalog(catalog.candidateModels).get("gemini-4-argon");
+    assert.equal(argon.version, "gemini-4-argon");
+    assert.equal(argon.displayName, "Gemini 4 Argon");
+    assert.equal(argon.maxOutputTokens, 65536);
+    assert.equal(argon.maxInputTokens + argon.maxOutputTokens, 1048576);
+    assert.deepEqual(argon.capabilities, { imageInput: true, toolCalling: true });
+    assert.deepEqual(argon.effort, {
+        values: [
+            "low",
+            "medium",
+            "high",
+        ],
+        default: "medium",
+    });
+    // Use the current global promotional rates through November 30, 2026.
+    assert.deepEqual(argon.pricing, { input: 2, output: 10, cache_read: 0.1, cache_create: 0 });
 });
