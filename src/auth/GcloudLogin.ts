@@ -1,10 +1,15 @@
 import * as vscode from "vscode";
 import type { Logger } from "../utils/Logger";
 
-const LOGIN_COMMAND = "gcloud auth application-default login";
+export type GcloudLoginMode = "adc" | "proxy";
+
+const LOGIN_COMMANDS: Record<GcloudLoginMode, string> = {
+    adc: "gcloud auth application-default login",
+    proxy: "gcloud auth login",
+};
 
 /**
- * Opens a terminal for ADC login and observes its completion through shell integration.
+ * Opens a terminal for gcloud login and observes its completion through shell integration.
  *
  * @remarks
  * Only a successful login in this terminal invokes the callback. Completion,
@@ -12,12 +17,14 @@ const LOGIN_COMMAND = "gcloud auth application-default login";
  * Without shell integration, the user must refresh models manually.
  *
  * @param projectId - Optional project ID passed to gcloud.
- * @param onSuccess - Activates ADC and refreshes models after a successful command.
+ * @param onSuccess - Activates credentials and refreshes models after a successful command.
  * @param logger - Receives callback failures without exposing terminal output.
+ * @param mode - Selects between direct ADC login (`adc`) and personal CLI login (`proxy`).
  */
-export function openGcloudLoginTerminal(projectId: string, onSuccess: () => Promise<void>, logger: Pick<Logger, "log">): void {
+export function openGcloudLoginTerminal(projectId: string, onSuccess: () => Promise<void>, logger: Pick<Logger, "log">, mode: GcloudLoginMode = "adc"): void {
     const terminal = vscode.window.createTerminal({ name: "Vertex AI: Authentication", iconPath: new vscode.ThemeIcon("key") });
-    const command = createLoginCommand(projectId);
+    const baseCommand = LOGIN_COMMANDS[mode];
+    const command = createLoginCommand(projectId, baseCommand);
     let completed = false;
     const cleanup = () => {
         completed = true;
@@ -25,7 +32,7 @@ export function openGcloudLoginTerminal(projectId: string, onSuccess: () => Prom
         closeListener.dispose();
     };
     const endListener = vscode.window.onDidEndTerminalShellExecution((event) => {
-        if (event.terminal !== terminal || completed || !event.execution.commandLine.value.includes(LOGIN_COMMAND)) {
+        if (event.terminal !== terminal || completed || !event.execution.commandLine.value.includes(baseCommand)) {
             return;
         }
         cleanup();
@@ -56,16 +63,17 @@ export function openGcloudLoginTerminal(projectId: string, onSuccess: () => Prom
  * Builds the terminal command using only the fixed login arguments and a quoted project ID.
  *
  * @param projectId - Project ID to include when non-empty.
- * @returns The ADC login command with quiet mode enabled.
+ * @param baseCommand - Base gcloud login command for the active mode.
+ * @returns The gcloud login command with quiet mode enabled.
  */
-function createLoginCommand(projectId: string): string {
+function createLoginCommand(projectId: string, baseCommand: string): string {
     const args: string[] = [];
     if (projectId) {
         args.push("--project", quoteShellArgument(projectId));
     }
     args.push("--quiet");
     return [
-        LOGIN_COMMAND,
+        baseCommand,
         ...args,
     ].join(" ");
 }

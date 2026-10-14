@@ -1,7 +1,7 @@
 import { GatewayError } from "../ProxyGateway";
 import { runGcloud } from "../utils/gcloud";
 import type { Logger } from "../utils/Logger";
-import { GCLOUD_MAX_TIMEOUT_RETRIES } from "./AuthCredentials";
+import { GCLOUD_MAX_TIMEOUT_RETRIES, getConfiguredGcloudTimeoutMs } from "./AuthCredentials";
 
 /** Refresh margin applied to the token's actual expiration time. */
 const TOKEN_REFRESH_MARGIN_MS = 60_000;
@@ -124,7 +124,7 @@ export class ProxyAuth {
                         "--quiet",
                         "--verbosity=error",
                     ],
-                    undefined,
+                    getConfiguredGcloudTimeoutMs(),
                     this.logger,
                 );
                 this.logger.log(`Personal proxy ID token acquired in ${Date.now() - startedAt} ms (attempt ${attempt}).`);

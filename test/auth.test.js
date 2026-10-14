@@ -436,6 +436,32 @@ for (const exitCode of [
     });
 }
 
+test("proxy terminal login uses gcloud auth login without changing direct auth selection", async (t) => {
+    vscode.workspace.getConfiguration = () => ({
+        inspect: (key) => (key === "proxyUrl" ? { globalValue: "https://gateway.test" } : undefined),
+    });
+    t.after(() => {
+        delete vscode.workspace.getConfiguration;
+    });
+    const { auth } = harness({ type: "secret", value: "selected" }, { selected: JSON.stringify(credentials()) });
+    let refreshed = 0,
+        updates = 0;
+    auth.onAuthUpdated(() => {
+        updates++;
+    });
+    await auth.reauthenticate("fixture-project", () => {
+        refreshed++;
+    });
+    assert.equal(terminal.command, "gcloud auth login --project fixture-project --quiet");
+    for (const listener of shellListeners) listener({ terminal, execution: { commandLine: { value: terminal.command } }, exitCode: 0 });
+    await flush();
+    assert.equal(auth.getActiveMethod().type, "secret");
+    assert.equal(refreshed, 1);
+    assert.equal(updates, 1);
+    assert.equal(shellListeners.size, 0);
+    assert.equal(closeListeners.size, 0);
+});
+
 test("closing the login terminal releases subscriptions and ignores its late completion", async () => {
     const { auth } = harness({ type: "secret", value: "selected" });
     let refreshed = 0;

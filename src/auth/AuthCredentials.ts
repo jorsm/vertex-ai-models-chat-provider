@@ -1,8 +1,23 @@
+import * as vscode from "vscode";
+
 /** Supported sources for authenticating Vertex AI requests. */
 export type AuthMethodType = "secret" | "file" | "adc";
 
+/** Default timeout in milliseconds for each gcloud CLI command execution. */
+export const GCLOUD_DEFAULT_TIMEOUT_MS = 20_000;
+
 /** Maximum number of retries after a gcloud CLI command times out. */
 export const GCLOUD_MAX_TIMEOUT_RETRIES = 3;
+
+/** Reject invalid values and delays that would overflow Node's timer. */
+export function resolveGcloudTimeoutMs(seconds: unknown): number {
+    return typeof seconds === "number" && Number.isInteger(seconds) && seconds >= 1 && seconds <= 2_147_483 ? seconds * 1000 : GCLOUD_DEFAULT_TIMEOUT_MS;
+}
+
+/** Reads and validates the configured per-attempt gcloud command timeout in milliseconds. */
+export function getConfiguredGcloudTimeoutMs(): number {
+    return resolveGcloudTimeoutMs(vscode.workspace?.getConfiguration?.("vertexAiChat")?.get<number>("gcloudCommandTimeoutSeconds", GCLOUD_DEFAULT_TIMEOUT_MS / 1000));
+}
 
 /**
  * Describes the authentication source selected for the current workspace.

@@ -282,7 +282,16 @@ async function runDiscovery(provider: VertexChatModelDispatcher, authManager: Au
                 await vscode.commands.executeCommand("workbench.action.openSettings", "vertexAiChat.projectId");
             }
         } else if (e instanceof GatewayError) {
-            void vscode.window.showErrorMessage(`Vertex AI proxy: ${e.message}`);
+            if (e.status === 401 || e.message.includes("gcloud auth login")) {
+                const loginAction = authManager.getGcloudLoginActionLabel();
+                const selection = await vscode.window.showErrorMessage(`Vertex AI proxy: ${e.message}`, loginAction);
+                if (selection === loginAction) {
+                    const projectId = vscode.workspace.getConfiguration("vertexAiChat").get<string>("projectId") || "";
+                    await authManager.reauthenticate(projectId, () => runDiscovery(provider, authManager));
+                }
+            } else {
+                void vscode.window.showErrorMessage(`Vertex AI proxy: ${e.message}`);
+            }
         } else if (e instanceof AuthConfigurationError) {
             const selectAction = "Select Authentication Method";
             const selection = await vscode.window.showErrorMessage(e.message, selectAction);

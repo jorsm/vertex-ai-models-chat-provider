@@ -10,15 +10,6 @@ export function resolveGcloudTimeoutMs(seconds: unknown): number {
     return typeof seconds === "number" && Number.isInteger(seconds) && seconds >= 1 && seconds <= 2_147_483 ? seconds * 1000 : GCLOUD_DEFAULT_TIMEOUT_MS;
 }
 
-export function getConfiguredGcloudTimeoutMs(): number {
-    try {
-        const vscode = require("vscode") as typeof import("vscode");
-        return resolveGcloudTimeoutMs(vscode.workspace?.getConfiguration?.("vertexAiChat")?.get<number>("gcloudCommandTimeoutSeconds", GCLOUD_DEFAULT_TIMEOUT_MS / 1000));
-    } catch {
-        return GCLOUD_DEFAULT_TIMEOUT_MS;
-    }
-}
-
 export interface GcloudCommand {
     executable: string;
     args: string[];
@@ -74,7 +65,7 @@ export function resolveGcloudCommand(args: string[], platform = process.platform
     };
 }
 
-export function runGcloud(args: string[], timeoutMs = getConfiguredGcloudTimeoutMs(), logger?: Pick<Logger, "log">): Promise<{ stdout: string; stderr: string }> {
+export function runGcloud(args: string[], timeoutMs = GCLOUD_DEFAULT_TIMEOUT_MS, logger?: Pick<Logger, "log">): Promise<{ stdout: string; stderr: string }> {
     const env: NodeJS.ProcessEnv = { ...process.env, CLOUDSDK_CORE_DISABLE_PROMPTS: "true", CLOUDSDK_CORE_DISABLE_FILE_LOGGING: "true", CLOUDSDK_CORE_LOG_HTTP: "false", CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: "true" };
     const command = resolveGcloudCommand(args, process.platform, env);
     logger?.log(`Running gcloud command: ${formatGcloudCommand(command)} (timeout ${timeoutMs}ms)`);

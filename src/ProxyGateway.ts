@@ -1,8 +1,7 @@
 import { OAuth2Client } from "google-auth-library";
 import type { ModelCatalog } from "./providers/VertexModelProvider";
 import { parseModelCatalog } from "./ModelCatalogParser";
-import { GCLOUD_MAX_TIMEOUT_RETRIES } from "./auth/AuthCredentials";
-import { getConfiguredGcloudTimeoutMs } from "./utils/gcloud";
+import { GCLOUD_MAX_TIMEOUT_RETRIES, getConfiguredGcloudTimeoutMs } from "./auth/AuthCredentials";
 import { extractRetryAfterDelayMs, isRetryableError } from "./utils/retry";
 
 export class GatewayError extends Error {

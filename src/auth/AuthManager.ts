@@ -2,7 +2,8 @@ import * as vscode from "vscode";
 import { runGcloud } from "../utils/gcloud";
 import { Logger } from "../utils/Logger";
 import { DirectGcpAuth } from "./DirectGcpAuth";
-import { AuthConfigurationError, GCLOUD_MAX_TIMEOUT_RETRIES } from "./AuthCredentials";
+import { openGcloudLoginTerminal } from "./GcloudLogin";
+import { AuthConfigurationError, GCLOUD_MAX_TIMEOUT_RETRIES, getConfiguredGcloudTimeoutMs } from "./AuthCredentials";
 import type { AuthMethod, AuthOptions } from "./AuthCredentials";
 import { ProxyAuth } from "./ProxyAuth";
 
@@ -154,15 +155,30 @@ export class AuthManager {
     }
 
     /**
-     * Opens a terminal for `gcloud auth application-default login` in the
-     * workspace extension host. Resolves after starting the terminal; an
-     * optional callback runs after shell integration reports successful login.
+     * Opens a terminal for gcloud authentication (`gcloud auth login` when a proxy
+     * is configured, or `gcloud auth application-default login` in direct mode).
+     * Resolves after starting the terminal; an optional callback runs after shell
+     * integration reports successful login.
      *
      * @param projectId - Project ID to pass to the gcloud login command, if non-empty.
-     * @param onSuccess - Optional callback run after successful login activates ADC.
+     * @param onSuccess - Optional callback run after successful login updates credentials.
      * @returns Resolves after the terminal command is started, not after login completes.
      */
     public async reauthenticate(projectId: string, onSuccess?: () => void | Promise<void>): Promise<void> {
+        if (this.isProxyConfigured()) {
+            openGcloudLoginTerminal(
+                projectId,
+                async () => {
+                    this.clearProxyToken();
+                    this.notifyAuthUpdated();
+                    void vscode.window.showInformationMessage("Vertex AI: gcloud login updated successfully. Refreshing models…");
+                    await onSuccess?.();
+                },
+                this.logger,
+                "proxy",
+            );
+            return;
+        }
         return this.directAuth.reauthenticate(projectId, onSuccess);
     }
 
@@ -274,7 +290,7 @@ export class AuthManager {
                         "get-value",
                         "account",
                     ],
-                    undefined,
+                    getConfiguredGcloudTimeoutMs(),
                     this.logger,
                 );
             } catch (error) {
