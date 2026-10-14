@@ -11,7 +11,7 @@ import { restoreClaudeThinking, applyClaudeCacheControl } from "./anthropic/Clau
 import { processClaudeStream } from "./anthropic/ClaudeStream";
 import { resolveCatalogModel, type ResolvedModelRequest } from "../effort/Effort";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
-import { ProxyGateway, isGatewayRetryable, normalizeGatewayError, gatewayRetryDelayMs } from "../ProxyGateway";
+import { ProxyGateway, normalizeGatewayError } from "../ProxyGateway";
 import { requestCancellation, cancellableRequest } from "../utils/cancellation";
 
 /**
@@ -182,10 +182,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
                             ),
                         cancellation.signal,
                     ),
-                {
-                    token: token,
-                    ...(gateway ? { maxRetries: 2, maxRetryDurationMs: 60_000, shouldRetry: isGatewayRetryable, retryDelayMs: gatewayRetryDelayMs } : {}),
-                },
+                { token },
             );
 
             this.logger.log(`  Stream created successfully`);

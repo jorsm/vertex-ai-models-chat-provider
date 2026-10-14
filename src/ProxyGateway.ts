@@ -1,6 +1,7 @@
 import { OAuth2Client } from "google-auth-library";
 import type { ModelCatalog } from "./providers/VertexModelProvider";
 import { parseModelCatalog } from "./ModelCatalogParser";
+import { extractRetryAfterDelayMs, isRetryableError } from "./utils/retry";
 
 export class GatewayError extends Error {
     constructor(
@@ -36,21 +37,14 @@ export function normalizeGatewayError(error: any): GatewayError {
 
 export function isGatewayRetryable(error: any): boolean {
     const normalized = normalizeGatewayError(error);
-    if (normalized.policyCode === "UPSTREAM_AUTHENTICATION_FAILED") {
+    if (normalized.status === 502) {
         return false;
     }
-    return normalized.status === 429 || normalized.status === 503;
+    return isRetryableError(normalized);
 }
 
 export function gatewayRetryDelayMs(error: any): number {
-    const headers = error?.headers ?? error?.response?.headers;
-    const raw = headers?.get?.("retry-after") ?? headers?.["retry-after"];
-    if (!raw) {
-        return 0;
-    }
-    const seconds = Number(raw);
-    const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(raw) - Date.now();
-    return Number.isFinite(delay) ? Math.max(0, delay) : 0;
+    return extractRetryAfterDelayMs(error);
 }
 
 export function validateProxyUrl(value: string): string {
