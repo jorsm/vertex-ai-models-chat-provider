@@ -16,7 +16,6 @@ export interface RetryLogEntry {
 }
 
 export interface RetryOptions {
-    shouldRetry?: (error: any) => boolean;
     retryDelayMs?: (error: any) => number;
     /** Maximum number of retries before giving up (default: unlimited when duration-based retry is enabled) */
     maxRetries?: number;
@@ -114,7 +113,7 @@ export async function withRetry<T>(operation: () => Promise<T>, options?: RetryO
             return result;
         } catch (e: any) {
             const retryElapsedMs = retryStartTime !== undefined ? Date.now() - retryStartTime : 0;
-            const retryable = (options?.shouldRetry ?? isRetryableError)(e);
+            const retryable = isRetryableError(e);
             if (!retryable || attempt >= maxRetries || retryElapsedMs >= maxRetryDurationMs) {
                 cleanupTimer();
                 if (attempt === 0) {

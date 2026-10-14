@@ -106,7 +106,7 @@ let credentialCommand;
 let commandResult;
 let credentialCommandCount = 0;
 const originalLoad = Module._load;
-let AuthManager, ProxyGateway, GatewayError, validateProxyUrl, parseProxyCatalog, isGatewayRetryable, ModelCatalogResolver, UsageTrackerService;
+let AuthManager, ProxyGateway, GatewayError, validateProxyUrl, parseProxyCatalog, ModelCatalogResolver, UsageTrackerService;
 let VertexChatModelDispatcher, MissingProjectIdError, VertexGoogleProvider, VertexAnthropicProvider, CostStatusBar;
 let generateCommitMessage;
 try {
@@ -149,7 +149,7 @@ try {
         return originalLoad.call(this, request, parent, main);
     };
     ({ AuthManager } = require("../out/auth/AuthManager.js"));
-    ({ ProxyGateway, GatewayError, validateProxyUrl, parseProxyCatalog, isGatewayRetryable } = require("../out/ProxyGateway.js"));
+    ({ ProxyGateway, GatewayError, validateProxyUrl, parseProxyCatalog } = require("../out/ProxyGateway.js"));
     ({ ModelCatalogResolver } = require("../out/ModelCatalogResolver.js"));
     ({ UsageTrackerService } = require("../out/UsageTrackerService.js"));
     ({ CostStatusBar } = require("../out/CostStatusBar.js"));
@@ -160,7 +160,7 @@ try {
 } finally {
     Module._load = originalLoad;
 }
-const { withRetry } = require("../out/utils/retry.js");
+const { withRetry, isRetryableError } = require("../out/utils/retry.js");
 const catalog = require("../src/models.json");
 const model = (id, vendor = "google", version = id) => {
     const spec = { ...catalog.candidateModels[0], id, version, vendor };
@@ -498,28 +498,30 @@ test("canonical discovery failures never try another endpoint or catalog source"
     }
 });
 test("policy and caller/upstream authentication errors never retry even with quota-like text", async () => {
-    for (const status of [
-        400,
-        401,
-        403,
-        404,
-        413,
-        502,
+    for (const error of [
+        { status: 400 },
+        { status: 401 },
+        { status: 403 },
+        { status: 404 },
+        { status: 413 },
+        { status: 502, policyCode: "UPSTREAM_AUTHENTICATION_FAILED" },
+        { status: 502, error: { error: { reason: "UPSTREAM_AUTHENTICATION_FAILED" } } },
     ]) {
         let calls = 0;
         await assert.rejects(
             withRetry(
                 async () => {
                     calls++;
-                    throw { status, message: "quota temporarily unavailable 503" };
+                    throw { ...error, message: "quota temporarily unavailable 503" };
                 },
-                { shouldRetry: isGatewayRetryable, maxRetries: 2 },
+                { maxRetries: 2 },
             ),
         );
         assert.equal(calls, 1);
     }
-    assert.equal(isGatewayRetryable({ status: 429 }), true);
-    assert.equal(isGatewayRetryable({ status: 503 }), true);
+    assert.equal(isRetryableError({ status: 429 }), true);
+    assert.equal(isRetryableError({ status: 502 }), true);
+    assert.equal(isRetryableError({ status: 503 }), true);
 });
 
 function harness(models, authOverrides = {}) {
@@ -1213,7 +1215,7 @@ test("cancelling backoff is immediate and temporary failures recover without unb
             entered.resolve();
             throw { status: 429 };
         },
-        { token: cancel.token, shouldRetry: isGatewayRetryable, retryDelayMs: () => 60_000, maxRetries: 2 },
+        { token: cancel.token, retryDelayMs: () => 60_000, maxRetries: 2 },
     );
     await entered.promise;
     await flush();
@@ -1232,7 +1234,7 @@ test("cancelling backoff is immediate and temporary failures recover without unb
                     if (++attempts < 3) throw { status: 503, message: "Backend unavailable" };
                     return "ok";
                 },
-                { shouldRetry: isGatewayRetryable, baseDelayMs: 1, maxDelayMs: 1, maxRetries: 2 },
+                { baseDelayMs: 1, maxDelayMs: 1, maxRetries: 2 },
             ),
             "ok",
         );
@@ -1751,7 +1753,7 @@ test("SDK JSON messages preserve proxy policy details and remain non-retryable",
     assert.equal(error.status, 400);
     assert.equal(error.policyCode, "FAILED_PRECONDITION");
     assert.equal(error.message, "Missing required label 'vscode-vertex-ai-user'.");
-    assert.equal(isGatewayRetryable(error), false);
+    assert.equal(isRetryableError(error), false);
 });
 
 test("proxy network errors include the underlying cause in diagnostics", () => {

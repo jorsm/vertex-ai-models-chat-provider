@@ -2,7 +2,6 @@ import { OAuth2Client } from "google-auth-library";
 import type { ModelCatalog } from "./providers/VertexModelProvider";
 import { parseModelCatalog } from "./ModelCatalogParser";
 import { GCLOUD_MAX_TIMEOUT_RETRIES, getConfiguredGcloudTimeoutMs } from "./auth/AuthCredentials";
-import { extractRetryAfterDelayMs, isRetryableError } from "./utils/retry";
 
 export class GatewayError extends Error {
     constructor(
@@ -40,18 +39,6 @@ export function normalizeGatewayError(error: any): GatewayError {
         return new GatewayError("The proxy rejected your Google ID token. Run 'gcloud auth login' with your personal account, then Refresh Models.", status, code, cause);
     }
     return new GatewayError(causeDetail && !message.includes(causeDetail) ? `${message} (cause: ${causeDetail})` : message, status, code, cause);
-}
-
-export function isGatewayRetryable(error: any): boolean {
-    const normalized = normalizeGatewayError(error);
-    if (normalized.status === 502) {
-        return false;
-    }
-    return isRetryableError(normalized);
-}
-
-export function gatewayRetryDelayMs(error: any): number {
-    return extractRetryAfterDelayMs(error);
 }
 
 export function validateProxyUrl(value: string): string {

@@ -197,14 +197,6 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         this.missingLabelWarnings.delete(label);
     }
 
-    getAnthropicProvider(): VertexAnthropicProvider {
-        return this.activeProviders.get("anthropic") as VertexAnthropicProvider;
-    }
-
-    getGoogleProvider(): VertexGoogleProvider {
-        return this.activeProviders.get("google") as VertexGoogleProvider;
-    }
-
     // ── Discovery ───────────────────────────────────────────────────────────
 
     /** Only user/machine configuration may select an authenticated destination. */
