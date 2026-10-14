@@ -265,13 +265,23 @@ test("token acquisition rejects SA, expired, unverified and malformed tokens wit
         await assert.rejects(auth.getProxyIdToken(), (error) => error.status === 401 && !error.message.includes("secret"));
     }
 });
-test("client identity resolution is shared and caches the last successful gcloud account", async () => {
+test("client identity resolution is shared and caches the last successful gcloud account", async (t) => {
+    const realNow = Date.now;
+    let now = realNow();
+    Date.now = () => now;
+    t.after(() => {
+        Date.now = realNow;
+    });
     const auth = new AuthManager({ workspaceState: { get: () => undefined } });
     commandResult = "developer@example.com\n";
     assert.equal(await auth.getIdentity(), "developer@example.com");
     commandResult = new Error("temporary gcloud failure");
     assert.equal(await auth.getIdentity(), "developer@example.com");
     assert.equal(credentialCommandCount, 1);
+    now += 61_000;
+    logs.length = 0;
+    assert.equal(await auth.getIdentity(), "developer@example.com");
+    assert.ok(logs.some((line) => line.includes("Failed to refresh gcloud account email (temporary gcloud failure); keeping the last valid identity.")));
 });
 test("transient gcloud timeouts retry up to 3 times and share recovery across callers", async () => {
     const auth = new AuthManager({ workspaceState: { get: () => undefined } });
@@ -1214,11 +1224,12 @@ test("cancelling backoff is immediate and temporary failures recover without unb
     const originalRandom = Math.random;
     Math.random = () => 0;
     try {
+        logs.length = 0;
         let attempts = 0;
         assert.equal(
             await withRetry(
                 async () => {
-                    if (++attempts < 3) throw { status: 503 };
+                    if (++attempts < 3) throw { status: 503, message: "Backend unavailable" };
                     return "ok";
                 },
                 { shouldRetry: isGatewayRetryable, baseDelayMs: 1, maxDelayMs: 1, maxRetries: 2 },
@@ -1226,6 +1237,11 @@ test("cancelling backoff is immediate and temporary failures recover without unb
             "ok",
         );
         assert.equal(attempts, 3);
+        assert.ok(logs.some((line) => line.includes("Attempt 1 failed with retryable error: [HTTP 503] Backend unavailable")));
+        assert.ok(logs.some((line) => line.includes("Executing retry 1/2 (attempt 2)")));
+        assert.ok(logs.some((line) => line.includes("Attempt 2 failed with retryable error: [HTTP 503] Backend unavailable")));
+        assert.ok(logs.some((line) => line.includes("Executing retry 2/2 (attempt 3)")));
+        assert.ok(logs.some((line) => line.includes("Retry 2 succeeded (operation completed after 3 total attempts)")));
     } finally {
         Math.random = originalRandom;
     }

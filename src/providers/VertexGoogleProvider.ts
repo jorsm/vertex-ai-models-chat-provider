@@ -250,7 +250,9 @@ export class VertexGoogleProvider implements VertexModelProvider {
                 throw new vscode.CancellationError();
             }
             if (gateway) {
-                throw normalizeGatewayError(e);
+                const normalized = normalizeGatewayError(e);
+                this.logger.log(`  ❌ Google provideLanguageModelChatResponse gateway error (HTTP ${normalized.status ?? "unknown"}${normalized.policyCode ? ` ${normalized.policyCode}` : ""}): ${normalized.message}`);
+                throw normalized;
             }
             this.logger.log(`  ❌ Google provideLanguageModelChatResponse error: ${e}`);
             checkAuthError(e);

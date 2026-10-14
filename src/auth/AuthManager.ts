@@ -252,10 +252,11 @@ export class AuthManager {
             if (email && email !== "(unset)" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
                 return this.cacheIdentity(email, revision);
             }
-            this.logger.log("Could not extract email from gcloud account output.");
+            this.logger.log(`Could not extract email from gcloud account output (${email ? `received '${email}'` : "empty output"}).`);
             return this.cacheIdentity(undefined, revision);
-        } catch {
-            this.logger.log(`Failed to refresh gcloud account email${previousIdentity ? "; keeping the last valid identity" : ""}.`);
+        } catch (error) {
+            const reason = describeAccountLookupFailure(error);
+            this.logger.log(`Failed to refresh gcloud account email (${reason})${previousIdentity ? "; keeping the last valid identity" : ""}.`);
             return revision === this.identityRevision ? previousIdentity : undefined;
         }
     }
@@ -325,4 +326,28 @@ export class AuthManager {
         );
         return result;
     }
+}
+
+function describeAccountLookupFailure(error: unknown): string {
+    if (typeof error === "object" && error !== null) {
+        const failure = error as { code?: unknown; killed?: unknown; signal?: unknown; stderr?: unknown; message?: unknown };
+        if (failure.code === "GCLOUD_TIMEOUT" || failure.killed || failure.signal) {
+            return `gcloud timed out${failure.signal ? ` (${String(failure.signal)})` : ""}`;
+        }
+        if (failure.code === "ENOENT") {
+            return "gcloud executable not found";
+        }
+        const stderrLine = typeof failure.stderr === "string" ? failure.stderr.trim().split(/\r?\n/, 1)[0]?.trim() : "";
+        if (typeof failure.code === "number") {
+            return stderrLine ? `exit code ${failure.code}: ${stderrLine}` : `exit code ${failure.code}`;
+        }
+        if (typeof failure.code === "string" && failure.code) {
+            const msg = typeof failure.message === "string" && failure.message ? `: ${failure.message}` : "";
+            return `${failure.code}${msg}`;
+        }
+    }
+    if (error instanceof Error && error.message) {
+        return error.message;
+    }
+    return String(error || "unknown error");
 }
