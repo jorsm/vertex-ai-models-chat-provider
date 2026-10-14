@@ -1754,6 +1754,16 @@ test("SDK JSON messages preserve proxy policy details and remain non-retryable",
     assert.equal(isGatewayRetryable(error), false);
 });
 
+test("proxy network errors include the underlying cause in diagnostics", () => {
+    const { normalizeGatewayError } = require("../out/ProxyGateway.js");
+    const cause = Object.assign(new Error("getaddrinfo ENOTFOUND gateway.test"), { code: "ENOTFOUND" });
+    const error = normalizeGatewayError(Object.assign(new Error("fetch failed"), { cause }));
+
+    assert.match(error.message, /fetch failed/);
+    assert.match(error.message, /ENOTFOUND: getaddrinfo ENOTFOUND gateway\.test/);
+    assert.equal(error.cause, cause);
+});
+
 for (const proxy of [
     false,
     true,

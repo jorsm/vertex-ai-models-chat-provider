@@ -9,8 +9,9 @@ export class GatewayError extends Error {
         message: string,
         public readonly status?: number,
         public readonly policyCode?: string,
+        cause?: unknown,
     ) {
-        super(message);
+        super(message, cause === undefined ? undefined : { cause });
         this.name = "GatewayError";
     }
 }
@@ -30,10 +31,15 @@ export function normalizeGatewayError(error: any): GatewayError {
     const detail = payload?.error ?? payload;
     const status = Number(error?.status ?? error?.code ?? detail?.code) || undefined;
     const code = detail?.reason ?? detail?.status;
+    const cause = error?.cause;
+    const causeCode = cause?.code;
+    const causeMessage = typeof cause?.message === "string" ? cause.message : undefined;
+    const causeDetail = causeCode ? `${causeCode}${causeMessage ? `: ${causeMessage}` : ""}` : causeMessage;
+    const message = detail?.message || error?.message || "Proxy request failed.";
     if (status === 401) {
-        return new GatewayError("The proxy rejected your Google ID token. Run 'gcloud auth login' with your personal account, then Refresh Models.", status, code);
+        return new GatewayError("The proxy rejected your Google ID token. Run 'gcloud auth login' with your personal account, then Refresh Models.", status, code, cause);
     }
-    return new GatewayError(detail?.message || error?.message || "Proxy request failed.", status, code);
+    return new GatewayError(causeDetail && !message.includes(causeDetail) ? `${message} (cause: ${causeDetail})` : message, status, code, cause);
 }
 
 export function isGatewayRetryable(error: any): boolean {
