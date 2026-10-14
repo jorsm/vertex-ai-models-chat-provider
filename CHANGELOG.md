@@ -4,6 +4,12 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.7.11] — 2026-10-14 (Pre-release)
+
+### Fixed
+
+- Preserve underlying network error causes (such as `ENOTFOUND`, `ECONNRESET`, or `ETIMEDOUT`) in normalized proxy gateway errors so discovery and inference diagnostics explain why `fetch failed`.
+
 ## [0.7.10] — 2026-10-14 (Pre-release)
 
 ### Added
