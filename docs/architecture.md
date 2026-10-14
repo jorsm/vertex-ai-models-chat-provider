@@ -130,6 +130,8 @@ The authentication implementation lives in `src/auth/`. [AuthManager](../src/aut
 
 Client identity metadata remains in the manager because user labels use the same resolver in both transports; it is independent of the proxy token's identity. Identity lookup and proxy token acquisition share one serialized CLI queue. Direct credential changes invalidate the manager's identity cache before firing `onAuthUpdated`; the dispatcher's existing subscription then resets the connection and invalidates proxy tokens, including acquisitions in progress. Endpoint routing and inference remain in the dispatcher, gateway, and vendor providers.
 
+[AuthCredentials](../src/auth/AuthCredentials.ts) validates the configured CLI timeout directly: whole seconds from 1 to 300, with a 20-second fallback for invalid values. It also owns the proxy authentication wait policy: one CLI attempt plus three timeout retries and 10 seconds of completion overhead. The bounded per-attempt timeout keeps the total within Node's timer range. The dispatcher passes this allowance and the configured catalog HTTP timeout explicitly through `ProxyDiscoveryTimeouts`. [ProxyGateway](../src/ProxyGateway.ts) bounds token waiting, then starts a fresh deadline for the HTTP request and response reading. Authentication queue waiting counts toward the first deadline. With the default settings, the two allowances are 90 seconds and 45 seconds; the HTTP timeout never selects or changes the authentication policy. See [proxy discovery](proxy.md#discovery-catalog).
+
 ### activate
 
 [source](../src/extension.ts)

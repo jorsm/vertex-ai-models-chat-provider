@@ -2,6 +2,7 @@ import { setMaxListeners } from "events";
 import * as path from "path";
 import * as vscode from "vscode";
 import { AuthManager } from "./auth/AuthManager";
+import { getProxyAuthenticationTimeoutMs } from "./auth/AuthCredentials";
 import { ProxyGateway, GatewayError } from "./ProxyGateway";
 import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { VertexAnthropicProvider } from "./providers/VertexAnthropicProvider";
@@ -260,9 +261,10 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
             this.availableModels = [];
             this.discoveryDone = false;
             this._onDidChange.fire();
-            this.logger.log(`🔍 Starting proxy model discovery for project "${effectiveProjectId}" via "${gateway.url}" (timeout ${probeTimeoutMs}ms)…`);
+            const authenticationTimeoutMs = getProxyAuthenticationTimeoutMs();
+            this.logger.log(`🔍 Starting proxy model discovery for project "${effectiveProjectId}" via "${gateway.url}" (authentication timeout ${authenticationTimeoutMs}ms, HTTP timeout ${probeTimeoutMs}ms)…`);
             try {
-                const catalog = await gateway.discover(probeTimeoutMs, gateway.signal);
+                const catalog = await gateway.discover({ authenticationTimeoutMs, requestTimeoutMs: probeTimeoutMs }, gateway.signal);
                 if (revision !== this.connectionRevision || gateway.signal.aborted) {
                     throw new GatewayError("Proxy configuration changed. Refresh Models before continuing.");
                 }

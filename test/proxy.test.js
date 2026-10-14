@@ -454,12 +454,90 @@ test("authenticated discovery sends only an ID token and bounds a stalled creden
             return Response.json({ candidateModels: [], regionPriority: ["global"] });
         },
     );
-    assert.deepEqual(await gateway.discover(100), { candidateModels: [], regionPriority: ["global"] });
+    assert.deepEqual(await gateway.discover({ authenticationTimeoutMs: 100, requestTimeoutMs: 100 }), { candidateModels: [], regionPriority: ["global"] });
     assert.equal(calls[0][0], "https://gateway.test/base/discovery");
     assert.equal(new Headers(calls[0][1].headers).get("Authorization"), "Bearer personal-token");
     assert.equal(calls[0][1].body, undefined);
     assert.equal(calls[0][1].redirect, "error");
-    await assert.rejects(new ProxyGateway("https://gateway.test", () => new Promise(() => {})).discover(5), /timed out/);
+    await assert.rejects(new ProxyGateway("https://gateway.test", () => new Promise(() => {})).discover({ authenticationTimeoutMs: 5, requestTimeoutMs: 100 }), /timed out/);
+});
+test("proxy discovery gives HTTP and response reading a fresh deadline after authentication", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const credentials = deferred(),
+        entered = deferred();
+    let requestSignal;
+    const gateway = new ProxyGateway(
+        "https://gateway.test",
+        () => credentials.promise,
+        async (_url, init) => {
+            requestSignal = init.signal;
+            const body = new ReadableStream({
+                start(controller) {
+                    requestSignal.addEventListener("abort", () => controller.error(new Error("Catalog response timed out")), { once: true });
+                },
+            });
+            entered.resolve();
+            return new Response(body);
+        },
+    );
+    const discovery = gateway.discover({ authenticationTimeoutMs: 90_000, requestTimeoutMs: 100 });
+    let settled = false;
+    void discovery.then(
+        () => {
+            settled = true;
+        },
+        () => {
+            settled = true;
+        },
+    );
+    t.mock.timers.tick(89_999);
+    credentials.resolve("personal-token");
+    await entered.promise;
+    await flush();
+    t.mock.timers.tick(99);
+    await flush();
+    assert.equal(settled, false);
+    assert.equal(requestSignal.aborted, false);
+    t.mock.timers.tick(1);
+    await assert.rejects(discovery, (error) => error instanceof GatewayError && /Catalog response timed out/.test(error.message));
+    assert.equal(requestSignal.aborted, true);
+});
+test("authentication deadline bounds credential waiting and a late token sends no discovery request", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const credentials = deferred();
+    let calls = 0;
+    const gateway = new ProxyGateway(
+        "https://gateway.test",
+        () => credentials.promise,
+        async () => {
+            calls++;
+            return Response.json({ candidateModels: [], regionPriority: [] });
+        },
+    );
+    const discovery = gateway.discover({ authenticationTimeoutMs: 100, requestTimeoutMs: 45_000 });
+    t.mock.timers.tick(100);
+    await assert.rejects(discovery, /timed out/);
+    credentials.resolve("late-token");
+    await flush();
+    assert.equal(calls, 0);
+});
+test("already cancelled discovery never starts authentication or HTTP", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let calls = 0;
+    const gateway = new ProxyGateway(
+        "https://gateway.test",
+        async () => {
+            calls++;
+            return "token";
+        },
+        async () => {
+            calls++;
+            return Response.json({});
+        },
+    );
+    await assert.rejects(gateway.discover({ authenticationTimeoutMs: 90_000, requestTimeoutMs: 45_000 }, controller.signal), /cancelled/);
+    assert.equal(calls, 0);
 });
 test("gateway transport rejects another origin/base path and removes quota/API-key headers", async () => {
     let headers;
@@ -493,7 +571,7 @@ test("canonical discovery failures never try another endpoint or catalog source"
                 return Response.json({ error: { code: status } }, { status });
             },
         );
-        await assert.rejects(gateway.discover(100), (error) => error instanceof GatewayError && error.status === status);
+        await assert.rejects(gateway.discover({ authenticationTimeoutMs: 100, requestTimeoutMs: 100 }), (error) => error instanceof GatewayError && error.status === status);
         assert.deepEqual(calls, ["https://gateway.test/base/discovery"]);
     }
 });
@@ -577,6 +655,73 @@ function harness(models, authOverrides = {}) {
     }
     return { dispatcher, calls, records, auth, resolver };
 }
+test("proxy authentication budget is independent of discovery settings and respects CLI timeout limits", async (t) => {
+    inspections.proxyUrl = { globalValue: "https://gateway.test" };
+    const received = [];
+    t.mock.method(ProxyGateway.prototype, "discover", async (timeouts) => {
+        received.push(timeouts);
+        return { candidateModels: [], regionPriority: [] };
+    });
+    for (const [
+        discoverySeconds,
+        gcloudSeconds,
+    ] of [
+        [
+            1,
+            20,
+        ],
+        [
+            44,
+            20,
+        ],
+        [
+            45,
+            20,
+        ],
+        [
+            120,
+            20,
+        ],
+        [
+            45,
+            35,
+        ],
+        [
+            45,
+            0,
+        ],
+        [
+            45,
+            300,
+        ],
+        [
+            45,
+            301,
+        ],
+        [
+            45,
+            2_147_483,
+        ],
+    ]) {
+        settings.modelDiscoveryTimeoutSeconds = discoverySeconds;
+        settings.gcloudCommandTimeoutSeconds = gcloudSeconds;
+        const h = harness([]);
+        await h.dispatcher.discoverModelsAndRegion();
+        h.dispatcher.dispose();
+    }
+    assert.deepEqual(received, [
+        { authenticationTimeoutMs: 90_000, requestTimeoutMs: 1_000 },
+        { authenticationTimeoutMs: 90_000, requestTimeoutMs: 44_000 },
+        { authenticationTimeoutMs: 90_000, requestTimeoutMs: 45_000 },
+        { authenticationTimeoutMs: 90_000, requestTimeoutMs: 120_000 },
+        { authenticationTimeoutMs: 150_000, requestTimeoutMs: 45_000 },
+        { authenticationTimeoutMs: 90_000, requestTimeoutMs: 45_000 },
+        { authenticationTimeoutMs: 1_210_000, requestTimeoutMs: 45_000 },
+        { authenticationTimeoutMs: 90_000, requestTimeoutMs: 45_000 },
+        { authenticationTimeoutMs: 90_000, requestTimeoutMs: 45_000 },
+    ]);
+    assert.ok(logs.some((line) => line.includes("authentication timeout 90000ms, HTTP timeout 44000ms")));
+});
 function fakeDiscovery(
     t,
     allowed,
@@ -1259,7 +1404,7 @@ test("discovery rejects oversized, malformed and empty responses", async () => {
             async () => "token",
             async () => new Response(body),
         );
-        await assert.rejects(gateway.discover(500), GatewayError);
+        await assert.rejects(gateway.discover({ authenticationTimeoutMs: 500, requestTimeoutMs: 500 }), GatewayError);
     }
 });
 
@@ -1948,7 +2093,7 @@ test("discovery accepts effort metadata with only authentication and no capabili
             return Response.json(enhancedFixture);
         },
     );
-    assert.deepEqual(await gateway.discover(500), enhancedFixture);
+    assert.deepEqual(await gateway.discover({ authenticationTimeoutMs: 500, requestTimeoutMs: 500 }), enhancedFixture);
     assert.deepEqual(
         [...requests[0].headers],
         [

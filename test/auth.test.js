@@ -76,6 +76,7 @@ try {
             };
         if (request.endsWith("/utils/gcloud")) {
             return {
+                ...originalLoad.call(this, request, parent, main),
                 runGcloud: async (args) => {
                     commands.push(args);
                     return { stdout: typeof gcloudResult === "function" ? await gcloudResult(args) : gcloudResult, stderr: "" };
@@ -91,6 +92,7 @@ try {
     Module._load = originalLoad;
 }
 const { AuthManager, AuthConfigurationError } = current;
+const { getConfiguredGcloudTimeoutMs } = require("../out/auth/AuthCredentials.js");
 const authKey = "vertexAiChat.activeAuthMethod";
 const namesKey = "vertexAiChat.serviceAccountNames";
 const credentials = (email = "selected@example.iam.gserviceaccount.com") => ({ type: "service_account", project_id: "fixture-project", client_email: email, private_key: "fixture-key" });
@@ -162,6 +164,55 @@ test.afterEach(() => {
     else process.env.GOOGLE_APPLICATION_CREDENTIALS = originalCredentialPath;
 });
 test.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+test("gcloud timeout settings accept 1–300 integer seconds and otherwise use 20 seconds", (t) => {
+    let seconds;
+    vscode.workspace.getConfiguration = () => ({ get: () => seconds });
+    t.after(() => {
+        delete vscode.workspace.getConfiguration;
+    });
+    for (const value of [
+        undefined,
+        null,
+        false,
+        0,
+        -5,
+        1.5,
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+        "20",
+        301,
+        2_147_483,
+    ]) {
+        seconds = value;
+        assert.equal(getConfiguredGcloudTimeoutMs(), 20_000);
+    }
+    for (const [
+        value,
+        expectedMs,
+    ] of [
+        [
+            1,
+            1_000,
+        ],
+        [
+            35,
+            35_000,
+        ],
+        [
+            300,
+            300_000,
+        ],
+    ]) {
+        seconds = value;
+        assert.equal(getConfiguredGcloudTimeoutMs(), expectedMs);
+    }
+    const setting = require("../package.json").contributes.configuration.properties["vertexAiChat.gcloudCommandTimeoutSeconds"];
+    assert.equal(setting.type, "integer");
+    assert.equal(setting.default, 20);
+    assert.equal(setting.minimum, 1);
+    assert.equal(setting.maximum, 300);
+});
 
 test("the manager exposes the credential error constructor used by direct authentication", () => {
     assert.equal(current.AuthConfigurationError, credentialModule.AuthConfigurationError);

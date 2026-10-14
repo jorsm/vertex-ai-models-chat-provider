@@ -5,11 +5,6 @@ import type { Logger } from "./Logger";
 
 export const GCLOUD_DEFAULT_TIMEOUT_MS = 20_000;
 
-/** Reject invalid values and delays that would overflow Node's timer. */
-export function resolveGcloudTimeoutMs(seconds: unknown): number {
-    return typeof seconds === "number" && Number.isInteger(seconds) && seconds >= 1 && seconds <= 2_147_483 ? seconds * 1000 : GCLOUD_DEFAULT_TIMEOUT_MS;
-}
-
 export interface GcloudCommand {
     executable: string;
     args: string[];

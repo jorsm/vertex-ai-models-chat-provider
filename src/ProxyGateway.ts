@@ -1,7 +1,14 @@
 import { OAuth2Client } from "google-auth-library";
 import type { ModelCatalog } from "./providers/VertexModelProvider";
 import { parseModelCatalog } from "./ModelCatalogParser";
-import { GCLOUD_MAX_TIMEOUT_RETRIES, getConfiguredGcloudTimeoutMs } from "./auth/AuthCredentials";
+
+/** Independent deadlines for the two phases of authenticated catalog discovery. */
+export interface ProxyDiscoveryTimeouts {
+    /** Maximum wait for a token, including any credential-provider queue time. */
+    authenticationTimeoutMs: number;
+    /** Maximum HTTP request and response-body duration after authentication succeeds. */
+    requestTimeoutMs: number;
+}
 
 export class GatewayError extends Error {
     constructor(
@@ -135,67 +142,81 @@ export class ProxyGateway {
         return response;
     };
 
-    async discover(timeoutMs: number, signal?: AbortSignal): Promise<ModelCatalog> {
+    /**
+     * Acquires an ID token, then fetches the catalog with a fresh HTTP deadline.
+     * Cancellation ends discovery without waiting for the shared credential provider.
+     */
+    async discover({ authenticationTimeoutMs, requestTimeoutMs }: ProxyDiscoveryTimeouts, signal?: AbortSignal): Promise<ModelCatalog> {
         const controller = new AbortController();
         const abort = () => controller.abort();
         signal?.addEventListener("abort", abort, { once: true });
         if (signal?.aborted) {
             abort();
         }
-        const tokenRetryBudgetMs = (1 + GCLOUD_MAX_TIMEOUT_RETRIES) * getConfiguredGcloudTimeoutMs() + 10_000;
-        const tokenTimeoutMs = timeoutMs >= 45_000 ? Math.max(timeoutMs, tokenRetryBudgetMs) : timeoutMs;
-        let timer = setTimeout(abort, tokenTimeoutMs);
+        let timer = setTimeout(abort, authenticationTimeoutMs);
         try {
-            // Also bound token acquisition: aborting discovery must not wait for gcloud.
-            const token = await new Promise<string>((resolve, reject) => {
-                const cancel = () => reject(new GatewayError("Proxy discovery cancelled or timed out."));
-                controller.signal.addEventListener("abort", cancel, { once: true });
-                if (controller.signal.aborted) {
-                    cancel();
-                }
-                this.getToken()
-                    .then(resolve, reject)
-                    .finally(() => controller.signal.removeEventListener("abort", cancel));
-            });
+            const token = await this.acquireDiscoveryToken(controller.signal);
             controller.signal.throwIfAborted();
             clearTimeout(timer);
-            timer = setTimeout(abort, timeoutMs);
-            const response = await this.fetch(`${this.url}/discovery`, {
-                headers: { Authorization: `Bearer ${token}` },
-                signal: controller.signal,
-            });
-            if (!response.ok) {
-                await response.body?.cancel();
-                throw normalizeGatewayError({ status: response.status, message: `Proxy discovery failed (HTTP ${response.status}).` });
-            }
-            const reader = response.body?.getReader();
-            if (!reader) {
-                throw new GatewayError("Empty proxy discovery response.");
-            }
-            let size = 0;
-            const chunks: Uint8Array[] = [];
-            try {
-                while (true) {
-                    const { value, done } = await reader.read();
-                    if (done) {
-                        break;
-                    }
-                    size += value.byteLength;
-                    if (size > 1_048_576) {
-                        throw new GatewayError("Proxy discovery response exceeds 1 MiB.");
-                    }
-                    chunks.push(value);
-                }
-            } finally {
-                await reader.cancel();
-                reader.releaseLock();
-            }
-            return parseProxyCatalog(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+            timer = setTimeout(abort, requestTimeoutMs);
+            return await this.fetchDiscoveryCatalog(token, controller.signal);
         } catch (error) {
             throw normalizeGatewayError(error);
         } finally {
             clearTimeout(timer);
             signal?.removeEventListener("abort", abort);
         }
+    }
+
+    private async acquireDiscoveryToken(signal: AbortSignal): Promise<string> {
+        if (signal.aborted) {
+            throw new GatewayError("Proxy discovery cancelled or timed out.");
+        }
+        let cancel: (() => void) | undefined;
+        try {
+            return await new Promise<string>((resolve, reject) => {
+                cancel = () => reject(new GatewayError("Proxy discovery cancelled or timed out."));
+                signal.addEventListener("abort", cancel, { once: true });
+                void this.getToken().then(resolve, reject);
+            });
+        } finally {
+            if (cancel) {
+                signal.removeEventListener("abort", cancel);
+            }
+        }
+    }
+
+    private async fetchDiscoveryCatalog(token: string, signal: AbortSignal): Promise<ModelCatalog> {
+        const response = await this.fetch(`${this.url}/discovery`, {
+            headers: { Authorization: `Bearer ${token}` },
+            signal,
+        });
+        if (!response.ok) {
+            await response.body?.cancel();
+            throw normalizeGatewayError({ status: response.status, message: `Proxy discovery failed (HTTP ${response.status}).` });
+        }
+        const reader = response.body?.getReader();
+        if (!reader) {
+            throw new GatewayError("Empty proxy discovery response.");
+        }
+        let size = 0;
+        const chunks: Uint8Array[] = [];
+        try {
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                    break;
+                }
+                size += value.byteLength;
+                if (size > 1_048_576) {
+                    throw new GatewayError("Proxy discovery response exceeds 1 MiB.");
+                }
+                chunks.push(value);
+            }
+        } finally {
+            await reader.cancel();
+            reader.releaseLock();
+        }
+        return parseProxyCatalog(JSON.parse(Buffer.concat(chunks).toString("utf8")));
     }
 }

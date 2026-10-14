@@ -57,7 +57,7 @@ Initializes the extension's internal state and registers its contributions with 
     - `vertexAiChat.openWorkspaceModelsFile`: Creates or opens the workspace `.vscode/models.json` model catalog.
 6.  Registers the chat provider with the `vscode.lm` API.
 7.  Starts an initial background discovery of models.
-8.  Sets up configuration listeners to reset the connection and re-run discovery when `projectId`, `proxyUrl`, or the discovery timeout changes. `projectId` is always required and names the project on which Vertex is invoked; `proxyUrl` is optional and, when set, routes calls client → proxy → Vertex instead of client → Vertex.
+8.  Sets up configuration listeners to reset the connection and re-run discovery when `projectId` or `proxyUrl` changes. Discovery and `gcloud` timeout settings apply to the next discovery; run **Refresh Models** after changing them. In proxy mode, the authentication wait and catalog HTTP request have independent deadlines (see [proxy discovery](proxy.md#discovery-catalog)). `projectId` is always required and names the project on which Vertex is invoked; `proxyUrl` is optional and, when set, routes calls client → proxy → Vertex instead of client → Vertex.
 
 ### runDiscovery
 

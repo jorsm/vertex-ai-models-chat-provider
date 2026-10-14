@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const childProcess = require("node:child_process");
-const { GCLOUD_DEFAULT_TIMEOUT_MS, formatGcloudCommand, resolveGcloudCommand, resolveGcloudTimeoutMs, runGcloud } = require("../out/utils/gcloud.js");
+const { formatGcloudCommand, resolveGcloudCommand, runGcloud } = require("../out/utils/gcloud.js");
 
 const bin = "C:\\SDK with spaces\\bin";
 const python = "C:\\SDK with spaces\\platform\\bundledpython\\python.exe";
@@ -135,25 +135,4 @@ test("Windows launcher timeout kills the process tree before releasing the reque
         (error) => error.code === "GCLOUD_TIMEOUT",
     );
     assert.equal(cleanupCompleted, true);
-});
-test("gcloud timeout setting validates integer seconds and defaults to 20s", () => {
-    for (const value of [
-        undefined,
-        0,
-        -5,
-        1.5,
-        Number.NaN,
-        "20",
-        2_147_484,
-    ]) {
-        assert.equal(resolveGcloudTimeoutMs(value), GCLOUD_DEFAULT_TIMEOUT_MS);
-    }
-    assert.equal(resolveGcloudTimeoutMs(1), 1_000);
-    assert.equal(resolveGcloudTimeoutMs(35), 35_000);
-    assert.equal(resolveGcloudTimeoutMs(2_147_483), 2_147_483_000);
-    const setting = require("../package.json").contributes.configuration.properties["vertexAiChat.gcloudCommandTimeoutSeconds"];
-    assert.equal(setting.type, "integer");
-    assert.equal(setting.default, 20);
-    assert.equal(setting.minimum, 1);
-    assert.equal(setting.maximum, 2_147_483);
 });

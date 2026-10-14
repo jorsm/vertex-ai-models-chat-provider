@@ -259,7 +259,20 @@ The legacy `models` field is also accepted instead of `candidateModels` at `/dis
 
 Filter discovery using the authenticated caller's permissions. Return an empty `candidateModels` array when the caller has no available models. Reject unauthorized inference independently of discovery: clients can issue requests outside the picker. Use exact authorization for the literal backend model; broad prefix matching can authorize unintended models.
 
-The extension publishes only the variants explicitly returned. It does not synthesize variants or supplement an empty catalog. Duplicate IDs, malformed vendor identifiers, invalid metadata, malformed JSON, or a response larger than 1 MiB invalidate the whole response. Discovery initializes all registered adapters with the configured gateway; individual adapters report unsupported transports during inference. Discovery uses `vertexAiChat.modelDiscoveryTimeoutSeconds` (45 seconds by default), including token acquisition and response reading. The server's prices drive model information and local usage estimates, with each request retaining its selected rate card.
+The extension publishes only the variants explicitly returned. It does not synthesize variants or supplement an empty catalog. Duplicate IDs, malformed vendor identifiers, invalid metadata, malformed JSON, or a response larger than 1 MiB invalidate the whole response. Discovery initializes all registered adapters with the configured gateway; individual adapters report unsupported transports during inference. The server's prices drive model information and local usage estimates, with each request retaining its selected rate card.
+
+Proxy discovery has two independent timeout phases:
+
+| Phase                                | Allowance                                                                                                                                                                        | Default    |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Authentication                       | Initial `gcloud` attempt plus up to three timeout retries, using `vertexAiChat.gcloudCommandTimeoutSeconds` per attempt, plus 10 seconds for termination and completion overhead | 90 seconds |
+| Catalog request and response reading | Full `vertexAiChat.modelDiscoveryTimeoutSeconds`, starting after the token is available                                                                                          | 45 seconds |
+
+The `gcloud` command timeout accepts integer values from 1 to 300 seconds (five minutes per attempt); invalid values use the 20-second default. This keeps the calculated authentication allowance within Node's timer range without a separate timer cap.
+
+The authentication allowance includes waiting in the shared CLI queue behind account identity lookup or another operation. Queue waiting consumes that allowance, so it may end before all token retries run. Cached tokens usually complete this phase immediately.
+
+The default combined allowance is up to 135 seconds. Changing the catalog timeout affects only the HTTP phase: a 44-second timeout and a 45-second timeout both retain the default 90-second authentication allowance. Changing the `gcloud` command timeout changes the authentication allowance for the next discovery; run **Refresh Models** after changing either setting. Cancellation or expiration ends discovery without waiting for the credential provider. Shared token acquisition may finish afterward and populate its cache, but it cannot start a late catalog request for the cancelled discovery.
 
 At discovery ingestion, the client uses the same [catalog schema](../schemas/models.schema.json) and [parser](../src/ModelCatalogParser.ts) as local catalog files. Structural checks run once, with separate checks for unique IDs and effort-default membership. Optional effort metadata is accepted directly; internal consumers do not repeat catalog validation. Unsupported effort names remain the backend API's responsibility.
 
