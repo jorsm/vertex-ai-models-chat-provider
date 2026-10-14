@@ -1,6 +1,8 @@
 import { OAuth2Client } from "google-auth-library";
 import type { ModelCatalog } from "./providers/VertexModelProvider";
 import { parseModelCatalog } from "./ModelCatalogParser";
+import { GCLOUD_MAX_TIMEOUT_RETRIES } from "./auth/AuthCredentials";
+import { getConfiguredGcloudTimeoutMs } from "./utils/gcloud";
 import { extractRetryAfterDelayMs, isRetryableError } from "./utils/retry";
 
 export class GatewayError extends Error {
@@ -148,7 +150,8 @@ export class ProxyGateway {
         if (signal?.aborted) {
             abort();
         }
-        const tokenTimeoutMs = timeoutMs >= 45_000 ? Math.max(timeoutMs, 90_000) : timeoutMs;
+        const tokenRetryBudgetMs = (1 + GCLOUD_MAX_TIMEOUT_RETRIES) * getConfiguredGcloudTimeoutMs() + 10_000;
+        const tokenTimeoutMs = timeoutMs >= 45_000 ? Math.max(timeoutMs, tokenRetryBudgetMs) : timeoutMs;
         let timer = setTimeout(abort, tokenTimeoutMs);
         try {
             // Also bound token acquisition: aborting discovery must not wait for gcloud.

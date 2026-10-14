@@ -24,6 +24,10 @@
     "contributes": {
         "commands": [
             {
+                "command": "vertexAiChat.showDashboard",
+                "title": "Google Agent Platform: Show Usage & Costs Dashboard"
+            },
+            {
                 "command": "vertexAiChat.dumpTools",
                 "title": "Google Agent Platform: Dump Installed Tools Schema"
             },
@@ -136,6 +140,14 @@
                     "maximum": 2147483,
                     "order": 15,
                     "description": "Maximum time in seconds for each model endpoint's discovery attempts and retry delays, after it leaves the queue. Unresponsive endpoints are skipped; rate-limited endpoints remain available. Applies to the next discovery; run Refresh Models after changing this setting."
+                },
+                "vertexAiChat.gcloudCommandTimeoutSeconds": {
+                    "type": "integer",
+                    "default": 20,
+                    "minimum": 1,
+                    "maximum": 2147483,
+                    "order": 18,
+                    "description": "Maximum time in seconds for each gcloud CLI command execution before it times out and is retried."
                 },
                 "vertexAiChat.retryMaxDurationMinutes": {
                     "type": "integer",

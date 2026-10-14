@@ -59,7 +59,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register dashboard command
     context.subscriptions.push(
-        vscode.commands.registerCommand("claudeBilling.showDashboard", () => {
+        vscode.commands.registerCommand("vertexAiChat.showDashboard", () => {
             DashboardWebview.createOrShow(context.extensionUri, usageTracker);
         }),
     );

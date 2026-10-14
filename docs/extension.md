@@ -44,7 +44,7 @@ Initializes the extension's internal state and registers its contributions with 
 3.  Initializes the `UsageTrackerService` and `CostStatusBar`.
 4.  Instantiates the `VertexChatModelDispatcher`.
 5.  Registers the following commands:
-    - `claudeBilling.showDashboard`: Opens the local usage and cost dashboard.
+    - `vertexAiChat.showDashboard`: Opens the local usage and cost dashboard.
     - `vertexAiChat.refreshModels`: Manually triggers the model discovery process.
     - `vertexAiChat.dumpTools`: Dumps metadata and schemas for all installed `vscode.lm.tools` to an output channel for debugging.
     - `vertexAiChat.generateCommitMessage`: Invokes the AI logic to generate a commit message when the Git extension API is available in the same extension host.

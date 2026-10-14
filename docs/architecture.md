@@ -143,7 +143,7 @@ The main entry point for the VS Code extension. It handles:
 - Initializing the `AuthManager`, `UsageTrackerService`, `CostStatusBar`, and `ModelCatalogResolver`.
 - Registering the `VertexChatModelDispatcher` as a language model chat provider for the `google-vertex` vendor.
 - Registering extension commands including:
-    - `claudeBilling.showDashboard`: Opens the usage dashboard webview via `DashboardWebview.createOrShow`.
+    - `vertexAiChat.showDashboard`: Opens the usage dashboard webview via `DashboardWebview.createOrShow`.
     - `vertexAiChat.refreshModels`: Manually triggers the model discovery process.
     - `vertexAiChat.dumpTools`: Dumps the schema of all installed language model tools to an output channel for debugging, including tool names, descriptions, tags, and input schemas.
     - `vertexAiChat.generateCommitMessage`: Generates AI-powered commit messages from staged changes when the built-in Git API is available in the same extension host.
