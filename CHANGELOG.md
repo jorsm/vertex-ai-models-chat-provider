@@ -4,6 +4,12 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.7.10] — 2026-10-14 (Pre-release)
+
+### Added
+
+- Output channel lifecycle logging for model discovery in both proxy and direct Vertex AI modes (discovery start, per-endpoint probe status, discovered models, and total elapsed duration).
+
 ## [0.7.9] — 2026-10-14 (Pre-release)
 
 ### Added
