@@ -132,6 +132,8 @@ Client identity metadata remains in the manager because user labels use the same
 
 [AuthCredentials](../src/auth/AuthCredentials.ts) validates the configured CLI timeout directly: whole seconds from 1 to 300, with a 20-second fallback for invalid values. It also owns the proxy authentication wait policy: one CLI attempt plus three timeout retries and 10 seconds of completion overhead. The bounded per-attempt timeout keeps the total within Node's timer range. The dispatcher passes this allowance and the configured catalog HTTP timeout explicitly through `ProxyDiscoveryTimeouts`. [ProxyGateway](../src/ProxyGateway.ts) bounds token waiting, then starts a fresh deadline for the HTTP request and response reading. Authentication queue waiting counts toward the first deadline. With the default settings, the two allowances are 90 seconds and 45 seconds; the HTTP timeout never selects or changes the authentication policy. See [proxy discovery](proxy.md#discovery-catalog).
 
+[GcloudLogin](../src/auth/GcloudLogin.ts) shares terminal login handling between ADC and proxy authentication. Automatic credential activation and model refresh require exit code zero for the complete submitted login command in that terminal. When shell integration identifies its start, completion must belong to the same execution object. If command metadata becomes complete only at the end, exact command matching still permits completion. Only surrounding whitespace is ignored; project arguments, quoting, and command suffixes must match. Closing the terminal or finishing the login releases all start, end, and close listeners. Without a matching completion event, the user runs **Refresh Models** manually.
+
 ### activate
 
 [source](../src/extension.ts)

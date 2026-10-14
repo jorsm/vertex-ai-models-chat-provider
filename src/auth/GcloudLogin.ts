@@ -12,8 +12,9 @@ const LOGIN_COMMANDS: Record<GcloudLoginMode, string> = {
  * Opens a terminal for gcloud login and observes its completion through shell integration.
  *
  * @remarks
- * Only a successful login in this terminal invokes the callback. Completion,
- * terminal closure, and terminal setup failure release the event subscriptions.
+ * Only the complete submitted login command in this terminal can invoke the
+ * callback. When its start event is available, completion must also belong to
+ * that same execution. Completion, closure, and setup failure release all listeners.
  * Without shell integration, the user must refresh models manually.
  *
  * @param projectId - Optional project ID passed to gcloud.
@@ -23,16 +24,28 @@ const LOGIN_COMMANDS: Record<GcloudLoginMode, string> = {
  */
 export function openGcloudLoginTerminal(projectId: string, onSuccess: () => Promise<void>, logger: Pick<Logger, "log">, mode: GcloudLoginMode = "adc"): void {
     const terminal = vscode.window.createTerminal({ name: "Vertex AI: Authentication", iconPath: new vscode.ThemeIcon("key") });
-    const baseCommand = LOGIN_COMMANDS[mode];
-    const command = createLoginCommand(projectId, baseCommand);
+    const command = createLoginCommand(projectId, LOGIN_COMMANDS[mode]);
+    let loginExecution: vscode.TerminalShellExecution | undefined;
     let completed = false;
     const cleanup = () => {
         completed = true;
+        startListener.dispose();
         endListener.dispose();
         closeListener.dispose();
     };
+    const startListener = vscode.window.onDidStartTerminalShellExecution((event) => {
+        if (event.terminal !== terminal || completed || loginExecution) {
+            return;
+        }
+        if (event.execution.commandLine.value.trim() === command) {
+            loginExecution = event.execution;
+        }
+    });
     const endListener = vscode.window.onDidEndTerminalShellExecution((event) => {
-        if (event.terminal !== terminal || completed || !event.execution.commandLine.value.includes(baseCommand)) {
+        if (event.terminal !== terminal || completed || event.execution.commandLine.value.trim() !== command) {
+            return;
+        }
+        if (loginExecution && event.execution !== loginExecution) {
             return;
         }
         cleanup();
@@ -62,6 +75,9 @@ export function openGcloudLoginTerminal(projectId: string, onSuccess: () => Prom
 /**
  * Builds the terminal command using only the fixed login arguments and a quoted project ID.
  *
+ * @remarks
+ * Preserves the existing POSIX-compatible quoting for project IDs with shell metacharacters.
+ *
  * @param projectId - Project ID to include when non-empty.
  * @param baseCommand - Base gcloud login command for the active mode.
  * @returns The gcloud login command with quiet mode enabled.
@@ -69,24 +85,15 @@ export function openGcloudLoginTerminal(projectId: string, onSuccess: () => Prom
 function createLoginCommand(projectId: string, baseCommand: string): string {
     const args: string[] = [];
     if (projectId) {
-        args.push("--project", quoteShellArgument(projectId));
+        let quotedProjectId = projectId;
+        if (!/^[A-Za-z0-9._:/=-]+$/.test(projectId)) {
+            quotedProjectId = "'" + projectId.replace(/'/g, "'\\''") + "'";
+        }
+        args.push("--project", quotedProjectId);
     }
     args.push("--quiet");
     return [
         baseCommand,
         ...args,
     ].join(" ");
-}
-
-/**
- * Formats a terminal argument using the existing POSIX-compatible quoting convention.
- *
- * @param value - Argument to quote when it contains shell metacharacters.
- * @returns The original safe value, or a single-quoted form with embedded quotes escaped.
- */
-function quoteShellArgument(value: string): string {
-    if (/^[A-Za-z0-9._:/=-]+$/.test(value)) {
-        return value;
-    }
-    return "'" + value.replace(/'/g, "'\\''") + "'";
 }

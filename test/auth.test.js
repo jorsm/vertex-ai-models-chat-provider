@@ -22,6 +22,7 @@ let commands;
 let terminal;
 let information, errors, logs, inputValues, inputOptions, selectedFiles;
 const shellListeners = new Set();
+const shellStartListeners = new Set();
 const closeListeners = new Set();
 const subscribe = (listeners, listener) => {
     listeners.add(listener);
@@ -53,6 +54,7 @@ const vscode = {
                 },
             }),
         onDidEndTerminalShellExecution: (listener) => subscribe(shellListeners, listener),
+        onDidStartTerminalShellExecution: (listener) => subscribe(shellStartListeners, listener),
         onDidCloseTerminal: (listener) => subscribe(closeListeners, listener),
     },
     workspace: {
@@ -157,6 +159,7 @@ test.beforeEach(() => {
     inputOptions = [];
     selectedFiles = undefined;
     shellListeners.clear();
+    shellStartListeners.clear();
     closeListeners.clear();
 });
 test.afterEach(() => {
@@ -464,6 +467,7 @@ for (const removeActive of [
 for (const exitCode of [
     0,
     1,
+    undefined,
 ]) {
     test(`ADC terminal login with exit code ${exitCode} activates ADC and refreshes only on success`, async () => {
         const { auth } = harness({ type: "secret", value: "selected" }, { selected: JSON.stringify(credentials()) });
@@ -483,6 +487,7 @@ for (const exitCode of [
         assert.equal(refreshed, exitCode === 0 ? 1 : 0);
         assert.equal(updates, exitCode === 0 ? 1 : 0);
         assert.equal(shellListeners.size, 0);
+        assert.equal(shellStartListeners.size, 0);
         assert.equal(closeListeners.size, 0);
     });
 }
@@ -510,6 +515,7 @@ test("proxy terminal login uses gcloud auth login without changing direct auth s
     assert.equal(refreshed, 1);
     assert.equal(updates, 1);
     assert.equal(shellListeners.size, 0);
+    assert.equal(shellStartListeners.size, 0);
     assert.equal(closeListeners.size, 0);
 });
 
@@ -522,6 +528,7 @@ test("closing the login terminal releases subscriptions and ignores its late com
     const completion = [...shellListeners][0];
     for (const listener of closeListeners) listener(terminal);
     assert.equal(shellListeners.size, 0);
+    assert.equal(shellStartListeners.size, 0);
     assert.equal(closeListeners.size, 0);
     completion({ terminal, execution: { commandLine: { value: terminal.command } }, exitCode: 0 });
     await flush();
@@ -529,24 +536,123 @@ test("closing the login terminal releases subscriptions and ignores its late com
     assert.equal(refreshed, 0);
 });
 
-test("unrelated terminal commands are ignored and successful login refreshes once", async () => {
+for (const mode of [
+    "adc",
+    "proxy",
+]) {
+    test(`${mode} login ignores command lookalikes and refreshes only once for the submitted command`, async (t) => {
+        vscode.workspace.getConfiguration = () => ({ inspect: () => (mode === "proxy" ? { globalValue: "https://gateway.test" } : undefined) });
+        t.after(() => {
+            delete vscode.workspace.getConfiguration;
+        });
+        const { auth } = harness({ type: "secret", value: "selected" });
+        let refreshed = 0;
+        await auth.reauthenticate("fixture-project", () => {
+            refreshed++;
+        });
+        const completion = [...shellListeners][0];
+        completion({ terminal: {}, execution: { commandLine: { value: terminal.command } }, exitCode: 0 });
+        for (const value of [
+            "echo fixture",
+            "echo 'gcloud auth login'",
+            `echo '${terminal.command}'`,
+            terminal.command.replace("fixture-project", "another-project"),
+            terminal.command.replace(" --quiet", ""),
+            `${terminal.command} --extra-argument`,
+            `${terminal.command} && echo done`,
+            `${terminal.command}; echo done`,
+            `${terminal.command}\necho done`,
+        ]) {
+            completion({ terminal, execution: { commandLine: { value } }, exitCode: 0 });
+        }
+        assert.equal(shellListeners.size, 1);
+        assert.equal(shellStartListeners.size, 1);
+        assert.equal(refreshed, 0);
+        assert.equal(auth.getActiveMethod().type, "secret");
+        const success = { terminal, execution: { commandLine: { value: `  ${terminal.command}\r\n` } }, exitCode: 0 };
+        completion(success);
+        completion(success);
+        await flush();
+        assert.equal(refreshed, 1);
+        assert.equal(auth.getActiveMethod().type, mode === "adc" ? "adc" : "secret");
+        assert.equal(shellListeners.size, 0);
+        assert.equal(shellStartListeners.size, 0);
+        assert.equal(closeListeners.size, 0);
+    });
+}
+
+test("login completion belongs to the recorded execution and still checks its complete command", async () => {
     const { auth } = harness({ type: "secret", value: "selected" });
     let refreshed = 0;
-    await auth.reauthenticate("", () => {
+    await auth.reauthenticate("fixture-project", () => {
         refreshed++;
     });
+    const execution = { commandLine: { value: terminal.command } };
+    for (const listener of shellStartListeners) {
+        listener({ terminal: {}, execution });
+        listener({ terminal, execution: { commandLine: { value: `echo '${terminal.command}'` } } });
+        listener({ terminal, execution });
+    }
     const completion = [...shellListeners][0];
-    completion({ terminal: {}, execution: { commandLine: { value: terminal.command } }, exitCode: 0 });
-    completion({ terminal, execution: { commandLine: { value: "echo fixture" } }, exitCode: 0 });
-    assert.equal(shellListeners.size, 1);
+    completion({ terminal, execution: { commandLine: { value: terminal.command } }, exitCode: 0 });
+    execution.commandLine.value = `${terminal.command} && echo done`;
+    completion({ terminal, execution, exitCode: 0 });
+    assert.equal(refreshed, 0);
     assert.equal(auth.getActiveMethod().type, "secret");
-    const success = { terminal, execution: { commandLine: { value: terminal.command } }, exitCode: 0 };
-    completion(success);
-    completion(success);
+    execution.commandLine.value = terminal.command;
+    completion({ terminal, execution, exitCode: 0 });
+    completion({ terminal, execution, exitCode: 0 });
     await flush();
     assert.equal(refreshed, 1);
     assert.equal(auth.getActiveMethod().type, "adc");
     assert.equal(shellListeners.size, 0);
+    assert.equal(shellStartListeners.size, 0);
+    assert.equal(closeListeners.size, 0);
+});
+
+test("login completion can use the full command when start metadata was incomplete", async () => {
+    const { auth } = harness({ type: "secret", value: "selected" });
+    let refreshed = 0;
+    await auth.reauthenticate("fixture-project", () => {
+        refreshed++;
+    });
+    const execution = { commandLine: { value: "gcloud auth" } };
+    for (const listener of shellStartListeners) listener({ terminal, execution });
+    execution.commandLine.value = terminal.command;
+    for (const listener of shellListeners) listener({ terminal, execution, exitCode: 0 });
+    await flush();
+    assert.equal(refreshed, 1);
+    assert.equal(auth.getActiveMethod().type, "adc");
+    assert.equal(shellListeners.size, 0);
+    assert.equal(shellStartListeners.size, 0);
+    assert.equal(closeListeners.size, 0);
+});
+
+test("login command construction preserves project argument quoting", async () => {
+    for (const [
+        projectId,
+        argument,
+    ] of [
+        [
+            "fixture-project",
+            "fixture-project",
+        ],
+        [
+            "team  project",
+            "'team  project'",
+        ],
+        [
+            "team'project",
+            String.raw`'team'\''project'`,
+        ],
+    ]) {
+        const { auth } = harness({ type: "adc" });
+        await auth.reauthenticate(projectId);
+        assert.equal(terminal.command, `gcloud auth application-default login --project ${argument} --quiet`);
+        for (const listener of closeListeners) listener(terminal);
+    }
+    assert.equal(shellListeners.size, 0);
+    assert.equal(shellStartListeners.size, 0);
     assert.equal(closeListeners.size, 0);
 });
 
@@ -565,6 +671,7 @@ test("terminal setup failures release listeners without changing the auth select
     const { auth } = harness({ type: "secret", value: "selected" });
     await assert.rejects(auth.reauthenticate("fixture-project"), /Fixture terminal setup failed/);
     assert.equal(shellListeners.size, 0);
+    assert.equal(shellStartListeners.size, 0);
     assert.equal(closeListeners.size, 0);
     assert.equal(auth.getActiveMethod().type, "secret");
 });
@@ -580,5 +687,6 @@ test("post-login refresh failures are logged without exposing callback error con
     assert.ok(logs.some((message) => message.includes("Post-authentication")));
     assert.ok(logs.every((message) => !message.includes("fixture-sensitive-fragment")));
     assert.equal(shellListeners.size, 0);
+    assert.equal(shellStartListeners.size, 0);
     assert.equal(closeListeners.size, 0);
 });
