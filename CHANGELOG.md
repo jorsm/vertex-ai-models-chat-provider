@@ -4,6 +4,23 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.7.9] — 2026-10-14 (Pre-release)
+
+### Added
+
+- Configurable `gcloud` CLI command timeout via `vertexAiChat.gcloudCommandTimeoutSeconds` (default 20 seconds), with automatic retries on timeout for both proxy token acquisition and account identity lookups.
+- Command Palette entry `vertexAiChat.showDashboard` (`Google Agent Platform: Show Usage & Costs Dashboard`).
+- Interactive `"Login with gcloud"` terminal action for proxy authentication failures (`gcloud auth login`), alongside direct ADC authentication (`gcloud auth application-default login`).
+
+### Changed
+
+- Unified the retry engine across direct Vertex AI and proxy modes under `vertexAiChat.retryMaxDurationMinutes`, with per-attempt status/error diagnostics and resolved `gcloud` command logging in the Output channel.
+
+### Fixed
+
+- Avoid logging an error when clearing models during an intentional connection reset or manual `Refresh Models`.
+- Skip direct ADC fallback logging and credential resolution when `vertexAiChat.proxyUrl` is configured.
+
 ## [0.7.8] — 2026-10-13
 
 ### Added
