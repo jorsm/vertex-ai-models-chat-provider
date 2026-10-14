@@ -291,6 +291,53 @@ test("environment credential resolution is used only when no method is selected"
     assert.equal(await harness(undefined).auth.getResolvedAuthOptions(), undefined);
 });
 
+test("the manager suppresses ADC fallback logs for user or default proxy settings only", async (t) => {
+    let proxySetting;
+    vscode.workspace.getConfiguration = () => ({ inspect: () => proxySetting });
+    t.after(() => {
+        delete vscode.workspace.getConfiguration;
+    });
+    for (const [
+        setting,
+        shouldLog,
+    ] of [
+        [
+            {},
+            true,
+        ],
+        [
+            { globalValue: "https://gateway.test" },
+            false,
+        ],
+        [
+            { defaultValue: "https://gateway.test" },
+            false,
+        ],
+        [
+            { globalValue: "   ", defaultValue: "" },
+            true,
+        ],
+        [
+            { workspaceValue: "https://workspace.test" },
+            true,
+        ],
+    ]) {
+        proxySetting = setting;
+        for (const method of [
+            undefined,
+            { type: "adc" },
+        ]) {
+            logs.length = 0;
+            assert.equal(await harness(method).auth.getResolvedAuthOptions(), undefined);
+            assert.equal(
+                logs.some((message) => message.includes("Application Default Credentials (ADC)")),
+                shouldLog,
+            );
+        }
+    }
+    assert.equal(commands.length, 0);
+});
+
 test("explicit legacy files fail closed while readable legacy files still resolve", async () => {
     process.env.GOOGLE_APPLICATION_CREDENTIALS = credentialFile;
     for (const value of [
@@ -410,6 +457,52 @@ test("expired identity cache survives a CLI failure but clears an explicitly uns
     gcloudResult = "(unset)";
     assert.equal(await auth.getIdentity(), undefined);
     assert.equal(commands.length, 3);
+});
+
+test("an authentication change stops identity timeout retries and a later lookup uses the new revision", async () => {
+    const { auth } = harness({ type: "adc" });
+    let attempts = 0;
+    gcloudResult = async () => {
+        attempts++;
+        await auth.clearAuthMethod();
+        throw Object.assign(new Error("Fixture timeout"), { code: "GCLOUD_TIMEOUT", killed: true });
+    };
+    assert.equal(await auth.getIdentity(), undefined);
+    assert.equal(attempts, 1);
+    gcloudResult = "current@example.com";
+    assert.equal(await auth.getIdentity(), "current@example.com");
+    assert.equal(await auth.getIdentity(), "current@example.com");
+    assert.equal(commands.length, 2);
+});
+
+test("a failed identity lookup releases the shared CLI queue for proxy token acquisition", async () => {
+    const { auth } = harness({ type: "adc" });
+    const entered = deferred(),
+        release = deferred();
+    const expected = jwt();
+    gcloudResult = async (args) => {
+        if (args[0] === "config") {
+            entered.resolve();
+            await release.promise;
+            throw Object.assign(new Error("Fixture executable missing"), { code: "ENOENT" });
+        }
+        return expected;
+    };
+    const identity = auth.getIdentity();
+    await entered.promise;
+    const token = auth.getProxyIdToken();
+    await flush();
+    assert.equal(commands.length, 1);
+    release.resolve();
+    assert.equal(await identity, undefined);
+    assert.equal(await token, expected);
+    assert.deepEqual(
+        commands.map((args) => args[0]),
+        [
+            "config",
+            "auth",
+        ],
+    );
 });
 
 test("invalid claim shapes and overflowing expiration fail with sanitized proxy errors", async () => {

@@ -66,11 +66,7 @@ export class AuthManager {
         this.proxyAuth = new ProxyAuth((operation) => this.runGcloudOperation(operation), this.logger);
     }
 
-    /**
-     * Returns the raw authentication method configuration for the current workspace.
-     *
-     * @returns The selected method, or `undefined` if this workspace has no saved selection.
-     */
+    /** Returns the workspace selection; see {@link DirectGcpAuth.getActiveMethod}. */
     public getActiveMethod(): AuthMethod | undefined {
         return this.directAuth.getActiveMethod();
     }
@@ -81,76 +77,40 @@ export class AuthManager {
      * missing or invalid selected secrets, and unavailable or unparseable
      * selected files, throw AuthConfigurationError.
      *
+     * @remarks
+     * The manager controls ADC fallback logging according to the active transport.
+     * Direct credential resolution does not need to inspect proxy configuration.
+     *
      * @returns Credential options, or `undefined` when ADC should be used.
      * @throws An {@link AuthConfigurationError} if a selected secret is missing or
      * invalid, or a selected file is unavailable or cannot be parsed.
      */
     public async getResolvedAuthOptions(): Promise<AuthOptions | undefined> {
-        return this.directAuth.getResolvedAuthOptions();
+        return this.directAuth.getResolvedAuthOptions(!this.isProxyConfigured());
     }
 
-    /**
-     * Prompts for a Service Account JSON key, stores it securely, and activates it for this workspace.
-     *
-     * @returns `true` if the key was stored and activated; otherwise `false` if a prompt was canceled or replacement was declined.
-     */
-    public async setServiceAccountKey(): Promise<boolean> {
+    /** Stores and selects a pasted key; see {@link DirectGcpAuth.setServiceAccountKey}. */
+    public setServiceAccountKey(): Promise<boolean> {
         return this.directAuth.setServiceAccountKey();
     }
 
-    /**
-     * Command: Import a Service Account JSON file into VS Code SecretStorage.
-     * The selected file is a snapshot; subsequent file edits require re-importing it.
-     * A successful import is stored and activated for the current workspace.
-     *
-     * @returns `true` if the credential was imported and activated; otherwise
-     * `false` if a prompt was canceled, replacement was declined, or import failed.
-     */
-    public async importServiceAccountFile(): Promise<boolean> {
+    /** Imports and selects a credential snapshot; see {@link DirectGcpAuth.importServiceAccountFile}. */
+    public importServiceAccountFile(): Promise<boolean> {
         return this.directAuth.importServiceAccountFile();
     }
 
-    /**
-     * Backwards-compatible method name for callers using the previous API.
-     *
-     * @returns Whether the import succeeded and activated a credential.
-     * @see {@link AuthManager.importServiceAccountFile}
-     */
-    public async setServiceAccountPath(): Promise<boolean> {
-        return this.directAuth.setServiceAccountPath();
-    }
-
-    /**
-     * Prompts to remove a stored Service Account secret from this extension.
-     *
-     * @returns `true` if the removed credential was active in this workspace;
-     * `false` if removal was canceled or the removed credential was inactive.
-     * @remarks
-     * Removal deletes only the extension's stored copy and name entry.
-     * It does not change Google Cloud keys or resources. If the credential was
-     * active in this workspace, this workspace is reset to ADC.
-     */
-    public async removeServiceAccount(): Promise<boolean> {
+    /** Removes a stored key and reports whether it was active; see {@link DirectGcpAuth.removeServiceAccount}. */
+    public removeServiceAccount(): Promise<boolean> {
         return this.directAuth.removeServiceAccount();
     }
 
-    /**
-     * Prompts for a workspace authentication method and persists the selection.
-     *
-     * @returns `true` if a method was selected or the active credential was removed;
-     * `false` if canceled or a delegated import/removal operation returns false.
-     */
-    public async selectAuthMethod(): Promise<boolean> {
+    /** Selects workspace credentials; see {@link DirectGcpAuth.selectAuthMethod}. */
+    public selectAuthMethod(): Promise<boolean> {
         return this.directAuth.selectAuthMethod();
     }
 
-    /**
-     * Resets this workspace's authentication selection to Application Default Credentials.
-     *
-     * @remarks
-     * Stored Service Account credentials remain available for later selection.
-     */
-    public async clearAuthMethod(): Promise<void> {
+    /** Selects ADC without deleting stored keys; see {@link DirectGcpAuth.clearAuthMethod}. */
+    public clearAuthMethod(): Promise<void> {
         return this.directAuth.clearAuthMethod();
     }
 
@@ -188,7 +148,7 @@ export class AuthManager {
      * @returns The label shown for the gcloud sign-in action.
      */
     public getGcloudLoginActionLabel(): string {
-        return this.directAuth.getGcloudLoginActionLabel();
+        return "Login with gcloud";
     }
 
     /** Invalidates cached proxy tokens, including acquisitions already in progress. */
@@ -258,12 +218,39 @@ export class AuthManager {
                 return this.cacheIdentity(credentialIdentity, revision);
             }
         } else {
+            // Yield before queueing, matching the asynchronous direct credential lookup.
             await Promise.resolve();
         }
 
         const previousIdentity = this.identityCache?.value;
         try {
-            const { stdout } = await this.runGcloudOperation(() => this.requestAccountEmail(revision));
+            // Keep the complete retry sequence in the shared CLI queue.
+            const { stdout } = await this.runGcloudOperation(async () => {
+                const maxAttempts = 1 + GCLOUD_MAX_TIMEOUT_RETRIES;
+                for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                    if (revision !== this.identityRevision) {
+                        throw new Error("Identity lookup superseded");
+                    }
+                    try {
+                        return await runGcloud(
+                            [
+                                "config",
+                                "get-value",
+                                "account",
+                            ],
+                            getConfiguredGcloudTimeoutMs(),
+                            this.logger,
+                        );
+                    } catch (error) {
+                        const code = typeof error === "object" && error !== null ? (error as { code?: unknown }).code : undefined;
+                        if (code !== "GCLOUD_TIMEOUT" || attempt >= maxAttempts || revision !== this.identityRevision) {
+                            throw error;
+                        }
+                        this.logger.log(`gcloud account command timed out; process terminated, retrying (${attempt}/${GCLOUD_MAX_TIMEOUT_RETRIES}).`);
+                    }
+                }
+                throw new Error("Account email lookup exhausted its attempts");
+            });
             const email = stdout.split(/\r?\n/, 1)[0]?.trim();
             if (email && email !== "(unset)" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
                 return this.cacheIdentity(email, revision);
@@ -275,33 +262,6 @@ export class AuthManager {
             this.logger.log(`Failed to refresh gcloud account email (${reason})${previousIdentity ? "; keeping the last valid identity" : ""}.`);
             return revision === this.identityRevision ? previousIdentity : undefined;
         }
-    }
-
-    private async requestAccountEmail(revision: number): Promise<{ stdout: string; stderr: string }> {
-        const maxAttempts = 1 + GCLOUD_MAX_TIMEOUT_RETRIES;
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            if (revision !== this.identityRevision) {
-                throw new Error("Identity lookup superseded");
-            }
-            try {
-                return await runGcloud(
-                    [
-                        "config",
-                        "get-value",
-                        "account",
-                    ],
-                    getConfiguredGcloudTimeoutMs(),
-                    this.logger,
-                );
-            } catch (error) {
-                const code = typeof error === "object" && error !== null ? (error as { code?: unknown }).code : undefined;
-                if (code !== "GCLOUD_TIMEOUT" || attempt >= maxAttempts || revision !== this.identityRevision) {
-                    throw error;
-                }
-                this.logger.log(`gcloud account command timed out; process terminated, retrying (${attempt}/${GCLOUD_MAX_TIMEOUT_RETRIES}).`);
-            }
-        }
-        throw new Error("Account email lookup exhausted its attempts");
     }
 
     private isProxyConfigured(): boolean {
@@ -320,7 +280,11 @@ export class AuthManager {
         if (revision !== this.identityRevision) {
             return undefined;
         }
-        this.identityCache = identity ? { value: identity, expires: Date.now() + IDENTITY_CACHE_TTL_MS } : undefined;
+        if (identity) {
+            this.identityCache = { value: identity, expires: Date.now() + IDENTITY_CACHE_TTL_MS };
+        } else {
+            this.identityCache = undefined;
+        }
         return identity;
     }
 

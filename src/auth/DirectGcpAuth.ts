@@ -67,7 +67,6 @@ export class DirectGcpAuth {
      */
     public async getResolvedAuthOptions(logAdc = true): Promise<AuthOptions | undefined> {
         const authMethod = this.getActiveMethod();
-        const shouldLogAdc = logAdc && !this.isProxyConfigured();
 
         // Explicit selections fail closed. Never replace a missing selected
         // credential with an ambient ADC identity.
@@ -88,7 +87,7 @@ export class DirectGcpAuth {
         }
 
         if (authMethod?.type === "adc") {
-            if (shouldLogAdc) {
+            if (logAdc) {
                 this.logger.log("Using standard Application Default Credentials (ADC).");
             }
             return undefined;
@@ -104,15 +103,10 @@ export class DirectGcpAuth {
             }
         }
 
-        if (shouldLogAdc) {
+        if (logAdc) {
             this.logger.log("No explicit auth method set, using standard Application Default Credentials (ADC).");
         }
         return undefined;
-    }
-
-    private isProxyConfigured(): boolean {
-        const setting = vscode.workspace.getConfiguration?.("vertexAiChat")?.inspect<string>("proxyUrl");
-        return Boolean(setting?.globalValue?.trim() || setting?.defaultValue?.trim());
     }
 
     /**
@@ -141,7 +135,7 @@ export class DirectGcpAuth {
         }
 
         const credentials = parseServiceAccount(json);
-        return this.storeServiceAccount(json, credentials.project_id || vscode.workspace.name || "default");
+        return this.storeServiceAccount(json, credentials.project_id);
     }
 
     /**
@@ -171,23 +165,13 @@ export class DirectGcpAuth {
             const bytes = await vscode.workspace.fs.readFile(uri);
             const json = new TextDecoder().decode(bytes);
             const credentials = parseServiceAccount(json);
-            return await this.storeServiceAccount(json, credentials.project_id || vscode.workspace.name || "default", true);
+            return await this.storeServiceAccount(json, credentials.project_id, true);
         } catch (error) {
             this.logger.log("Failed to import the Service Account file.");
             const message = error instanceof Error ? error.message : "The file could not be imported.";
             void vscode.window.showErrorMessage(`Vertex AI: Could not import the service account file. ${message}`);
             return false;
         }
-    }
-
-    /**
-     * Backwards-compatible method name for callers using the previous API.
-     *
-     * @returns Whether the import succeeded and activated a credential.
-     * @see {@link DirectGcpAuth.importServiceAccountFile}
-     */
-    public async setServiceAccountPath(): Promise<boolean> {
-        return this.importServiceAccountFile();
     }
 
     /**
@@ -226,11 +210,10 @@ export class DirectGcpAuth {
             names.filter((candidate) => candidate !== name),
         );
 
-        const active = this.context.workspaceState.get<AuthMethod>(WORKSPACE_AUTH_METHOD_KEY);
+        const active = this.getActiveMethod();
         const removedActiveCredential = active?.type === "secret" && active.value === name;
         if (removedActiveCredential) {
-            await this.context.workspaceState.update(WORKSPACE_AUTH_METHOD_KEY, { type: "adc" });
-            this.notifyAuthUpdated();
+            await this.activateAdc();
         }
 
         void vscode.window.showInformationMessage(`Vertex AI: Removed Service Account '${name}' from this extension. No Google Cloud keys or resources were changed.`);
@@ -245,7 +228,7 @@ export class DirectGcpAuth {
      */
     public async selectAuthMethod(): Promise<boolean> {
         const names = this.context.globalState.get<string[]>(GLOBAL_INDEX_KEY) || [];
-        const current = this.context.workspaceState.get<AuthMethod>(WORKSPACE_AUTH_METHOD_KEY);
+        const current = this.getActiveMethod();
 
         const items: AuthPickerItem[] = [
             {
@@ -332,15 +315,6 @@ export class DirectGcpAuth {
             },
             this.logger,
         );
-    }
-
-    /**
-     * Returns the label used for the gcloud sign-in action in authentication UI.
-     *
-     * @returns The label shown for the gcloud sign-in action.
-     */
-    public getGcloudLoginActionLabel(): string {
-        return "Login with gcloud";
     }
 
     /**
