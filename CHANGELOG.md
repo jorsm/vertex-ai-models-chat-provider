@@ -4,6 +4,19 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.7.12] — 2026-10-14 (Pre-release)
+
+### Changed
+
+- Give proxy model discovery separate authentication and catalog HTTP deadlines: by default, 90 seconds for authentication (including shared CLI queue waiting), followed by 45 seconds for the request and response body. Changing the catalog timeout no longer changes the authentication allowance.
+- Limit `vertexAiChat.gcloudCommandTimeoutSeconds` to whole seconds from 1 to 300; invalid values use the 20-second default.
+- Simplify authentication coordination and remove unused catalog, provider, and retry helpers while preserving shared CLI serialization and cache invalidation.
+
+### Fixed
+
+- Activate credentials and refresh models only after the complete submitted terminal login command succeeds. Ignore command lookalikes, changed arguments, and chained commands; match the same shell execution when its start is observed.
+- Stop already-cancelled proxy discovery before starting token acquisition and promptly release token-wait cancellation listeners when discovery ends.
+
 ## [0.7.11] — 2026-10-14 (Pre-release)
 
 ### Fixed
