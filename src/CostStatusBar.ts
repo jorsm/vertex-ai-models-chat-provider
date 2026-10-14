@@ -19,7 +19,7 @@ export class CostStatusBar implements vscode.Disposable {
 
         // Create the status bar item aligned to the right (priority 100 to stick near the edge)
         this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-        this.statusBarItem.command = "claudeBilling.showDashboard";
+        this.statusBarItem.command = "vertexAiChat.showDashboard";
         this.statusBarItem.tooltip = "Click to open Usage Dashboard";
 
         // Listen to usage updates

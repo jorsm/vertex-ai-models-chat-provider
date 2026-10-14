@@ -1,11 +1,23 @@
 import * as childProcess from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import type { Logger } from "./Logger";
+
+export const GCLOUD_DEFAULT_TIMEOUT_MS = 20_000;
 
 export interface GcloudCommand {
     executable: string;
     args: string[];
     direct: boolean;
+}
+
+export function formatGcloudCommand(command: GcloudCommand): string {
+    return [
+        command.executable,
+        ...command.args,
+    ]
+        .map((part) => (/\s/.test(part) ? `"${part}"` : part))
+        .join(" ");
 }
 
 /** Prefer the SDK's Python on Windows: no batch launcher or interpreter probes. */
@@ -48,9 +60,10 @@ export function resolveGcloudCommand(args: string[], platform = process.platform
     };
 }
 
-export function runGcloud(args: string[], timeoutMs = 20_000): Promise<{ stdout: string; stderr: string }> {
+export function runGcloud(args: string[], timeoutMs = GCLOUD_DEFAULT_TIMEOUT_MS, logger?: Pick<Logger, "log">): Promise<{ stdout: string; stderr: string }> {
     const env: NodeJS.ProcessEnv = { ...process.env, CLOUDSDK_CORE_DISABLE_PROMPTS: "true", CLOUDSDK_CORE_DISABLE_FILE_LOGGING: "true", CLOUDSDK_CORE_LOG_HTTP: "false", CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: "true" };
     const command = resolveGcloudCommand(args, process.platform, env);
+    logger?.log(`Running gcloud command: ${formatGcloudCommand(command)} (timeout ${timeoutMs}ms)`);
     if (process.platform === "win32" && command.direct) {
         delete env.PYTHONHOME;
         if (env.CLOUDSDK_ENCODING) {

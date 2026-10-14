@@ -61,6 +61,8 @@ In direct mode, model discovery groups effort variants by their model endpoint a
 
 Run **Google Agent Platform: Refresh Models** to apply the new timeout. Discovery runs at most **three endpoints concurrently**, spacing initial starts by 500–1,000 ms. Transient failures receive up to **three retries after the first attempt**, with randomized exponential backoff; `Retry-After` is honored within the endpoint's timeout. Endpoints that return 429 remain available with all their catalog effort variants even if retries are exhausted. Endpoints that never respond are skipped. Queue time can make the entire discovery run longer than the per-endpoint timeout.
 
+In proxy mode, discovery first waits for a personal ID token, then fetches the catalog. The `gcloud` command timeout accepts **1–300 whole seconds** per attempt, with a **20-second default** for invalid values. The authentication allowance is **four times `vertexAiChat.gcloudCommandTimeoutSeconds`, plus 10 seconds** (90 seconds with the default command timeout), including any wait in the shared CLI queue. After authentication, the catalog HTTP request and response reading get the full `vertexAiChat.modelDiscoveryTimeoutSeconds` allowance (45 seconds by default). The default combined allowance is therefore up to **135 seconds**; reducing the HTTP timeout does not reduce the authentication allowance. See [proxy discovery](docs/proxy.md#discovery-catalog) for the full policy.
+
 ## Direct or via proxy
 
 `vertexAiChat.projectId` is always required. `vertexAiChat.proxyUrl` is optional and only changes the route:

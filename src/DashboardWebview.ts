@@ -38,7 +38,7 @@ export class DashboardWebview {
             return;
         }
 
-        const panel = vscode.window.createWebviewPanel("claudeBillingDashboard", "Google Agent Platform Usage & Costs", column || vscode.ViewColumn.One, {
+        const panel = vscode.window.createWebviewPanel("vertexAiChatDashboard", "Google Agent Platform Usage & Costs", column || vscode.ViewColumn.One, {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media")],
         });

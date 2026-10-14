@@ -2,6 +2,7 @@ import { setMaxListeners } from "events";
 import * as path from "path";
 import * as vscode from "vscode";
 import { AuthManager } from "./auth/AuthManager";
+import { getProxyAuthenticationTimeoutMs } from "./auth/AuthCredentials";
 import { ProxyGateway, GatewayError } from "./ProxyGateway";
 import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { VertexAnthropicProvider } from "./providers/VertexAnthropicProvider";
@@ -197,14 +198,6 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         this.missingLabelWarnings.delete(label);
     }
 
-    getAnthropicProvider(): VertexAnthropicProvider {
-        return this.activeProviders.get("anthropic") as VertexAnthropicProvider;
-    }
-
-    getGoogleProvider(): VertexGoogleProvider {
-        return this.activeProviders.get("google") as VertexGoogleProvider;
-    }
-
     // ── Discovery ───────────────────────────────────────────────────────────
 
     /** Only user/machine configuration may select an authenticated destination. */
@@ -224,7 +217,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         this.authManager.clearProxyToken?.();
         this._discoveryPromise = null;
         this.catalogResolver.setProxyCatalog?.(this.getProxyUrl() ? { candidateModels: [], regionPriority: [] } : undefined);
-        this.clearModels();
+        this.clearModels("reset");
         this.discoveryDone = false;
     }
 
@@ -244,6 +237,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     }
 
     private async _discoverModelsAndRegionImpl(revision: number): Promise<DiscoveryResult> {
+        const startedAt = Date.now();
         const probeTimeoutMs = resolveDiscoveryTimeoutMs(vscode.workspace.getConfiguration("vertexAiChat").get<number>("modelDiscoveryTimeoutSeconds", DISCOVERY_PROBE_TIMEOUT_MS / 1000));
 
         const proxyUrl = this.getProxyUrl();
@@ -267,8 +261,10 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
             this.availableModels = [];
             this.discoveryDone = false;
             this._onDidChange.fire();
+            const authenticationTimeoutMs = getProxyAuthenticationTimeoutMs();
+            this.logger.log(`🔍 Starting proxy model discovery for project "${effectiveProjectId}" via "${gateway.url}" (authentication timeout ${authenticationTimeoutMs}ms, HTTP timeout ${probeTimeoutMs}ms)…`);
             try {
-                const catalog = await gateway.discover(probeTimeoutMs, gateway.signal);
+                const catalog = await gateway.discover({ authenticationTimeoutMs, requestTimeoutMs: probeTimeoutMs }, gateway.signal);
                 if (revision !== this.connectionRevision || gateway.signal.aborted) {
                     throw new GatewayError("Proxy configuration changed. Refresh Models before continuing.");
                 }
@@ -285,8 +281,16 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
                 this.catalogResolver.setProxyCatalog?.(catalog);
                 this.discoveryDone = true;
                 this._onDidChange.fire();
+                const elapsedMs = Date.now() - startedAt;
+                if (catalog.candidateModels.length > 0) {
+                    this.logger.log(`✅ Proxy model discovery completed in ${elapsedMs}ms — region "${region}", ${catalog.candidateModels.length} model(s) found: ${catalog.candidateModels.map((m: ModelSpec) => m.id).join(", ")}`);
+                } else {
+                    this.logger.log(`⚠️ Proxy model discovery completed in ${elapsedMs}ms — 0 models returned by server.`);
+                }
                 return { region, availableModels: catalog.candidateModels };
-            } catch (error) {
+            } catch (error: any) {
+                const elapsedMs = Date.now() - startedAt;
+                this.logger.log(`❌ Proxy model discovery failed after ${elapsedMs}ms: ${error?.message || error}`);
                 if (revision === this.connectionRevision) {
                     this.clearModels();
                 }
@@ -326,7 +330,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
             // We do NOT return or abort here, allowing the provider.pingModel to perform the actual access check.
         }
 
-        this.logger.log(`Starting model discovery for project "${effectiveProjectId}"…`);
+        this.logger.log(`🔍 Starting direct model discovery for project "${effectiveProjectId}" across region(s) [${regions.join(", ")}] (${candidates.length} candidate model(s), probe timeout ${probeTimeoutMs}ms)…`);
 
         // Probe each distinct vendor/backend pair once, resolving old effort aliases first.
         const targets = new Map<string, { provider: VertexModelProvider; modelId: string; models: ModelSpec[] }>();
@@ -378,8 +382,10 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
                         (message) => this.logger.log(`  ${modelId} in ${region}: ${message}`),
                     );
                     if (ok) {
+                        this.logger.log(`  ✓ ${modelId} reachable in "${region}" (${models.map((m) => m.id).join(", ")})`);
                         return models;
                     }
+                    this.logger.log(`  ✗ ${modelId} unavailable in "${region}"`);
                 } catch (e: any) {
                     // If we hit an authentication error, we should bubble it up immediately
                     if (e.name === "VertexAuthenticationError") {
@@ -409,7 +415,8 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
             const available = candidates.filter((model) => reachableModels.has(model));
 
             if (available.length > 0) {
-                this.logger.log(`✅ Region "${region}" — ${available.length} model(s) available: ${available.map((m: ModelSpec) => m.id).join(", ")}`);
+                const elapsedMs = Date.now() - startedAt;
+                this.logger.log(`✅ Direct model discovery completed in ${elapsedMs}ms — region "${region}", ${available.length} model(s) available: ${available.map((m: ModelSpec) => m.id).join(", ")}`);
 
                 this.region = region;
                 this.availableModels = available;
@@ -424,7 +431,8 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
             this.logger.log(`  ⚠️  No models responded in "${region}", trying next…`);
         }
 
-        this.logger.log("❌ No models available in any region.");
+        const elapsedMs = Date.now() - startedAt;
+        this.logger.log(`❌ Direct model discovery completed in ${elapsedMs}ms — no models available in any region.`);
         this.region = undefined;
         this.availableModels = [];
         this.catalogRevision++;
@@ -443,9 +451,10 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     /**
      * Clears all available models and notifies VS Code of the change.
-     * Useful when authentication fails to prevent stale models from being used.
+     * Useful when authentication fails or when resetting connection state before re-discovery.
      */
-    public clearModels(): void {
+    public clearModels(reason: "error" | "reset" = "error"): void {
+        const alreadyCleared = this.discoveryDone && this.region === undefined && this.availableModels.length === 0;
         this.region = undefined;
         this.availableModels = [];
         this.catalogRevision++;
@@ -454,7 +463,9 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         }
         this.discoveryDone = true;
         this._onDidChange.fire();
-        this.logger.log("🚫 Available models cleared due to error.");
+        if (reason === "error" && !alreadyCleared) {
+            this.logger.log("🚫 Available models cleared due to error.");
+        }
     }
 
     // ── Chat provider interface ───────────────────────────────────────────

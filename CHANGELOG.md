@@ -4,6 +4,48 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.7.12] — 2026-10-14 (Pre-release)
+
+### Changed
+
+- Give proxy model discovery separate authentication and catalog HTTP deadlines: by default, 90 seconds for authentication (including shared CLI queue waiting), followed by 45 seconds for the request and response body. Changing the catalog timeout no longer changes the authentication allowance.
+- Limit `vertexAiChat.gcloudCommandTimeoutSeconds` to whole seconds from 1 to 300; invalid values use the 20-second default.
+- Simplify authentication coordination and remove unused catalog, provider, and retry helpers while preserving shared CLI serialization and cache invalidation.
+
+### Fixed
+
+- Activate credentials and refresh models only after the complete submitted terminal login command succeeds. Ignore command lookalikes, changed arguments, and chained commands; match the same shell execution when its start is observed.
+- Stop already-cancelled proxy discovery before starting token acquisition and promptly release token-wait cancellation listeners when discovery ends.
+
+## [0.7.11] — 2026-10-14 (Pre-release)
+
+### Fixed
+
+- Preserve underlying network error causes (such as `ENOTFOUND`, `ECONNRESET`, or `ETIMEDOUT`) in normalized proxy gateway errors so discovery and inference diagnostics explain why `fetch failed`.
+
+## [0.7.10] — 2026-10-14 (Pre-release)
+
+### Added
+
+- Output channel lifecycle logging for model discovery in both proxy and direct Vertex AI modes (discovery start, per-endpoint probe status, discovered models, and total elapsed duration).
+
+## [0.7.9] — 2026-10-14 (Pre-release)
+
+### Added
+
+- Configurable `gcloud` CLI command timeout via `vertexAiChat.gcloudCommandTimeoutSeconds` (default 20 seconds), with automatic retries on timeout for both proxy token acquisition and account identity lookups.
+- Command Palette entry `vertexAiChat.showDashboard` (`Google Agent Platform: Show Usage & Costs Dashboard`).
+- Interactive `"Login with gcloud"` terminal action for proxy authentication failures (`gcloud auth login`), alongside direct ADC authentication (`gcloud auth application-default login`).
+
+### Changed
+
+- Unified the retry engine across direct Vertex AI and proxy modes under `vertexAiChat.retryMaxDurationMinutes`, with per-attempt status/error diagnostics and resolved `gcloud` command logging in the Output channel.
+
+### Fixed
+
+- Avoid logging an error when clearing models during an intentional connection reset or manual `Refresh Models`.
+- Skip direct ADC fallback logging and credential resolution when `vertexAiChat.proxyUrl` is configured.
+
 ## [0.7.8] — 2026-10-13
 
 ### Added

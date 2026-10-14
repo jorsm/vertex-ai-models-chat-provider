@@ -44,7 +44,7 @@ Initializes the extension's internal state and registers its contributions with 
 3.  Initializes the `UsageTrackerService` and `CostStatusBar`.
 4.  Instantiates the `VertexChatModelDispatcher`.
 5.  Registers the following commands:
-    - `claudeBilling.showDashboard`: Opens the local usage and cost dashboard.
+    - `vertexAiChat.showDashboard`: Opens the local usage and cost dashboard.
     - `vertexAiChat.refreshModels`: Manually triggers the model discovery process.
     - `vertexAiChat.dumpTools`: Dumps metadata and schemas for all installed `vscode.lm.tools` to an output channel for debugging.
     - `vertexAiChat.generateCommitMessage`: Invokes the AI logic to generate a commit message when the Git extension API is available in the same extension host.
@@ -57,7 +57,7 @@ Initializes the extension's internal state and registers its contributions with 
     - `vertexAiChat.openWorkspaceModelsFile`: Creates or opens the workspace `.vscode/models.json` model catalog.
 6.  Registers the chat provider with the `vscode.lm` API.
 7.  Starts an initial background discovery of models.
-8.  Sets up configuration listeners to reset the connection and re-run discovery when `projectId`, `proxyUrl`, or the discovery timeout changes. `projectId` is always required and names the project on which Vertex is invoked; `proxyUrl` is optional and, when set, routes calls client → proxy → Vertex instead of client → Vertex.
+8.  Sets up configuration listeners to reset the connection and re-run discovery when `projectId` or `proxyUrl` changes. Discovery and `gcloud` timeout settings apply to the next discovery; run **Refresh Models** after changing them. In proxy mode, the authentication wait and catalog HTTP request have independent deadlines (see [proxy discovery](proxy.md#discovery-catalog)). `projectId` is always required and names the project on which Vertex is invoked; `proxyUrl` is optional and, when set, routes calls client → proxy → Vertex instead of client → Vertex.
 
 ### runDiscovery
 

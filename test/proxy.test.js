@@ -106,7 +106,7 @@ let credentialCommand;
 let commandResult;
 let credentialCommandCount = 0;
 const originalLoad = Module._load;
-let AuthManager, ProxyGateway, GatewayError, validateProxyUrl, parseProxyCatalog, isGatewayRetryable, ModelCatalogResolver, UsageTrackerService;
+let AuthManager, ProxyGateway, GatewayError, validateProxyUrl, parseProxyCatalog, ModelCatalogResolver, UsageTrackerService;
 let VertexChatModelDispatcher, MissingProjectIdError, VertexGoogleProvider, VertexAnthropicProvider, CostStatusBar;
 let generateCommitMessage;
 try {
@@ -149,7 +149,7 @@ try {
         return originalLoad.call(this, request, parent, main);
     };
     ({ AuthManager } = require("../out/auth/AuthManager.js"));
-    ({ ProxyGateway, GatewayError, validateProxyUrl, parseProxyCatalog, isGatewayRetryable } = require("../out/ProxyGateway.js"));
+    ({ ProxyGateway, GatewayError, validateProxyUrl, parseProxyCatalog } = require("../out/ProxyGateway.js"));
     ({ ModelCatalogResolver } = require("../out/ModelCatalogResolver.js"));
     ({ UsageTrackerService } = require("../out/UsageTrackerService.js"));
     ({ CostStatusBar } = require("../out/CostStatusBar.js"));
@@ -160,7 +160,7 @@ try {
 } finally {
     Module._load = originalLoad;
 }
-const { withRetry } = require("../out/utils/retry.js");
+const { withRetry, isRetryableError } = require("../out/utils/retry.js");
 const catalog = require("../src/models.json");
 const model = (id, vendor = "google", version = id) => {
     const spec = { ...catalog.candidateModels[0], id, version, vendor };
@@ -265,20 +265,30 @@ test("token acquisition rejects SA, expired, unverified and malformed tokens wit
         await assert.rejects(auth.getProxyIdToken(), (error) => error.status === 401 && !error.message.includes("secret"));
     }
 });
-test("client identity resolution is shared and caches the last successful gcloud account", async () => {
+test("client identity resolution is shared and caches the last successful gcloud account", async (t) => {
+    const realNow = Date.now;
+    let now = realNow();
+    Date.now = () => now;
+    t.after(() => {
+        Date.now = realNow;
+    });
     const auth = new AuthManager({ workspaceState: { get: () => undefined } });
     commandResult = "developer@example.com\n";
     assert.equal(await auth.getIdentity(), "developer@example.com");
     commandResult = new Error("temporary gcloud failure");
     assert.equal(await auth.getIdentity(), "developer@example.com");
     assert.equal(credentialCommandCount, 1);
+    now += 61_000;
+    logs.length = 0;
+    assert.equal(await auth.getIdentity(), "developer@example.com");
+    assert.ok(logs.some((line) => line.includes("Failed to refresh gcloud account email (temporary gcloud failure); keeping the last valid identity.")));
 });
-test("a transient gcloud timeout retries once and shares recovery across callers", async () => {
-    const auth = new AuthManager({});
+test("transient gcloud timeouts retry up to 3 times and share recovery across callers", async () => {
+    const auth = new AuthManager({ workspaceState: { get: () => undefined } });
     const expected = jwt();
     let attempts = 0;
     commandResult = async () => {
-        if (++attempts === 1) throw Object.assign(new Error("timeout with secret stderr"), { code: "GCLOUD_TIMEOUT", killed: true });
+        if (++attempts < 4) throw Object.assign(new Error("timeout with secret stderr"), { code: "GCLOUD_TIMEOUT", killed: true });
         return { stdout: expected, stderr: "" };
     };
     assert.deepEqual(
@@ -291,12 +301,40 @@ test("a transient gcloud timeout retries once and shares recovery across callers
             expected,
         ],
     );
-    assert.equal(attempts, 2);
+    assert.equal(attempts, 4);
+
+    let identityAttempts = 0;
+    commandResult = async () => {
+        if (++identityAttempts < 4) throw Object.assign(new Error("timeout"), { code: "GCLOUD_TIMEOUT", killed: true });
+        return { stdout: "developer@example.com\n", stderr: "" };
+    };
+    assert.equal(await auth.getIdentity(), "developer@example.com");
+    assert.equal(identityAttempts, 4);
 });
 test("persistent timeout is bounded and is not reported as expired authentication", async () => {
     commandResult = Object.assign(new Error("secret stderr"), { code: "GCLOUD_TIMEOUT", killed: true });
     await assert.rejects(new AuthManager({}).getProxyIdToken(), (error) => error.status === 503 && /timed out/.test(error.message) && !/gcloud auth login|secret stderr/.test(error.message));
-    assert.equal(credentialCommandCount, 2);
+    assert.equal(credentialCommandCount, 4);
+});
+test("proxy mode skips direct ADC log messages and logs the launched gcloud command", async () => {
+    inspections.proxyUrl = { globalValue: "https://gateway.test" };
+    logs.length = 0;
+    const auth = new AuthManager({ workspaceState: { get: () => undefined } });
+    commandResult = "developer@example.com\n";
+    assert.equal(await auth.getIdentity(), "developer@example.com");
+    assert.ok(!logs.some((line) => line.includes("Application Default Credentials")));
+    assert.ok(logs.some((line) => line.includes("Running gcloud command:") && line.includes("config get-value account")));
+});
+test("resetConnection and setProjectId do not log an error when clearing models for refresh", () => {
+    const h = harness([model("gemini-test")]);
+    logs.length = 0;
+    h.dispatcher.setProjectId("user-project");
+    h.dispatcher.resetConnection();
+    assert.ok(!logs.some((line) => line.includes("Available models cleared due to error")));
+    h.dispatcher.clearModels();
+    assert.equal(logs.filter((line) => line.includes("Available models cleared due to error")).length, 1);
+    h.dispatcher.clearModels();
+    assert.equal(logs.filter((line) => line.includes("Available models cleared due to error")).length, 1);
 });
 test("refresh during timeout recovery prevents a superseded request from retrying", async () => {
     const auth = new AuthManager({});
@@ -416,12 +454,90 @@ test("authenticated discovery sends only an ID token and bounds a stalled creden
             return Response.json({ candidateModels: [], regionPriority: ["global"] });
         },
     );
-    assert.deepEqual(await gateway.discover(100), { candidateModels: [], regionPriority: ["global"] });
+    assert.deepEqual(await gateway.discover({ authenticationTimeoutMs: 100, requestTimeoutMs: 100 }), { candidateModels: [], regionPriority: ["global"] });
     assert.equal(calls[0][0], "https://gateway.test/base/discovery");
     assert.equal(new Headers(calls[0][1].headers).get("Authorization"), "Bearer personal-token");
     assert.equal(calls[0][1].body, undefined);
     assert.equal(calls[0][1].redirect, "error");
-    await assert.rejects(new ProxyGateway("https://gateway.test", () => new Promise(() => {})).discover(5), /timed out/);
+    await assert.rejects(new ProxyGateway("https://gateway.test", () => new Promise(() => {})).discover({ authenticationTimeoutMs: 5, requestTimeoutMs: 100 }), /timed out/);
+});
+test("proxy discovery gives HTTP and response reading a fresh deadline after authentication", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const credentials = deferred(),
+        entered = deferred();
+    let requestSignal;
+    const gateway = new ProxyGateway(
+        "https://gateway.test",
+        () => credentials.promise,
+        async (_url, init) => {
+            requestSignal = init.signal;
+            const body = new ReadableStream({
+                start(controller) {
+                    requestSignal.addEventListener("abort", () => controller.error(new Error("Catalog response timed out")), { once: true });
+                },
+            });
+            entered.resolve();
+            return new Response(body);
+        },
+    );
+    const discovery = gateway.discover({ authenticationTimeoutMs: 90_000, requestTimeoutMs: 100 });
+    let settled = false;
+    void discovery.then(
+        () => {
+            settled = true;
+        },
+        () => {
+            settled = true;
+        },
+    );
+    t.mock.timers.tick(89_999);
+    credentials.resolve("personal-token");
+    await entered.promise;
+    await flush();
+    t.mock.timers.tick(99);
+    await flush();
+    assert.equal(settled, false);
+    assert.equal(requestSignal.aborted, false);
+    t.mock.timers.tick(1);
+    await assert.rejects(discovery, (error) => error instanceof GatewayError && /Catalog response timed out/.test(error.message));
+    assert.equal(requestSignal.aborted, true);
+});
+test("authentication deadline bounds credential waiting and a late token sends no discovery request", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const credentials = deferred();
+    let calls = 0;
+    const gateway = new ProxyGateway(
+        "https://gateway.test",
+        () => credentials.promise,
+        async () => {
+            calls++;
+            return Response.json({ candidateModels: [], regionPriority: [] });
+        },
+    );
+    const discovery = gateway.discover({ authenticationTimeoutMs: 100, requestTimeoutMs: 45_000 });
+    t.mock.timers.tick(100);
+    await assert.rejects(discovery, /timed out/);
+    credentials.resolve("late-token");
+    await flush();
+    assert.equal(calls, 0);
+});
+test("already cancelled discovery never starts authentication or HTTP", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let calls = 0;
+    const gateway = new ProxyGateway(
+        "https://gateway.test",
+        async () => {
+            calls++;
+            return "token";
+        },
+        async () => {
+            calls++;
+            return Response.json({});
+        },
+    );
+    await assert.rejects(gateway.discover({ authenticationTimeoutMs: 90_000, requestTimeoutMs: 45_000 }, controller.signal), /cancelled/);
+    assert.equal(calls, 0);
 });
 test("gateway transport rejects another origin/base path and removes quota/API-key headers", async () => {
     let headers;
@@ -455,33 +571,35 @@ test("canonical discovery failures never try another endpoint or catalog source"
                 return Response.json({ error: { code: status } }, { status });
             },
         );
-        await assert.rejects(gateway.discover(100), (error) => error instanceof GatewayError && error.status === status);
+        await assert.rejects(gateway.discover({ authenticationTimeoutMs: 100, requestTimeoutMs: 100 }), (error) => error instanceof GatewayError && error.status === status);
         assert.deepEqual(calls, ["https://gateway.test/base/discovery"]);
     }
 });
 test("policy and caller/upstream authentication errors never retry even with quota-like text", async () => {
-    for (const status of [
-        400,
-        401,
-        403,
-        404,
-        413,
-        502,
+    for (const error of [
+        { status: 400 },
+        { status: 401 },
+        { status: 403 },
+        { status: 404 },
+        { status: 413 },
+        { status: 502, policyCode: "UPSTREAM_AUTHENTICATION_FAILED" },
+        { status: 502, error: { error: { reason: "UPSTREAM_AUTHENTICATION_FAILED" } } },
     ]) {
         let calls = 0;
         await assert.rejects(
             withRetry(
                 async () => {
                     calls++;
-                    throw { status, message: "quota temporarily unavailable 503" };
+                    throw { ...error, message: "quota temporarily unavailable 503" };
                 },
-                { shouldRetry: isGatewayRetryable, maxRetries: 2 },
+                { maxRetries: 2 },
             ),
         );
         assert.equal(calls, 1);
     }
-    assert.equal(isGatewayRetryable({ status: 429 }), true);
-    assert.equal(isGatewayRetryable({ status: 503 }), true);
+    assert.equal(isRetryableError({ status: 429 }), true);
+    assert.equal(isRetryableError({ status: 502 }), true);
+    assert.equal(isRetryableError({ status: 503 }), true);
 });
 
 function harness(models, authOverrides = {}) {
@@ -537,6 +655,73 @@ function harness(models, authOverrides = {}) {
     }
     return { dispatcher, calls, records, auth, resolver };
 }
+test("proxy authentication budget is independent of discovery settings and respects CLI timeout limits", async (t) => {
+    inspections.proxyUrl = { globalValue: "https://gateway.test" };
+    const received = [];
+    t.mock.method(ProxyGateway.prototype, "discover", async (timeouts) => {
+        received.push(timeouts);
+        return { candidateModels: [], regionPriority: [] };
+    });
+    for (const [
+        discoverySeconds,
+        gcloudSeconds,
+    ] of [
+        [
+            1,
+            20,
+        ],
+        [
+            44,
+            20,
+        ],
+        [
+            45,
+            20,
+        ],
+        [
+            120,
+            20,
+        ],
+        [
+            45,
+            35,
+        ],
+        [
+            45,
+            0,
+        ],
+        [
+            45,
+            300,
+        ],
+        [
+            45,
+            301,
+        ],
+        [
+            45,
+            2_147_483,
+        ],
+    ]) {
+        settings.modelDiscoveryTimeoutSeconds = discoverySeconds;
+        settings.gcloudCommandTimeoutSeconds = gcloudSeconds;
+        const h = harness([]);
+        await h.dispatcher.discoverModelsAndRegion();
+        h.dispatcher.dispose();
+    }
+    assert.deepEqual(received, [
+        { authenticationTimeoutMs: 90_000, requestTimeoutMs: 1_000 },
+        { authenticationTimeoutMs: 90_000, requestTimeoutMs: 44_000 },
+        { authenticationTimeoutMs: 90_000, requestTimeoutMs: 45_000 },
+        { authenticationTimeoutMs: 90_000, requestTimeoutMs: 120_000 },
+        { authenticationTimeoutMs: 150_000, requestTimeoutMs: 45_000 },
+        { authenticationTimeoutMs: 90_000, requestTimeoutMs: 45_000 },
+        { authenticationTimeoutMs: 1_210_000, requestTimeoutMs: 45_000 },
+        { authenticationTimeoutMs: 90_000, requestTimeoutMs: 45_000 },
+        { authenticationTimeoutMs: 90_000, requestTimeoutMs: 45_000 },
+    ]);
+    assert.ok(logs.some((line) => line.includes("authentication timeout 90000ms, HTTP timeout 44000ms")));
+});
 function fakeDiscovery(
     t,
     allowed,
@@ -1175,7 +1360,7 @@ test("cancelling backoff is immediate and temporary failures recover without unb
             entered.resolve();
             throw { status: 429 };
         },
-        { token: cancel.token, shouldRetry: isGatewayRetryable, retryDelayMs: () => 60_000, maxRetries: 2 },
+        { token: cancel.token, retryDelayMs: () => 60_000, maxRetries: 2 },
     );
     await entered.promise;
     await flush();
@@ -1186,18 +1371,24 @@ test("cancelling backoff is immediate and temporary failures recover without unb
     const originalRandom = Math.random;
     Math.random = () => 0;
     try {
+        logs.length = 0;
         let attempts = 0;
         assert.equal(
             await withRetry(
                 async () => {
-                    if (++attempts < 3) throw { status: 503 };
+                    if (++attempts < 3) throw { status: 503, message: "Backend unavailable" };
                     return "ok";
                 },
-                { shouldRetry: isGatewayRetryable, baseDelayMs: 1, maxDelayMs: 1, maxRetries: 2 },
+                { baseDelayMs: 1, maxDelayMs: 1, maxRetries: 2 },
             ),
             "ok",
         );
         assert.equal(attempts, 3);
+        assert.ok(logs.some((line) => line.includes("Attempt 1 failed with retryable error: [HTTP 503] Backend unavailable")));
+        assert.ok(logs.some((line) => line.includes("Executing retry 1/2 (attempt 2)")));
+        assert.ok(logs.some((line) => line.includes("Attempt 2 failed with retryable error: [HTTP 503] Backend unavailable")));
+        assert.ok(logs.some((line) => line.includes("Executing retry 2/2 (attempt 3)")));
+        assert.ok(logs.some((line) => line.includes("Retry 2 succeeded (operation completed after 3 total attempts)")));
     } finally {
         Math.random = originalRandom;
     }
@@ -1213,7 +1404,7 @@ test("discovery rejects oversized, malformed and empty responses", async () => {
             async () => "token",
             async () => new Response(body),
         );
-        await assert.rejects(gateway.discover(500), GatewayError);
+        await assert.rejects(gateway.discover({ authenticationTimeoutMs: 500, requestTimeoutMs: 500 }), GatewayError);
     }
 });
 
@@ -1707,7 +1898,17 @@ test("SDK JSON messages preserve proxy policy details and remain non-retryable",
     assert.equal(error.status, 400);
     assert.equal(error.policyCode, "FAILED_PRECONDITION");
     assert.equal(error.message, "Missing required label 'vscode-vertex-ai-user'.");
-    assert.equal(isGatewayRetryable(error), false);
+    assert.equal(isRetryableError(error), false);
+});
+
+test("proxy network errors include the underlying cause in diagnostics", () => {
+    const { normalizeGatewayError } = require("../out/ProxyGateway.js");
+    const cause = Object.assign(new Error("getaddrinfo ENOTFOUND gateway.test"), { code: "ENOTFOUND" });
+    const error = normalizeGatewayError(Object.assign(new Error("fetch failed"), { cause }));
+
+    assert.match(error.message, /fetch failed/);
+    assert.match(error.message, /ENOTFOUND: getaddrinfo ENOTFOUND gateway\.test/);
+    assert.equal(error.cause, cause);
 });
 
 for (const proxy of [
@@ -1892,7 +2093,7 @@ test("discovery accepts effort metadata with only authentication and no capabili
             return Response.json(enhancedFixture);
         },
     );
-    assert.deepEqual(await gateway.discover(500), enhancedFixture);
+    assert.deepEqual(await gateway.discover({ authenticationTimeoutMs: 500, requestTimeoutMs: 500 }), enhancedFixture);
     assert.deepEqual(
         [...requests[0].headers],
         [

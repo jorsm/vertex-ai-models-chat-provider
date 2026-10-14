@@ -1,6 +1,7 @@
 import { GatewayError } from "../ProxyGateway";
 import { runGcloud } from "../utils/gcloud";
 import type { Logger } from "../utils/Logger";
+import { GCLOUD_MAX_TIMEOUT_RETRIES, getConfiguredGcloudTimeoutMs } from "./AuthCredentials";
 
 /** Refresh margin applied to the token's actual expiration time. */
 const TOKEN_REFRESH_MARGIN_MS = 60_000;
@@ -99,7 +100,7 @@ export class ProxyAuth {
     }
 
     /**
-     * Runs the personal CLI token command, retrying one terminated timeout.
+     * Runs the personal CLI token command, retrying terminated timeouts.
      *
      * @remarks
      * The shared queue owns the entire retry sequence. Superseded requests cannot retry.
@@ -109,25 +110,30 @@ export class ProxyAuth {
      * @throws CLI failures or an error if the request was superseded.
      */
     private async requestPersonalToken(revision: number): Promise<string> {
-        for (let attempt = 1; attempt <= 2; attempt++) {
+        const maxAttempts = 1 + GCLOUD_MAX_TIMEOUT_RETRIES;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             if (revision !== this.proxyTokenRevision) {
                 throw new Error("Token request superseded");
             }
             const startedAt = Date.now();
             try {
-                const result = await runGcloud([
-                    "auth",
-                    "print-identity-token",
-                    "--quiet",
-                    "--verbosity=error",
-                ]);
+                const result = await runGcloud(
+                    [
+                        "auth",
+                        "print-identity-token",
+                        "--quiet",
+                        "--verbosity=error",
+                    ],
+                    getConfiguredGcloudTimeoutMs(),
+                    this.logger,
+                );
                 this.logger.log(`Personal proxy ID token acquired in ${Date.now() - startedAt} ms (attempt ${attempt}).`);
                 return result.stdout.trim();
             } catch (error) {
-                if (getGcloudFailure(error).code !== "GCLOUD_TIMEOUT" || attempt !== 1 || revision !== this.proxyTokenRevision) {
+                if (getGcloudFailure(error).code !== "GCLOUD_TIMEOUT" || attempt >= maxAttempts || revision !== this.proxyTokenRevision) {
                     throw error;
                 }
-                this.logger.log("gcloud token command timed out; process terminated, retrying once.");
+                this.logger.log(`gcloud token command timed out; process terminated, retrying (${attempt}/${GCLOUD_MAX_TIMEOUT_RETRIES}).`);
             }
         }
         throw new Error("Personal token acquisition exhausted its attempts");

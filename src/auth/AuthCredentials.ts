@@ -1,5 +1,41 @@
+import * as vscode from "vscode";
+import { GCLOUD_DEFAULT_TIMEOUT_MS } from "../utils/gcloud";
+
 /** Supported sources for authenticating Vertex AI requests. */
 export type AuthMethodType = "secret" | "file" | "adc";
+
+/** Maximum number of retries after a gcloud CLI command times out. */
+export const GCLOUD_MAX_TIMEOUT_RETRIES = 3;
+
+/** Allow process termination and completion overhead around the CLI attempts. */
+const PROXY_AUTHENTICATION_OVERHEAD_MS = 10_000;
+/** Five minutes is the longest supported timeout for one noninteractive CLI attempt. */
+const GCLOUD_MAX_TIMEOUT_SECONDS = 5 * 60;
+
+/** Reads the per-attempt CLI timeout, falling back to 20 seconds for invalid settings. */
+export function getConfiguredGcloudTimeoutMs(): number {
+    const seconds = vscode.workspace?.getConfiguration?.("vertexAiChat")?.get<unknown>("gcloudCommandTimeoutSeconds", GCLOUD_DEFAULT_TIMEOUT_MS / 1000);
+    if (typeof seconds !== "number" || !Number.isInteger(seconds)) {
+        return GCLOUD_DEFAULT_TIMEOUT_MS;
+    }
+    if (seconds < 1 || seconds > GCLOUD_MAX_TIMEOUT_SECONDS) {
+        return GCLOUD_DEFAULT_TIMEOUT_MS;
+    }
+    return seconds * 1000;
+}
+
+/**
+ * Bounds discovery's wait for a proxy ID token independently of its HTTP timeout.
+ *
+ * @remarks
+ * Includes the initial CLI attempt, timeout retries, and completion overhead.
+ * Waiting in the shared CLI queue consumes this allowance too. The five-minute
+ * per-attempt limit keeps the combined allowance within Node's timer range.
+ */
+export function getProxyAuthenticationTimeoutMs(): number {
+    const attempts = 1 + GCLOUD_MAX_TIMEOUT_RETRIES;
+    return attempts * getConfiguredGcloudTimeoutMs() + PROXY_AUTHENTICATION_OVERHEAD_MS;
+}
 
 /**
  * Describes the authentication source selected for the current workspace.
