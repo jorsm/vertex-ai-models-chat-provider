@@ -224,7 +224,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         this.authManager.clearProxyToken?.();
         this._discoveryPromise = null;
         this.catalogResolver.setProxyCatalog?.(this.getProxyUrl() ? { candidateModels: [], regionPriority: [] } : undefined);
-        this.clearModels();
+        this.clearModels("reset");
         this.discoveryDone = false;
     }
 
@@ -443,9 +443,10 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
 
     /**
      * Clears all available models and notifies VS Code of the change.
-     * Useful when authentication fails to prevent stale models from being used.
+     * Useful when authentication fails or when resetting connection state before re-discovery.
      */
-    public clearModels(): void {
+    public clearModels(reason: "error" | "reset" = "error"): void {
+        const alreadyCleared = this.discoveryDone && this.region === undefined && this.availableModels.length === 0;
         this.region = undefined;
         this.availableModels = [];
         this.catalogRevision++;
@@ -454,7 +455,9 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         }
         this.discoveryDone = true;
         this._onDidChange.fire();
-        this.logger.log("🚫 Available models cleared due to error.");
+        if (reason === "error" && !alreadyCleared) {
+            this.logger.log("🚫 Available models cleared due to error.");
+        }
     }
 
     // ── Chat provider interface ───────────────────────────────────────────

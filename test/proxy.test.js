@@ -315,6 +315,17 @@ test("proxy mode skips direct ADC log messages and logs the launched gcloud comm
     assert.ok(!logs.some((line) => line.includes("Application Default Credentials")));
     assert.ok(logs.some((line) => line.includes("Running gcloud command:") && line.includes("config get-value account")));
 });
+test("resetConnection and setProjectId do not log an error when clearing models for refresh", () => {
+    const h = harness([model("gemini-test")]);
+    logs.length = 0;
+    h.dispatcher.setProjectId("user-project");
+    h.dispatcher.resetConnection();
+    assert.ok(!logs.some((line) => line.includes("Available models cleared due to error")));
+    h.dispatcher.clearModels();
+    assert.equal(logs.filter((line) => line.includes("Available models cleared due to error")).length, 1);
+    h.dispatcher.clearModels();
+    assert.equal(logs.filter((line) => line.includes("Available models cleared due to error")).length, 1);
+});
 test("refresh during timeout recovery prevents a superseded request from retrying", async () => {
     const auth = new AuthManager({});
     commandResult = async () => {

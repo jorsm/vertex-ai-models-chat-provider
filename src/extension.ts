@@ -71,6 +71,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // Register the "Refresh Models" command (Ctrl+Shift+P → Vertex AI Models Chat Provider: Refresh Models)
     context.subscriptions.push(
         vscode.commands.registerCommand("vertexAiChat.refreshModels", async () => {
+            Logger.getLogger("extension").log("🔄 Refreshing models requested by user...");
             const currentProjectId = vscode.workspace.getConfiguration("vertexAiChat").get<string>("projectId");
             provider.setProjectId(currentProjectId || "");
             return runDiscovery(provider, authManager);
