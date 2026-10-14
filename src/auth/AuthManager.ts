@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { runGcloud } from "../utils/gcloud";
 import { Logger } from "../utils/Logger";
 import { DirectGcpAuth } from "./DirectGcpAuth";
-import { AuthConfigurationError } from "./AuthCredentials";
+import { AuthConfigurationError, GCLOUD_MAX_TIMEOUT_RETRIES } from "./AuthCredentials";
 import type { AuthMethod, AuthOptions } from "./AuthCredentials";
 import { ProxyAuth } from "./ProxyAuth";
 
@@ -235,21 +235,19 @@ export class AuthManager {
      * failure may preserve the previous identity.
      */
     private async resolveIdentity(revision: number): Promise<string | undefined> {
-        const authOptions = await this.getResolvedAuthOptions();
-        const credentialIdentity = authOptions?.credentials?.client_email;
-        if (typeof credentialIdentity === "string" && credentialIdentity) {
-            return this.cacheIdentity(credentialIdentity, revision);
+        if (!this.isProxyConfigured()) {
+            const authOptions = await this.directAuth.getResolvedAuthOptions(false);
+            const credentialIdentity = authOptions?.credentials?.client_email;
+            if (typeof credentialIdentity === "string" && credentialIdentity) {
+                return this.cacheIdentity(credentialIdentity, revision);
+            }
+        } else {
+            await Promise.resolve();
         }
 
         const previousIdentity = this.identityCache?.value;
         try {
-            const { stdout } = await this.runGcloudOperation(() =>
-                runGcloud([
-                    "config",
-                    "get-value",
-                    "account",
-                ]),
-            );
+            const { stdout } = await this.runGcloudOperation(() => this.requestAccountEmail(revision));
             const email = stdout.split(/\r?\n/, 1)[0]?.trim();
             if (email && email !== "(unset)" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
                 return this.cacheIdentity(email, revision);
@@ -260,6 +258,38 @@ export class AuthManager {
             this.logger.log(`Failed to refresh gcloud account email${previousIdentity ? "; keeping the last valid identity" : ""}.`);
             return revision === this.identityRevision ? previousIdentity : undefined;
         }
+    }
+
+    private async requestAccountEmail(revision: number): Promise<{ stdout: string; stderr: string }> {
+        const maxAttempts = 1 + GCLOUD_MAX_TIMEOUT_RETRIES;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            if (revision !== this.identityRevision) {
+                throw new Error("Identity lookup superseded");
+            }
+            try {
+                return await runGcloud(
+                    [
+                        "config",
+                        "get-value",
+                        "account",
+                    ],
+                    undefined,
+                    this.logger,
+                );
+            } catch (error) {
+                const code = typeof error === "object" && error !== null ? (error as { code?: unknown }).code : undefined;
+                if (code !== "GCLOUD_TIMEOUT" || attempt >= maxAttempts || revision !== this.identityRevision) {
+                    throw error;
+                }
+                this.logger.log(`gcloud account command timed out; process terminated, retrying (${attempt}/${GCLOUD_MAX_TIMEOUT_RETRIES}).`);
+            }
+        }
+        throw new Error("Account email lookup exhausted its attempts");
+    }
+
+    private isProxyConfigured(): boolean {
+        const setting = vscode.workspace.getConfiguration?.("vertexAiChat")?.inspect<string>("proxyUrl");
+        return Boolean(setting?.globalValue?.trim() || setting?.defaultValue?.trim());
     }
 
     /**

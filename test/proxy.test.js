@@ -273,12 +273,12 @@ test("client identity resolution is shared and caches the last successful gcloud
     assert.equal(await auth.getIdentity(), "developer@example.com");
     assert.equal(credentialCommandCount, 1);
 });
-test("a transient gcloud timeout retries once and shares recovery across callers", async () => {
-    const auth = new AuthManager({});
+test("transient gcloud timeouts retry up to 3 times and share recovery across callers", async () => {
+    const auth = new AuthManager({ workspaceState: { get: () => undefined } });
     const expected = jwt();
     let attempts = 0;
     commandResult = async () => {
-        if (++attempts === 1) throw Object.assign(new Error("timeout with secret stderr"), { code: "GCLOUD_TIMEOUT", killed: true });
+        if (++attempts < 4) throw Object.assign(new Error("timeout with secret stderr"), { code: "GCLOUD_TIMEOUT", killed: true });
         return { stdout: expected, stderr: "" };
     };
     assert.deepEqual(
@@ -291,12 +291,29 @@ test("a transient gcloud timeout retries once and shares recovery across callers
             expected,
         ],
     );
-    assert.equal(attempts, 2);
+    assert.equal(attempts, 4);
+
+    let identityAttempts = 0;
+    commandResult = async () => {
+        if (++identityAttempts < 4) throw Object.assign(new Error("timeout"), { code: "GCLOUD_TIMEOUT", killed: true });
+        return { stdout: "developer@example.com\n", stderr: "" };
+    };
+    assert.equal(await auth.getIdentity(), "developer@example.com");
+    assert.equal(identityAttempts, 4);
 });
 test("persistent timeout is bounded and is not reported as expired authentication", async () => {
     commandResult = Object.assign(new Error("secret stderr"), { code: "GCLOUD_TIMEOUT", killed: true });
     await assert.rejects(new AuthManager({}).getProxyIdToken(), (error) => error.status === 503 && /timed out/.test(error.message) && !/gcloud auth login|secret stderr/.test(error.message));
-    assert.equal(credentialCommandCount, 2);
+    assert.equal(credentialCommandCount, 4);
+});
+test("proxy mode skips direct ADC log messages and logs the launched gcloud command", async () => {
+    inspections.proxyUrl = { globalValue: "https://gateway.test" };
+    logs.length = 0;
+    const auth = new AuthManager({ workspaceState: { get: () => undefined } });
+    commandResult = "developer@example.com\n";
+    assert.equal(await auth.getIdentity(), "developer@example.com");
+    assert.ok(!logs.some((line) => line.includes("Application Default Credentials")));
+    assert.ok(logs.some((line) => line.includes("Running gcloud command:") && line.includes("config get-value account")));
 });
 test("refresh during timeout recovery prevents a superseded request from retrying", async () => {
     const auth = new AuthManager({});

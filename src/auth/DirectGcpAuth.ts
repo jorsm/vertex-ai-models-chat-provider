@@ -60,12 +60,14 @@ export class DirectGcpAuth {
      * missing or invalid selected secrets, and unavailable or unparseable
      * selected files, throw AuthConfigurationError.
      *
+     * @param logAdc - Whether to log when falling back to Application Default Credentials.
      * @returns Credential options, or `undefined` when ADC should be used.
      * @throws An {@link AuthConfigurationError} if a selected secret is missing or
      * invalid, or a selected file is unavailable or cannot be parsed.
      */
-    public async getResolvedAuthOptions(): Promise<AuthOptions | undefined> {
+    public async getResolvedAuthOptions(logAdc = true): Promise<AuthOptions | undefined> {
         const authMethod = this.getActiveMethod();
+        const shouldLogAdc = logAdc && !this.isProxyConfigured();
 
         // Explicit selections fail closed. Never replace a missing selected
         // credential with an ambient ADC identity.
@@ -86,7 +88,9 @@ export class DirectGcpAuth {
         }
 
         if (authMethod?.type === "adc") {
-            this.logger.log("Using standard Application Default Credentials (ADC).");
+            if (shouldLogAdc) {
+                this.logger.log("Using standard Application Default Credentials (ADC).");
+            }
             return undefined;
         }
 
@@ -100,8 +104,15 @@ export class DirectGcpAuth {
             }
         }
 
-        this.logger.log("No explicit auth method set, using standard Application Default Credentials (ADC).");
+        if (shouldLogAdc) {
+            this.logger.log("No explicit auth method set, using standard Application Default Credentials (ADC).");
+        }
         return undefined;
+    }
+
+    private isProxyConfigured(): boolean {
+        const setting = vscode.workspace.getConfiguration?.("vertexAiChat")?.inspect<string>("proxyUrl");
+        return Boolean(setting?.globalValue?.trim() || setting?.defaultValue?.trim());
     }
 
     /**

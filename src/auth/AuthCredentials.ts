@@ -1,6 +1,9 @@
 /** Supported sources for authenticating Vertex AI requests. */
 export type AuthMethodType = "secret" | "file" | "adc";
 
+/** Maximum number of retries after a gcloud CLI command times out. */
+export const GCLOUD_MAX_TIMEOUT_RETRIES = 3;
+
 /**
  * Describes the authentication source selected for the current workspace.
  *

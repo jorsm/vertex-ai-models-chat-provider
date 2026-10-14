@@ -154,7 +154,8 @@ export class ProxyGateway {
         if (signal?.aborted) {
             abort();
         }
-        const timer = setTimeout(abort, timeoutMs);
+        const tokenTimeoutMs = timeoutMs >= 45_000 ? Math.max(timeoutMs, 90_000) : timeoutMs;
+        let timer = setTimeout(abort, tokenTimeoutMs);
         try {
             // Also bound token acquisition: aborting discovery must not wait for gcloud.
             const token = await new Promise<string>((resolve, reject) => {
@@ -168,6 +169,8 @@ export class ProxyGateway {
                     .finally(() => controller.signal.removeEventListener("abort", cancel));
             });
             controller.signal.throwIfAborted();
+            clearTimeout(timer);
+            timer = setTimeout(abort, timeoutMs);
             const response = await this.fetch(`${this.url}/discovery`, {
                 headers: { Authorization: `Bearer ${token}` },
                 signal: controller.signal,
