@@ -6,18 +6,19 @@
 ## Table of Contents
 
 - [docs/architecture.md](#docsarchitecturemd)
-    - [Table of Contents](#table-of-contents)
-    - [Core Concepts](#core-concepts)
-    - [API Reference](#api-reference)
-        - [VertexChatModelDispatcher](#vertexchatmodeldispatcher)
-        - [MissingProjectIdError](#missingprojectiderror)
-        - [ModelSpec](#modelspec)
-        - [ModelCatalog](#modelcatalog)
-        - [DiscoveryResult](#discoveryresult)
-        - [ModelCatalogResolver](#modelcatalogresolver)
-        - [activate](#activate)
-        - [runDiscovery](#rundiscovery)
-    - [Examples](#examples)
+- [Table of Contents](#table-of-contents)
+- [Core Concepts](#core-concepts)
+- [API Reference](#api-reference)
+    - [VertexChatModelDispatcher](#vertexchatmodeldispatcher)
+    - [MissingProjectIdError](#missingprojectiderror)
+    - [ModelSpec](#modelspec)
+    - [ModelCatalog](#modelcatalog)
+    - [DiscoveryResult](#discoveryresult)
+    - [ModelCatalogResolver](#modelcatalogresolver)
+    - [activate](#activate)
+    - [runDiscovery](#rundiscovery)
+- [Examples](#examples)
+- [Thinking effort resolution](#thinking-effort-resolution)
 
 ---
 
@@ -47,7 +48,7 @@ The central class that implements `vscode.LanguageModelChatProvider`. It manages
 - `onDidChangeLanguageModelChatInformation`: Event that fires when the available model list changes, prompting VS Code to refresh model information.
 - `ensureInitialDiscovery(token)`: [source](../src/VertexChatModelDispatcher.ts) Starts discovery when needed and waits for the current run, throwing a `vscode.CancellationError` if the provided token is cancelled.
 - `refreshModelInformation()`: [source](../src/VertexChatModelDispatcher.ts) Manually triggers the model information change event, causing VS Code to re-request available models.
-- `updateLabels()`: [source](../src/VertexChatModelDispatcher.ts) When the user label is enabled, fetches and caches the current client Google identity from `AuthManager` in both direct and proxy modes and propagates it as a provider baseline. At inference time, the request-scoped `userLabelValue` takes precedence; if it is empty or invalid, the resolver calls `AuthManager` for the client identity and blocks the request if no valid value is available. Values are sanitized to GCP label requirements (lowercase alphanumeric, hyphens, and underscores; maximum 63 characters; a leading letter is enforced with `v_`).
+- `updateLabels()`: [source](../src/VertexChatModelDispatcher.ts) When the user label is enabled, fetches and caches the current client Google identity from `AuthManager` in both direct and proxy modes and propagates it as a provider baseline. At inference time, the request-scoped `userLabelValue` takes precedence; if it is empty or invalid, the resolver calls `AuthManager` for the client identity and blocks the request if no valid value is available. Values are sanitized to GCP label requirements (lowercase alphanumeric, hyphens, and underscores; maximum 63 characters; a leading letter is enforced with `v_`). Returns a `Promise<void>`.
 - `getProxyUrl()`: [source](../src/VertexChatModelDispatcher.ts) Retrieves the enterprise proxy base URL from the user value of the machine-scoped setting; workspace endpoint overrides are ignored.
 - `resetConnection()`: [source](../src/VertexChatModelDispatcher.ts) Increments the connection revision, disposes of the current gateway, clears cached proxy tokens and models, and resets discovery state.
 - `discoverModelsAndRegion()`: [source](../src/VertexChatModelDispatcher.ts) Probes GCP regions or the configured proxy gateway to find available models. It requires `projectId` in every mode and throws `MissingProjectIdError` before credentials or network access when it is unset. In direct mode, it groups entries by vendor/backend model and probes at most three endpoints concurrently within each region using randomized exponential backoff for retries. The dispatcher uses each model's literal `version`, and all entries for a reachable endpoint remain available in their original catalog order. In proxy mode, it uses a `ProxyGateway` for authenticated discovery of the complete server catalog, including effort choices, capabilities and pricing; it performs no inference probes or vendor filtering and initializes all registered adapters with the gateway and the first region in the server's `regionPriority`. A nonempty server catalog requires a region; the client never supplies a default region. The configurable `vertexAiChat.modelDiscoveryTimeoutSeconds` defaults to 45 seconds per endpoint after it leaves the queue. It uses the `vertexAiChat.projectId` setting as the absolute source of truth for discovery and billing, in direct and proxy mode alike, intentionally avoiding fallbacks to project IDs found within Service Account credentials. It prevents concurrent discovery attempts by tracking and returning an active discovery promise if one is already in progress. It bubbles `VertexAuthenticationError` up to trigger specialized authentication workflows. Returns a `DiscoveryResult` and fires the change event upon successful discovery or failure.
@@ -56,7 +57,10 @@ The central class that implements `vscode.LanguageModelChatProvider`. It manages
 - `provideLanguageModelChatInformation(...)`: [source](../src/VertexChatModelDispatcher.ts) Returns the list of discovered models to VS Code. It returns the set of models found during discovery, remaining empty before the first discovery completes. Proxy mode publishes the complete server catalog without filtering vendors. It enriches model metadata with regional details, pricing summaries (including long-context rates and cache costs), and resolved thinking effort (level and source). For VS Code 1.120 and higher, it explicitly sets the `vendor` to `google-vertex` and `isUserSelectable` to `true` to ensure models are correctly categorized and visible in the Copilot Chat picker.
 - `provideTokenCount(...)`: [source](../src/VertexChatModelDispatcher.ts) Calculates or estimates token counts for messages. It delegates to provider-specific counting logic if available, falling back to a heuristic estimation if no provider logic is found.
 - `provideLanguageModelChatResponse(...)`: [source](../src/VertexChatModelDispatcher.ts) Streams the chat response from the appropriate vendor provider. It automatically waits for any in-progress model discovery to complete before starting inference. It handles specialized error mapping for `GatewayError` statuses (e.g., 401/403 to `NoPermissions`, 404 to `NotFound`).
-- `infer(...)`: [source](../src/VertexChatModelDispatcher.ts) Shared entry point used by chat and commit generation to execute the exact requested model ID. It ensures discovery is complete, retries one empty/error discovery state per request, and rejects IDs missing from the active discovered catalog without selecting another model. It resolves request labels per inference: `vscode-vertex-ai-user` uses the effective request-scoped `userLabelValue`, then `AuthManager` identity; `vscode-vertex-ai-project` checks folder/workspace setting overrides, then tries the matching root folder in multi-root workspaces, the workspace name for requests without a matching root (or outside multi-root), the resource's folder name, and finally the sole open folder. If an enabled label cannot be resolved, it shows an error and blocks the request. The proxy independently adds its non-forgeable OIDC-derived identity label. The catalog selects the vendor; a missing adapter or unsupported transport produces an inference error. It records detailed usage (input, output, cache_read, cache_create, and total character counts) via the `UsageTrackerService`. See [usage and billing](usage-and-billing.md#request-label-resolution) for the full order and conditions.
+- `infer(...)`: [source](../src/VertexChatModelDispatcher.ts) Shared entry point used by chat and commit generation to execute the exact requested model ID. It ensures discovery is complete, retries one empty/error discovery state per request, and rejects IDs missing from the active discovered catalog without selecting another model. It resolves request labels per inference:
+    - **User Label (`vscode-vertex-ai-user`)**: Evaluates `vertexAiChat.userLabelValue` first. If empty, resolves the identity dynamically via `AuthManager.getIdentity()`.
+    - **Project Label (`vscode-vertex-ai-project`)**: Checks `vertexAiChat.projectLabelValue` workspace/folder overrides first. If unset, it tries the matching root folder in multi-root workspaces, the workspace name (cleaned of localized suffixes or derived from `.code-workspace` filename), the resource's folder name, and finally the sole open folder.
+      If an enabled label cannot be resolved, it shows an error and blocks the request. The proxy independently adds its non-forgeable OIDC-derived identity label. The catalog selects the vendor; a missing adapter or unsupported transport produces an inference error. It records detailed usage (input, output, cache_read, cache_create, and total character counts) via the `UsageTrackerService`. See [usage and billing](usage-and-billing.md#request-label-resolution) for the full order and conditions.
 
 ### MissingProjectIdError
 
@@ -86,6 +90,7 @@ Interface defining the metadata and capabilities for a supported model.
     - `input`: Cost per 1 million input tokens.
     - `output`: Cost per 1 million output tokens.
     - `cache_read` (optional): Cost per 1 million cached tokens read.
+    - ...
     - `cache_create` (optional): Cost per 1 million cached tokens written.
     - `longContext` (optional): Replacement rate card for requests whose total uncached and cached input exceeds `inputThresholdTokens`. The whole request is costed with these rates.
 
@@ -153,6 +158,7 @@ The main entry point for the VS Code extension. It handles:
 - Registering extension commands including:
     - `vertexAiChat.showDashboard`: Opens the usage dashboard webview via `DashboardWebview.createOrShow`.
     - `vertexAiChat.refreshModels`: Manually triggers the model discovery process.
+    - `vertexAiChat.configureThinkingEffort`: Runs the thinking effort configuration picker via `ConfigureThinkingEffort`.
     - `vertexAiChat.dumpTools`: Dumps the schema of all installed language model tools to an output channel for debugging, including tool names, descriptions, tags, and input schemas.
     - `vertexAiChat.generateCommitMessage`: Generates AI-powered commit messages from staged changes when the built-in Git API is available in the same extension host.
     - `vertexAiChat.selectCommitMessageModel`: Refreshes shared discovery and opens a model QuickPick, persisting an exact ID in `vertexAiChat.commitMessageModel`. It preserves the effective user/workspace/folder override's scope; new choices apply to the repository folder, otherwise workspace/user. The setting defaults to `gemini-3-flash-preview`; generation never substitutes another model if it is unavailable. Commit-message generation and selection live in `src/commitMessage/`, with the selection UI in `CommitMessageModelSelection.ts` separate from diff collection and inference.
@@ -163,7 +169,7 @@ The main entry point for the VS Code extension. It handles:
     - `vertexAiChat.clearAuthMethod`: Resets the workspace to use Default Application Credentials (ADC).
     - `vertexAiChat.openUserModelsFile`: Creates (seeded from the bundled catalog) / opens the user-level `models.json` for editing.
     - `vertexAiChat.openWorkspaceModelsFile`: Creates (seeded from the bundled catalog) / opens `.vscode/models.json` for editing.
-- Watching for configuration changes (specifically `vertexAiChat.projectId`, `vertexAiChat.proxyUrl`, `enableUserLabel`, and `enableProjectLabel`) to trigger re-discovery and update metadata labels.
+- Watching for configuration changes (specifically `vertexAiChat.projectId`, `vertexAiChat.proxyUrl`, `enableUserLabel`, `enableProjectLabel`, and `vertexAiChat.thinkingEffortByModel`) to trigger re-discovery, update metadata labels, or refresh model information.
 - Watching the workspace and user custom `models.json` files via `FileSystemWatcher` to invalidate the catalog cache and re-run discovery on save (debounced ~300ms).
 - Performing a background discovery run on activation if a `projectId` is already configured.
 
@@ -174,9 +180,9 @@ A helper function that triggers the model discovery process on the dispatcher an
 
 In the event of a failure (networking, project errors, or authentication), it clears any stale model list to prevent silent model fallbacks in the chat UI. Authentication failures use three explicit workflows:
 
-- A `GatewayError` displays a specific error message for proxy configuration issues.
+- A `GatewayError` displays a specific error message for proxy configuration issues. It handles 401 statuses by offering a login action via `AuthManager.reauthenticate`.
 - A `VertexAuthenticationError` offers `gcloud auth application-default login` (or the appropriate login action) in the workspace environment, and re-runs discovery after confirmed success.
-- An `AuthConfigurationError` from a missing or invalid explicitly selected Service Account fails closed and offers the authentication-method picker. It never substitutes an ambient ADC identity.
+- An `AuthConfigurationError` from a missing or invalid explicitly selected Service Account fails closed and offers the authentication-method picker via `AuthManager.selectAuthMethod`. It never substitutes an ambient ADC identity.
 - A `MissingProjectIdError` provides a direct link to the `vertexAiChat.projectId` setting via a button in the error message.
 
 ---

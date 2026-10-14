@@ -14,6 +14,7 @@
     - [UsageTrackerService](#usagetrackerservice)
     - [Data Structures](#data-structures)
 - [Examples](#examples)
+- [Usage accounting](#usage-accounting)
 
 ---
 
@@ -98,6 +99,12 @@ Initializes the status bar item at the right side of the status bar (priority 10
 - `usageTracker`: An instance of `UsageTrackerService` used to retrieve daily cost totals.
 - `authManager`: An instance of `AuthManager` used to identify the current user or service account.
 - `catalogResolver`: The resolver used to show the active model catalog source in the status-bar tooltip.
+
+#### updateStatusBar
+
+[source](../src/CostStatusBar.ts)
+`public async updateStatusBar(): Promise<void>`
+Recalculates the status bar's display text, icon, and tooltip. It retrieves today's total cost, determines the project ID and its source (Workspace, Global, or Default), identifies the authentication method and model catalog source, and resolves the current identity. The status bar is updated with a rich Markdown tooltip reflecting these states.
 
 #### dispose
 
