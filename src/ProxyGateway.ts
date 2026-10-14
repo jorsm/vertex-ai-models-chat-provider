@@ -40,12 +40,21 @@ export function normalizeGatewayError(error: any): GatewayError {
     const cause = error?.cause;
     const causeCode = cause?.code;
     const causeMessage = typeof cause?.message === "string" ? cause.message : undefined;
-    const causeDetail = causeCode ? `${causeCode}${causeMessage ? `: ${causeMessage}` : ""}` : causeMessage;
-    const message = detail?.message || error?.message || "Proxy request failed.";
+    let causeDetail = causeMessage;
+    if (causeCode) {
+        causeDetail = String(causeCode);
+        if (causeMessage) {
+            causeDetail += `: ${causeMessage}`;
+        }
+    }
+    let message = detail?.message || error?.message || "Proxy request failed.";
     if (status === 401) {
         return new GatewayError("The proxy rejected your Google ID token. Run 'gcloud auth login' with your personal account, then Refresh Models.", status, code, cause);
     }
-    return new GatewayError(causeDetail && !message.includes(causeDetail) ? `${message} (cause: ${causeDetail})` : message, status, code, cause);
+    if (causeDetail && !message.includes(causeDetail)) {
+        message += ` (cause: ${causeDetail})`;
+    }
+    return new GatewayError(message, status, code, cause);
 }
 
 export function validateProxyUrl(value: string): string {

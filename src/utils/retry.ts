@@ -192,7 +192,11 @@ export function describeRetryError(e: any): string {
 
     const tags: string[] = [];
     if (status !== undefined && status !== null && String(status) !== "") {
-        tags.push(typeof status === "number" || /^\d{3}$/.test(String(status)) ? `HTTP ${status}` : String(status));
+        if (typeof status === "number" || /^\d{3}$/.test(String(status))) {
+            tags.push(`HTTP ${status}`);
+        } else {
+            tags.push(String(status));
+        }
     }
     if (code && String(code) !== String(status)) {
         tags.push(String(code));
@@ -205,8 +209,11 @@ function logRetrySummary(success: boolean, attempt: number, retryLog: RetryLogEn
     if (attempt === 0) {
         return;
     }
-    const message = success ? `✅ Retry ${attempt} succeeded (operation completed after ${attempt + 1} total attempts).` : `❌ Attempt ${attempt + 1} failed; operation aborted after ${attempt} retries. Final error: ${describeRetryError(error)}`;
-    emitLog(message);
+    if (success) {
+        emitLog(`✅ Retry ${attempt} succeeded (operation completed after ${attempt + 1} total attempts).`);
+    } else {
+        emitLog(`❌ Attempt ${attempt + 1} failed; operation aborted after ${attempt} retries. Final error: ${describeRetryError(error)}`);
+    }
     emitLog(`   Retry history: ${JSON.stringify(retryLog, null, 2)}`);
 }
 
