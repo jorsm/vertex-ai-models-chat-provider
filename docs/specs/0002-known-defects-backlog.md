@@ -35,10 +35,10 @@ This spec is a backlog, not a design. Each item states the problem, the evidence
 
 ### Unintended direct/proxy divergences
 
-**B1. Claude retries are nested on the direct transport.**
+**B1. Claude and Grok retries are nested on the direct transport.**
 
-- Evidence: the direct client keeps the Anthropic SDK's default retries (`VertexAnthropicProvider.ts:39-60`); the proxy client sets `maxRetries: 0` (`:148`). Both are wrapped in the custom `withRetry` (`:167`), whose `maxRetries` defaults to `Number.MAX_SAFE_INTEGER`, bounded only by `retryMaxDurationMinutes` (`utils/retry.ts:47-51`).
-- Target: one retry layer on both transports, `withRetry` with the 30-minute budget. SDK retries are off for direct Claude calls too.
+- Evidence: the direct client keeps the Anthropic SDK's default retries (`VertexAnthropicProvider.ts:39-60`); the proxy client sets `maxRetries: 0` (`:148`). Both are wrapped in the custom `withRetry` (`:167`), whose `maxRetries` defaults to `Number.MAX_SAFE_INTEGER`, bounded only by `retryMaxDurationMinutes` (`utils/retry.ts:47-51`). Direct Grok has the same nesting: its OpenAI client keeps the SDK's default retries (`providers/grok/GrokTransport.ts`, documented in its header comment) inside `withRetry` (`VertexGrokProvider.ts:178`).
+- Target: one retry layer for inference, `withRetry` with the 30-minute budget, with SDK retries off for every vendor and transport. Discovery probing (`utils/discovery.ts`) and gcloud command timeouts (`auth/AuthCredentials.ts`) keep their own bounded policies.
 - Check: the parity scenarios "429 then success" and "500 exhausting retries" make the same number of upstream requests on both transports.
 
 **B2. Gemini forces `apiVersion: "v1"` only through the proxy.**
@@ -86,6 +86,12 @@ This spec is a backlog, not a design. Each item states the problem, the evidence
 - Evidence: `src/models.json`. It no longer makes sense among the current models.
 - Target: entry removed, catalog tests updated, CHANGELOG entry.
 
+**B11. Logs contain prompt text, tool arguments and user identity.**
+
+- Evidence: Claude request logging prints the last 300 characters of every text part and a preview of tool results (`providers/anthropic/ClaudeMessages.ts:116-118`). Grok logs tool-call arguments (`providers/grok/GrokStream.ts:155, 159`). Request labels, which can carry the user's email, are logged as JSON (`VertexChatModelDispatcher.ts:158`) and per request by each provider. The gcloud account email is logged on parse failure (`auth/AuthManager.ts:258`).
+- Target: logs carry metadata only (roles, counts, sizes, statuses, ids), as the Gemini diagnostics already do. User identity appears hashed or not at all.
+- Check: a test that runs a request containing a known marker string in text, tool arguments and labels, and asserts the marker never appears in the captured log output.
+
 ### Structural follow-up
 
 **B10. `VertexChatModelDispatcher.ts` owns too much.**
@@ -95,13 +101,13 @@ This spec is a backlog, not a design. Each item states the problem, the evidence
 
 ## Suggested order
 
-| Order | Items      | Reason                                         |
-| ----- | ---------- | ---------------------------------------------- |
-| 1     | B9, B6, B7 | Small, independent, no transport risk          |
-| 2     | B1, B4     | Retry and error behavior are what users notice |
-| 3     | B2, B3     | Gemini request shape                           |
-| 4     | B8         | Shared code after transports are aligned       |
-| 5     | B5, B10    | Covered by the Grok and proxy-interface specs  |
+| Order | Items       | Reason                                                    |
+| ----- | ----------- | --------------------------------------------------------- |
+| 1     | B9, B6, B7  | Small, independent, no transport risk                     |
+| 2     | B11, B1, B4 | Privacy first, then retry and error behavior users notice |
+| 3     | B2, B3      | Gemini request shape                                      |
+| 4     | B8          | Shared code after transports are aligned                  |
+| 5     | B5, B10     | Covered by the Grok and proxy-interface specs             |
 
 ## Acceptance
 

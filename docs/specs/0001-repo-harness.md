@@ -29,7 +29,7 @@ The harness exists to support three streams of upcoming work, none of which is p
 
 Evidence from the Step 1 analysis (18 Oct 2026):
 
-- 379 tests exist (376 pass, 3 skipped) but **CI and the stable Marketplace publish never run them**. Only the pre-release workflow and a skippable local pre-push hook do.
+- 369 tests exist on `develop` (366 pass, 3 skipped) but **CI and the stable Marketplace publish never run them**. Only the pre-release workflow and a skippable local pre-push hook do.
 - **No branch has ever had agent instructions.** Agents start from 8.7k lines of code and 263 KB of Markdown, much of it completed hand-off notes; topics repeat up to 8 times.
 - **Direct and proxy diverge in 7 concerns**, two by design (discovery, auth) and the rest by accident. Nothing in the repo says which is which.
 - **Every SDK-level test goes through the proxy.** The direct transport is never exercised offline, no test compares the two transports, and every stream fixture is hand-written.
@@ -66,7 +66,7 @@ Configuration, instructions and deletion. No production code changes.
 
 Create:
 
-- `docs/specs/index.md`: one line per spec (`id`, title, status, link), newest first.
+- `docs/specs/index.md`: one line per spec (`id`, title, status, governed `code` paths, description, link), newest first.
 - `docs/specs/_template.md` with these sections: Goal, Context, Non-goals, Decisions, Behavior and invariants, Declared divergences (only if the change touches transport), Deliverables, Acceptance checks, Open questions.
 
 Frontmatter fields, all required:

@@ -4,7 +4,7 @@ Plans, designs and decisions for this repo. Read this list before changing code,
 
 Newest first.
 
-| ID                                    | Title                 | Status | Description                                                                                                |
-| ------------------------------------- | --------------------- | ------ | ---------------------------------------------------------------------------------------------------------- |
-| [0002](0002-known-defects-backlog.md) | Known defects backlog | draft  | Unintended direct/proxy divergences and code defects, to be fixed one per PR after the 0001 harness exists |
-| [0001](0001-repo-harness.md)          | Repo harness          | draft  | Specs, PR workflow, agent instructions, behavior gate, docs reset and the transport parity suite           |
+| ID                                    | Title                 | Status | Governs                                                                                                              | Description                                                                                                |
+| ------------------------------------- | --------------------- | ------ | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| [0002](0002-known-defects-backlog.md) | Known defects backlog | draft  | `src/VertexChatModelDispatcher.ts`, `src/providers/`, `src/ProxyGateway.ts`, `src/utils/retry.ts`, `src/models.json` | Unintended direct/proxy divergences and code defects, to be fixed one per PR after the 0001 harness exists |
+| [0001](0001-repo-harness.md)          | Repo harness          | draft  | `AGENTS.md`, `docs/specs/`, `.github/`, `.husky/`, `package.json`, `test/`                                           | Specs, PR workflow, agent instructions, behavior gate, docs reset and the transport parity suite           |
