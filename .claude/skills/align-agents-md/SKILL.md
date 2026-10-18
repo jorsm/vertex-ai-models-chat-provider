@@ -1,50 +1,81 @@
 ---
 name: align-agents-md
-description: Check that AGENTS.md still matches the code after the changes on this branch, and update it in the same PR. Use before opening or updating a PR, after /code-review and /simplify, or when asked whether AGENTS.md has drifted. Pass "full" to audit every statement, not only those the branch touches.
+description: Keep AGENTS.md true for the code a branch will merge. Checks the AGENTS.md statements a branch could affect (paths, commands, settings and defaults, direct/proxy rules, invariants, cited spec items, test and PR rules), fixes the ones it made false with minimal edits, flags changes that break a rule instead, and reports what was checked. Use it before opening or updating any PR in this repo, after /code-review and /simplify, and whenever someone asks whether AGENTS.md is stale, outdated or drifted, or after renaming or moving files, adding npm scripts, changing a setting default, or fixing a known defect. Pass "full" to audit the whole file.
 ---
 
 # Align AGENTS.md with the code
 
-`AGENTS.md` primes every agent session in this repo. A false statement in it misleads every agent that branches from `develop`, so each PR leaves it true for the code it merges.
+`AGENTS.md` is loaded into every agent session in this repo, and agents trust it before they have read any code. One stale line therefore produces wrong work in every later session that branches from `develop`. No CI job checks it: this skill, run by the author's agent, and the owner's review are what keep it true.
 
-## 1. Find what changed
+The goal is precision, not activity. Most branches need no edit, and "still accurate" after a real check is a good result. Every line added is paid for by every future session, so add only what the next agent would otherwise get wrong.
+
+## Modes
+
+- **Branch (default):** check the statements this branch could affect. Fix what the branch made false; report other drift without fixing it, because a PR carries one concern.
+- **`full`:** check every statement and fix all drift. Run it on its own branch cut from `develop` (e.g. `chore/align-agents-md`) so the fixes get their own PR.
+
+## 1. Find what the branch changed
+
+The base is the branch the PR merges into: `develop`, unless the PR targets another branch (stacked PRs). Compare against the merge base, so commits that reached the base after you branched don't look like yours, and include work not yet committed:
 
 ```sh
-git fetch origin develop
-git diff --name-only origin/develop...HEAD
-git status --short
+git fetch origin develop                      # or the PR's base branch
+MB=$(git merge-base origin/develop HEAD)
+git diff --name-status "$MB"                  # committed and uncommitted
+git ls-files --others --exclude-standard      # new untracked files
 ```
 
-With `full`, skip this step and check every statement in step 2.
+File names alone don't show that a default or a behavior changed. Read the diff (`git diff "$MB" -- <file>`) for every file that looks related to something `AGENTS.md` says.
 
-## 2. Find the statements that depend on it
+In `full` mode, skip this step.
 
-Read `AGENTS.md` in full. A statement is affected when the branch:
+## 2. Run the reference check
 
-- renames, moves, deletes or adds a file or folder the **Map** names, or adds a top-level area under `src/` that the Map should name;
-- changes `package.json` scripts, `.husky/` or the tooling behind **Commands**;
-- changes transport, discovery, auth, retry, labels, logging or cancellation code (**Direct and proxy**, **Invariants**);
-- fixes or adds a defect that `AGENTS.md` cites by spec 0002 item (B1, B5, B11, …);
-- changes test helpers or patterns that **Writing tests** points to;
-- changes `.github/`, branch rules or the PR template (**Pull requests**).
+```sh
+node .claude/skills/align-agents-md/scripts/check-references.mjs
+```
 
-## 3. Verify each one against the code
+It reports paths named in `AGENTS.md` that don't exist, `npm` commands missing from `package.json`, cited specs or spec items (`spec 0002 B5`) that don't exist, and a file over 150 lines. Its results are facts, not judgment: fix each hit, or say why it is a false alarm. A clean run says nothing about whether statements are still _true_; that is step 3.
 
-Read the code, not other docs. For each affected statement, decide: still true, false, or incomplete. Also confirm that every path and `npm run` command the file names exists (expand `{a,b}` forms).
+## 3. Check each statement the change could affect
 
-When the code and `AGENTS.md` disagree, work out which is wrong before editing. If the code broke an invariant or added a direct/proxy difference, that is a bug in the change: report it, and don't edit `AGENTS.md` to match.
+Read `AGENTS.md` in full. For each statement, ask which code makes it true and whether the branch touched that code. Then open that code and confirm; don't rely on specs, other docs or commit messages, which may be stale themselves. Typical links, as examples (the sections of `AGENTS.md` change over time, so go by what the file says now):
 
-## 4. Edit
+- a path, and the file at that path: renamed, moved, deleted, or its role changed;
+- a command, and `package.json` scripts, `.husky/` and tool configs;
+- a setting name or default, and where it is declared (`contributes.configuration` in `package.json`) and read;
+- a direct/proxy statement, and the transport, auth, retry, label, logging and cancellation code of **both** transports;
+- a "currently violates" or known-gap sentence citing a spec 0002 item, and the code that item names. When the branch fixes the defect, that sentence shrinks or goes;
+- a test rule, and the test file or helper it points to;
+- a PR rule, and `.github/` and the PR template.
 
-- Change only what the branch made false or incomplete. Keep the existing wording, sections and table style.
-- Describe what exists on this branch. No plans, no "will", no "once it exists"; those go in `docs/specs/`.
-- No generic advice and nothing an agent can find by listing files.
-- Stay under 150 lines.
-- A new row in the declared-divergences table, or a weakened invariant, needs an approved spec. Link it, or stop and ask.
-- Drift the branch didn't cause: list it under "Out of scope" in the PR description; don't fix it here.
+Then the other direction: does the branch add something an agent would get wrong without being told? That covers a new area of code the map should route to, a new command contributors run, or a new invariant or declared divergence (which needs an approved spec). Helper names, implementation details and anything found by listing files don't qualify.
 
-Commit separately: `docs(agents): align AGENTS.md with <change>`.
+## 4. When code and AGENTS.md disagree, decide which is wrong
 
-## 5. Report
+- **Legitimate change made a statement stale** (a rename, a new script, a fixed defect): edit `AGENTS.md`.
+- **The change breaks a rule `AGENTS.md` sets** (a new direct/proxy difference, a second retry layer, prompt text in logs, a dropped billing label): the code is wrong. Leave `AGENTS.md` alone and report it as blocking, since editing the file would silently legalize the bug for every later session.
+- **The change deliberately alters a rule** (a divergence row, an invariant, a retry policy): that needs an approved spec. If the branch has one, edit `AGENTS.md` and link it; if not, stop and ask the user.
+- **Drift the branch didn't cause:** in branch mode, report it as out of scope; in `full` mode, fix it.
 
-In the PR description's Docs section, tick the `AGENTS.md` box and say either "updated: <sections>" or "still accurate: checked <sections>". Name any statement you could not verify.
+## 5. Edit
+
+- Make the smallest change that makes the statement true. Keep the existing wording, section order and table style, then run `npx prettier --write AGENTS.md` (it realigns tables).
+- Write in the present tense about what exists on the branch. Plans and "once it exists" belong in `docs/specs/`.
+- Stay within 150 lines. If an addition would cross it, tighten something else and say what.
+- If the PR template or this skill names something the branch renamed, fix it too.
+- Commit separately as `docs(agents): align AGENTS.md with <change>`. If nothing changed, don't commit.
+
+## 6. Report
+
+End with this block, for the user and for the Docs section of the PR description:
+
+```
+AGENTS.md: updated (<sections>) | still accurate
+Checked: <each statement or section, and the code you read for it>
+Blocking: <rules the change breaks (step 4), or none>
+Out of scope: <drift the branch didn't cause, or none>
+Not verified: <statements you couldn't check, and why, or none>
+```
+
+If a PR exists and you can edit its description, tick the `AGENTS.md` box in its Docs section and add the first line; otherwise leave that to the user.

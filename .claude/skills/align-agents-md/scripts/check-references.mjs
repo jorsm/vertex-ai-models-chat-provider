@@ -1,0 +1,109 @@
+#!/usr/bin/env node
+// Deterministic checks for AGENTS.md: every path it names exists, every npm
+// command is a package.json script, every cited spec and spec item exists, and
+// the file stays within 150 lines. Prints one line per problem; exits 1 if any.
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { basename, join } from "node:path";
+
+const MAX_LINES = 150;
+const git = (...args) => execFileSync("git", args, { encoding: "utf8" }).trim();
+const root = git("rev-parse", "--show-toplevel");
+const text = readFileSync(join(root, "AGENTS.md"), "utf8");
+const scripts = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).scripts ?? {};
+const tracked = git("-C", root, "ls-files").split("\n");
+const trackedNames = new Set(tracked.map((f) => basename(f)));
+const problems = [];
+const counts = { paths: 0, commands: 0, specs: 0 };
+
+// `src/{a,b}/x.ts` -> ["src/a/x.ts", "src/b/x.ts"]
+function expandBraces(s) {
+    const m = s.match(/\{([^{}]*)\}/);
+    if (!m) return [s];
+    return m[1].split(",").flatMap((alt) => expandBraces(s.replace(m[0], alt)));
+}
+
+function isIgnored(p) {
+    try {
+        execFileSync("git", [
+            "-C",
+            root,
+            "check-ignore",
+            "-q",
+            p,
+        ]);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function pathExists(p) {
+    const clean = p.replace(/\/$/, "");
+    if (clean.includes("*")) {
+        const dir = clean.slice(0, clean.indexOf("*")).replace(/[^/]*$/, "");
+        const re = new RegExp("^" + clean.replace(/[.]/g, "\\.").replace(/\*/g, "[^/]*") + "$");
+        return tracked.some((f) => re.test(f)) || (dir !== "" && existsSync(join(root, dir)));
+    }
+    return existsSync(join(root, clean));
+}
+
+const lines = text.split("\n");
+if (lines.length > MAX_LINES) problems.push(`AGENTS.md has ${lines.length} lines (max ${MAX_LINES})`);
+
+lines.forEach((line, i) => {
+    const at = `AGENTS.md:${i + 1}`;
+    for (const [
+        ,
+        span,
+    ] of line.matchAll(/`([^`]+)`/g)) {
+        // Commands: `npm run x`, `npm test`.
+        for (const [
+            ,
+            name,
+        ] of span.matchAll(/\bnpm run ([\w:.-]+)/g)) {
+            counts.commands++;
+            if (!(name in scripts)) problems.push(`${at}: npm script "${name}" not in package.json`);
+        }
+        if (/\bnpm test\b/.test(span)) {
+            counts.commands++;
+            if (!("test" in scripts)) problems.push(`${at}: npm script "test" not in package.json`);
+        }
+        // Paths: tokens with a slash or a file extension. Skip packages (@x/y),
+        // slash commands (/x), placeholders (…, NNNN) and git-ignored output.
+        for (let token of span.split(/\s+/)) {
+            token = token.replace(/[,;:)]+$/, "");
+            const looksLikePath = /^[\w.{},*/-]+$/.test(token) && (token.includes("/") || /\.(ts|js|mjs|cjs|json|md)$/.test(token));
+            if (!looksLikePath || token.startsWith("/") || token.includes("…") || /NNNN/.test(token)) continue;
+            if (/^[\w-]+\.[\w-]+$/.test(token) && !/\.(ts|js|mjs|cjs|json|md)$/.test(token)) continue; // setting ids like vertexAiChat.x
+            for (const p of expandBraces(token)) {
+                counts.paths++;
+                if (!p.includes("/")) {
+                    if (!trackedNames.has(p) && !existsSync(join(root, p))) problems.push(`${at}: no tracked file named ${p}`);
+                } else if (!pathExists(p) && !isIgnored(p)) {
+                    problems.push(`${at}: path ${p} does not exist`);
+                }
+            }
+        }
+    }
+    // Spec citations: "spec 0002", "spec 0002 B5", "spec 0001, D1".
+    for (const [
+        ,
+        id,
+        item,
+    ] of line.matchAll(/\bspec (\d{4})\b,?\s*([A-Z]\d+\b)?/g)) {
+        counts.specs++;
+        const file = readdirSync(join(root, "docs/specs")).find((f) => f.startsWith(`${id}-`));
+        if (!file) {
+            problems.push(`${at}: spec ${id} not found in docs/specs/`);
+            continue;
+        }
+        if (item && !readFileSync(join(root, "docs/specs", file), "utf8").match(new RegExp(`(\\*\\*|#+ )${item}[.\\s]`))) {
+            problems.push(`${at}: spec ${id} has no item ${item}`);
+        }
+    }
+});
+
+for (const p of problems) console.log(p);
+console.log(`${problems.length ? "FAIL" : "OK"}: ${counts.paths} paths, ${counts.commands} commands, ${counts.specs} spec citations, ${lines.length} lines`);
+process.exit(problems.length ? 1 : 0);
