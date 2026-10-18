@@ -116,6 +116,7 @@ One file at the repo root, at most 150 lines, read by Codex, VS Code chat (`chat
 - **Template** `.github/pull_request_template.md` with:
     - Spec: link, or "none needed" with a one-line reason
     - What changed and why (three lines at most)
+    - Details (optional): longer context for reviewers
     - Checks run: which commands, with results
     - Does this touch a declared divergence or a transport? If yes, which, and how parity is checked
     - Docs: updated / not needed

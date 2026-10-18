@@ -6,6 +6,10 @@
 
 <!-- Three lines at most. -->
 
+## Details (optional)
+
+<!-- Longer context for reviewers: background, alternatives considered, trade-offs, follow-ups. Delete this section if the summary is enough. -->
+
 ## Checks run
 
 <!-- Commands and results, e.g. `npm run check`: pass. Say what you didn't run. -->
