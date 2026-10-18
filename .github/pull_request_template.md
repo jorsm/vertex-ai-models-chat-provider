@@ -25,11 +25,12 @@
 ## Docs
 
 - [ ] Governing spec updated
+- [ ] `AGENTS.md` checked against this change (`/align-agents-md`): updated, or still accurate <!-- which sections -->
 - [ ] Not needed: <!-- why -->
 
 ## Review
 
-- [ ] Agent review run on the branch (`/code-review`, `/simplify` or equivalent); resulting changes are in separate commits
+- [ ] Agent review run on the branch (`/code-review`, `/simplify`, `/align-agents-md` or equivalent); resulting changes are in separate commits
 
 ## Out of scope
 

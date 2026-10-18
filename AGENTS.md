@@ -15,7 +15,7 @@ A VS Code extension ("Google Agent Platform for Copilot Chat") that registers on
 2. If the change needs a spec and none covers it (see spec 0001, D1), write the spec first, from `docs/specs/_template.md`.
 3. Branch from `develop`. One concern per branch and PR.
 
-Don't create new Markdown outside `docs/specs/`, `AGENTS.md`, `README.md` and `CHANGELOG.md`.
+Don't create new Markdown outside `docs/specs/`, `.claude/skills/`, `AGENTS.md`, `README.md` and `CHANGELOG.md`.
 
 ## Map
 
@@ -94,6 +94,7 @@ A change to transport, retry, auth or error behavior must either work the same o
 
 - Use `.github/pull_request_template.md`. Link the spec, or say why none is needed.
 - Before requesting review, run an agent review on the branch (`/code-review` and `/simplify` in Claude Code, or the equivalent in your tool). Put resulting changes in separate commits.
+- Then run `/align-agents-md` (other tools: follow `.claude/skills/align-agents-md/SKILL.md`) so this file stays true for the code the PR merges.
 - Branches: `spec/NNNN-slug` for spec-only PRs, otherwise `feat/…`, `fix/…`, `chore/…` or `test/…`, always cut from `develop`.
 - Commits use Conventional Commits (`feat(scope): …`, `fix: …`, `docs(specs): …`); add a body when the reason isn't obvious.
 - PRs target `develop`. `main` only receives release merges from `develop`. Never push to `develop` or `main` directly.

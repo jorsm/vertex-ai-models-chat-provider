@@ -105,7 +105,7 @@ One file at the repo root, at most 150 lines, read by Codex, VS Code chat (`chat
     - A configuration change during a request must fail the request, not complete it against a stale configuration.
 7. **Test rules:** see D6.
 8. **Docs rules:** see D5.
-9. **Don'ts:** no new Markdown outside `docs/specs/`, `AGENTS.md`, `README.md` and `CHANGELOG.md`; no optional calls (`?.(`) on methods a type declares as required; no `.catch(() => {})` without a comment saying why the failure is safe to ignore; don't bundle unrelated changes (e.g. catalog edits) into a harness or CI PR.
+9. **Don'ts:** no new Markdown outside `docs/specs/`, `.claude/skills/`, `AGENTS.md`, `README.md` and `CHANGELOG.md`; no optional calls (`?.(`) on methods a type declares as required; no `.catch(() => {})` without a comment saying why the failure is safe to ignore; don't bundle unrelated changes (e.g. catalog edits) into a harness or CI PR.
 
 **Acceptance:** the file exists, is under 150 lines, and every path and command it names exists. A fresh agent session asked "where is Claude retry configured and which spec governs it?" can answer from `AGENTS.md` and the specs index alone.
 
@@ -119,9 +119,9 @@ One file at the repo root, at most 150 lines, read by Codex, VS Code chat (`chat
     - Details (optional): longer context for reviewers
     - Checks run: which commands, with results
     - Does this touch a declared divergence or a transport? If yes, which, and how parity is checked
-    - Docs: updated / not needed
+    - Docs: updated / not needed, including whether `AGENTS.md` was checked against the change
     - Out of scope: anything noticed but deliberately not changed
-- **Review order:** the author's agent runs `/code-review` and `/simplify` (or the equivalent in Codex) on the branch before requesting review, and puts the resulting changes in separate commits. Then a human reviews.
+- **Review order:** the author's agent runs `/code-review` and `/simplify` (or the equivalent in Codex) on the branch before requesting review, and puts the resulting changes in separate commits. It then runs the `align-agents-md` project skill (`.claude/skills/align-agents-md/SKILL.md`; other tools follow the file directly), which updates `AGENTS.md` for whatever the branch made false, so `develop` never carries a stale `AGENTS.md`. Then a human reviews; the reviewer's approval is the gate, nothing is enforced in CI.
 - **Merging:** PRs merge into `develop` only. `main` receives only release merges from `develop`.
 - **Manual step for the repo owner:** in GitHub settings, protect `develop` and `main`: require a PR, one approving review, and the CI check from D4 to pass.
 
