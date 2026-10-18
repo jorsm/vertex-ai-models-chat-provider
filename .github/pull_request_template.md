@@ -16,9 +16,13 @@
 - [ ] Touches it and behaves the same on direct and proxy, with tests for both
 - [ ] Touches a declared divergence in `AGENTS.md`; approved spec: <!-- link -->
 
+<!-- If touched: which transport(s) and vendor(s), and how parity is checked (see "Writing tests" in AGENTS.md). -->
+
 ## Docs
 
-- [ ] Governing spec updated, or not needed
+- [ ] Governing spec updated
+- [ ] `docs/proxy-interface.md` updated (once it exists)
+- [ ] Not needed: <!-- why -->
 
 ## Review
 
