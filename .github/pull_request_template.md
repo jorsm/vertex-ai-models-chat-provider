@@ -25,7 +25,6 @@
 ## Docs
 
 - [ ] Governing spec updated
-- [ ] `docs/proxy-interface.md` updated (once it exists)
 - [ ] Not needed: <!-- why -->
 
 ## Review

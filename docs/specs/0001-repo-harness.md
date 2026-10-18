@@ -201,6 +201,8 @@ The first piece of real build work. It turns "direct and proxy behave differentl
 
 PRs 2 and 3 can be done in parallel. Each PR uses the template from PR 2 once it exists.
 
+`AGENTS.md` and the PR template describe only what exists on `develop`, never work still to come. Each later PR adds its own rules to them when it lands: PR 4 adds `docs/proxy-interface.md` to the docs rule, the allowed-Markdown list and the template's Docs checklist; PR 5 points the test rules at the parity suite as the direct-transport example.
+
 ## Acceptance for the whole spec
 
 - [ ] A PR that breaks a test cannot merge into `develop` or publish to the Marketplace.

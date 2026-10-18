@@ -15,7 +15,7 @@ A VS Code extension ("Google Agent Platform for Copilot Chat") that registers on
 2. If the change needs a spec and none covers it (see spec 0001, D1), write the spec first, from `docs/specs/_template.md`.
 3. Branch from `develop`. One concern per branch and PR.
 
-Legacy Markdown under `docs/` (everything except `docs/specs/`) is being retired by spec 0001 D5. It may be stale; when it disagrees with the code, the code is current behavior. Don't update or extend those files; don't create new Markdown outside `docs/specs/`, `AGENTS.md`, `README.md` and `CHANGELOG.md`.
+Don't create new Markdown outside `docs/specs/`, `AGENTS.md`, `README.md` and `CHANGELOG.md`.
 
 ## Map
 
@@ -77,7 +77,7 @@ A change to transport, retry, auth or error behavior must either work the same o
 
 ## Writing tests
 
-- Test new behavior with the real vendor SDK against a fake `fetch` (the pattern in the SDK-level tests of `test/proxy.test.js`), not with recorder providers that only capture calls. Those examples cover the proxy transport only; direct-transport examples arrive with the parity suite (spec 0001 D7).
+- Test new behavior with the real vendor SDK against a fake `fetch` (the pattern in the SDK-level tests of `test/proxy.test.js`), not with recorder providers that only capture calls.
 - Assert on what VS Code receives (text parts, tool calls, usage, errors) and on upstream requests made, not on positional arguments of a recorder (`calls.at(-1)[7]`).
 - Don't write count assertions that break whenever the catalog changes.
 - Each test names, in its title or a one-line comment, the failure it is meant to catch.
@@ -98,5 +98,5 @@ A change to transport, retry, auth or error behavior must either work the same o
 - Commits use Conventional Commits (`feat(scope): …`, `fix: …`, `docs(specs): …`); add a body when the reason isn't obvious.
 - PRs target `develop`. `main` only receives release merges from `develop`. Never push to `develop` or `main` directly.
 - Don't bundle unrelated changes (catalog edits, version bumps, refactors) into a PR about something else.
-- A PR that changes transport, retry, auth, labels or the proxy interface updates the governing spec (and `docs/proxy-interface.md` once it exists) in the same PR.
+- A PR that changes transport, retry, auth, labels or the proxy interface updates the governing spec in the same PR.
 - If you change the behavior a spec describes, update the spec in the same PR and say so in the description. Set `status: implemented` and update `docs/specs/index.md` when a spec is complete.
