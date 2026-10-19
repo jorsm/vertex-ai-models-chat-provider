@@ -96,7 +96,7 @@ function harness(models, regions = ["global"]) {
     };
 }
 
-test("bundled models use 16 literal endpoint probes and keep catalog order across refreshes", async () => {
+test("bundled models use one literal endpoint probe each and keep catalog order across refreshes", async () => {
     const models = require("../src/models.json").candidateModels;
     const h = harness(models);
     const requests = [];
@@ -118,10 +118,12 @@ test("bundled models use 16 literal endpoint probes and keep catalog order acros
         const result = await h.dispatcher.discoverModelsAndRegion();
         assert.deepEqual(result.availableModels, models);
         const probes = requests.slice(before);
-        assert.equal(probes.length, 16);
-        assert.equal(new Set(probes.map((target) => JSON.stringify(target))).size, 16);
-        assert.equal(probes.filter(([vendor]) => vendor === "anthropic").length, 10);
-        assert.equal(probes.filter(([vendor]) => vendor === "google").length, 5);
+        // Counts come from the catalog, so adding or removing a model doesn't break this test.
+        const countFor = (vendor) => models.filter((model) => model.vendor === vendor).length;
+        assert.equal(probes.length, models.length);
+        assert.equal(new Set(probes.map((target) => JSON.stringify(target))).size, models.length);
+        assert.equal(probes.filter(([vendor]) => vendor === "anthropic").length, countFor("anthropic"));
+        assert.equal(probes.filter(([vendor]) => vendor === "google").length, countFor("google"));
         assert.deepEqual(
             probes.filter(([vendor]) => vendor === "grok"),
             [

@@ -4,6 +4,12 @@ All notable changes to the **Google Agent Platform (Vertex AI)** extension will 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Removed
+
+- Claude Haiku 4.5 from the bundled model catalog; Claude Haiku 5.5 remains. Custom `models.json` catalogs that list it keep working.
+
 ## [0.7.12] — 2026-10-14 (Pre-release)
 
 ### Changed
