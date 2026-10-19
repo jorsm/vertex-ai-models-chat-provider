@@ -9,3 +9,6 @@ playground/
 # Machine-maintained and vendored files
 package-lock.json
 media/echarts.min.js
+
+# Written for agents, not humans: keep tables unpadded to save context tokens
+AGENTS.md

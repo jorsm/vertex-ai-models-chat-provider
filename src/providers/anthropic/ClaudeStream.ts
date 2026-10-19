@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import type { Logger } from "../../utils/Logger";
 import type { CharacterCounts, ModelUsageTokens } from "../VertexModelProvider";
-import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix } from "../ClaudeThinking";
+import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix } from "./ClaudeThinking";
 
 type StreamCharacterCounts = Pick<CharacterCounts, "assistant_text" | "tool_use">;
 
