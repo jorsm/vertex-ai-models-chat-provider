@@ -5,7 +5,7 @@ description: Keep AGENTS.md true for the code a branch will merge. Checks the AG
 
 # Align AGENTS.md with the code
 
-`AGENTS.md` is loaded into every agent session in this repo, and agents trust it before they have read any code. One stale line therefore produces wrong work in every later session that branches from `develop`. No CI job checks it: this skill, run by the author's agent, and the owner's review are what keep it true.
+`AGENTS.md` is loaded into every agent session in this repo, and agents trust it before they have read any code. A stale line merged here produces wrong work in every session that follows.
 
 The goal is precision, not activity. Most branches need no edit, and "still accurate" after a real check is a good result. Every line added is paid for by every future session, so add only what the next agent would otherwise get wrong.
 
