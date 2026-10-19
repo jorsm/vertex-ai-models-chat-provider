@@ -19,37 +19,35 @@ Don't create new Markdown outside `docs/specs/`, `.claude/skills/`, `AGENTS.md`,
 
 ## Map
 
-| Path                                                                                                        | What lives there                                                                                                                                                                                                                                                  |
-| ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/extension.ts`                                                                                          | Activation, command registration, wiring of the services below                                                                                                                                                                                                    |
-| `src/VertexChatModelDispatcher.ts`                                                                          | The `LanguageModelChatProvider`: discovery for both transports, label resolution, request dispatch to vendor providers, usage recording. The most-changed file, followed by `VertexGoogleProvider.ts` and `extension.ts`; keep changes to these small and focused |
-| `src/providers/Vertex{Google,Anthropic,Grok}Provider.ts`                                                    | One provider per vendor: client setup per transport (Grok: `src/providers/grok/GrokTransport.ts`), request building, retries, error handling                                                                                                                      |
-| `src/providers/{google,anthropic,grok}/`                                                                    | Vendor message mapping, stream parsing, tool schemas; Claude thinking and signature replay in `src/providers/anthropic/ClaudeThinking.ts`                                                                                                                         |
-| `src/providers/VertexModelProvider.ts`                                                                      | The interface every vendor provider implements                                                                                                                                                                                                                    |
-| `src/ProxyGateway.ts`, `src/auth/ProxyAuth.ts`                                                              | Proxy transport: URL validation, catalog discovery, gcloud ID-token auth, gateway error normalization                                                                                                                                                             |
-| `src/auth/`                                                                                                 | Auth method selection, ADC and service-account credentials, gcloud login helpers                                                                                                                                                                                  |
-| `src/ModelCatalogResolver.ts`, `src/ModelCatalogParser.ts`, `src/models.json`, `schemas/models.schema.json` | Model catalog: bundled models, user/workspace overrides, schema                                                                                                                                                                                                   |
-| `src/effort/`                                                                                               | Thinking-effort settings, picker and resolution per model                                                                                                                                                                                                         |
-| `src/utils/`                                                                                                | Shared helpers: `retry.ts` (`withRetry` and the shared retry policy, bounded by `vertexAiChat.retryMaxDurationMinutes`, default 30), discovery probing, cancellation, the gcloud runner, `Logger`, token estimation                                               |
-| `src/UsageTrackerService.ts`, `src/CostStatusBar.ts`, `src/DashboardWebview.ts`, `media/`                   | Local usage and cost tracking, status bar, dashboard webview                                                                                                                                                                                                      |
-| `src/commitMessage/`                                                                                        | SCM commit-message generation                                                                                                                                                                                                                                     |
-| `test/*.test.js`, `test/fixtures/`                                                                          | Node test runner suites and their catalog fixtures; suites import compiled `out/*.js` and stub `vscode`                                                                                                                                                           |
-| `test/host/`                                                                                                | Fixtures that run inside a real extension host (see its README)                                                                                                                                                                                                   |
-| `scripts/`                                                                                                  | Manual tools, including a local proxy extension-host test                                                                                                                                                                                                         |
+- `src/extension.ts` — activation, command registration, wiring of the services below
+- `src/VertexChatModelDispatcher.ts` — the `LanguageModelChatProvider`: discovery for both transports, label resolution, request dispatch to vendor providers, usage recording. Keep changes here small and focused
+- `src/providers/Vertex{Google,Anthropic,Grok}Provider.ts` — one provider per vendor: client setup per transport (Grok: `src/providers/grok/GrokTransport.ts`), request building, retries, error handling
+- `src/providers/{google,anthropic,grok}/` — vendor message mapping, stream parsing, tool schemas; Claude thinking and signature replay in `src/providers/anthropic/ClaudeThinking.ts`
+- `src/providers/VertexModelProvider.ts` — the interface every vendor provider implements
+- `src/ProxyGateway.ts`, `src/auth/ProxyAuth.ts` — proxy transport: URL validation, catalog discovery, gcloud ID-token auth, gateway error normalization
+- `src/auth/` — auth method selection, ADC and service-account credentials, gcloud login helpers
+- `src/ModelCatalogResolver.ts`, `src/ModelCatalogParser.ts`, `src/models.json`, `schemas/models.schema.json` — model catalog: bundled models, user/workspace overrides, schema
+- `src/effort/` — thinking-effort settings, picker and resolution per model
+- `src/utils/` — shared helpers: `retry.ts` (`withRetry` and the shared retry policy, bounded by `vertexAiChat.retryMaxDurationMinutes`, default 30), discovery probing, cancellation, the gcloud runner, `Logger`, token estimation
+- `src/UsageTrackerService.ts`, `src/CostStatusBar.ts`, `src/DashboardWebview.ts`, `media/` — local usage and cost tracking, status bar, dashboard webview
+- `src/commitMessage/` — SCM commit-message generation
+- `test/*.test.js`, `test/fixtures/` — Node test runner suites and their catalog fixtures; suites import compiled `out/*.js` and stub `vscode`
+- `test/host/` — fixtures that run inside a real extension host (see its README)
+- `scripts/` — manual tools, including a local proxy extension-host test
 
 ## Commands
 
-| Command                                             | Does                                                                             |
-| --------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `npm ci`                                            | Install locked dependencies                                                      |
-| `npm run compile`                                   | Type-check and emit `out/` with `tsc`                                            |
-| `npm test`                                          | Compile, then run every `test/*.test.js`                                         |
-| `npm run compile && node --test test/proxy.test.js` | Run one test file                                                                |
-| `npm run lint`                                      | ESLint on `src/` (zero warnings allowed)                                         |
-| `npm run format:check` / `npm run format`           | Prettier check / fix                                                             |
-| `npm run check`                                     | Format check, lint and tests; the Husky pre-push hook runs this                  |
-| `npm run bundle`                                    | Production bundle in `out/extension.js` (esbuild)                                |
-| `npx @vscode/vsce package --no-dependencies`        | Build a `.vsix` locally (`vsce` is fetched on first use; it is not a dependency) |
+| Command | Does |
+| --- | --- |
+| `npm ci` | Install locked dependencies |
+| `npm run compile` | Type-check and emit `out/` with `tsc` |
+| `npm test` | Compile, then run every `test/*.test.js` |
+| `npm run compile && node --test test/proxy.test.js` | Run one test file |
+| `npm run lint` | ESLint on `src/` (zero warnings allowed) |
+| `npm run format:check` / `npm run format` | Prettier check / fix |
+| `npm run check` | Format check, lint and tests; the Husky pre-push hook runs this |
+| `npm run bundle` | Production bundle in `out/extension.js` (esbuild) |
+| `npx @vscode/vsce package --no-dependencies` | Build a `.vsix` locally (`vsce` is fetched on first use; it is not a dependency) |
 
 Run `npm run check` before you say a change is done, and report which commands you ran and their results. A skipped or failing check is not a pass.
 
@@ -57,10 +55,10 @@ Run `npm run check` before you say a change is done, and report which commands y
 
 The two transports may differ **only** in these ways:
 
-| Behavior        | Direct                                                              | Proxy                             | Why                                                |
-| --------------- | ------------------------------------------------------------------- | --------------------------------- | -------------------------------------------------- |
-| Model discovery | Bundled/override catalog plus one-token probes per model and region | Catalog returned by the proxy     | The proxy decides which models each person may use |
-| Auth            | ADC or service account                                              | gcloud ID token sent to the proxy | Intended for now; changing it needs a spec         |
+| Behavior | Direct | Proxy | Why |
+| --- | --- | --- | --- |
+| Model discovery | Bundled/override catalog plus one-token probes per model and region | Catalog returned by the proxy | The proxy decides which models each person may use |
+| Auth | ADC or service account | gcloud ID token sent to the proxy | Intended for now; changing it needs a spec |
 
 Everything else (request shape, retries, tool-schema handling, streaming, usage, cancellation, user-visible errors) must behave the same on both transports. Known unintended differences are tracked in spec 0002; don't add new ones. Grok rejecting the proxy is a known gap (spec 0002 B5), not a design.
 

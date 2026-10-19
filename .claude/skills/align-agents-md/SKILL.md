@@ -60,7 +60,7 @@ Then the other direction: does the branch add something an agent would get wrong
 
 ## 5. Edit
 
-- Make the smallest change that makes the statement true. Keep the existing wording, section order and table style, then run `npx prettier --write AGENTS.md` (it realigns tables).
+- Make the smallest change that makes the statement true. Keep the existing wording, section order and style. `AGENTS.md` is in `.prettierignore` because it is written for agents: keep tables unpadded and don't run Prettier on it.
 - Write in the present tense about what exists on the branch. Plans and "once it exists" belong in `docs/specs/`.
 - Stay within 150 lines. If an addition would cross it, tighten something else and say what.
 - If the PR template or this skill names something the branch renamed, fix it too.
