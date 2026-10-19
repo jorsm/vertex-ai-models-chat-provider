@@ -20,11 +20,11 @@ const contributedIds = new Set([
 const idPrefixes = new Set([...contributedIds].map((id) => id.split(".")[0]));
 // Tracked plus untracked-but-not-ignored, so paths a branch adds before its first commit
 // count; files deleted or moved but not yet staged don't.
-const files = [
-    ...git("-C", root, "ls-files").split("\n"),
-    ...git("-C", root, "ls-files", "--others", "--exclude-standard").split("\n"),
-].filter((f) => f && existsSync(join(root, f)));
-const fileNames = new Set(files.map((f) => basename(f)));
+const listFiles = (...pathspec) =>
+    git("-C", root, "ls-files", "-co", "--exclude-standard", "--", ...pathspec)
+        .split("\n")
+        .filter((f) => f && existsSync(join(root, f)));
+const fileNames = new Set(listFiles().map((f) => basename(f)));
 const problems = [];
 const counts = { paths: 0, commands: 0, ids: 0, specs: 0 };
 
@@ -53,14 +53,8 @@ function isIgnored(p) {
 function pathExists(p) {
     const clean = p.replace(/\/$/, "");
     if (clean.includes("*")) {
-        // `**/` spans zero or more directories; `*` stays within one segment.
-        const pattern = clean
-            .replace(/[.]/g, "\\.")
-            .replace(/\*\*\//g, "\0")
-            .replace(/\*/g, "[^/]*")
-            .replace(/\0/g, "(?:.*/)?");
-        const re = new RegExp("^" + pattern + "$");
-        return files.some((f) => re.test(f));
+        // git's glob pathspec: `*` stays within one segment, `**/` spans directories.
+        return listFiles(`:(glob)${clean}`).length > 0;
     }
     return existsSync(join(root, clean));
 }
@@ -101,7 +95,7 @@ lines.forEach((line, i) => {
             for (const p of expandBraces(token)) {
                 counts.paths++;
                 if (!p.includes("/")) {
-                    if (!fileNames.has(p) && !existsSync(join(root, p))) problems.push(`${at}: no tracked file named ${p}`);
+                    if (!fileNames.has(p) && !isIgnored(p)) problems.push(`${at}: no file named ${p}`);
                 } else if (!pathExists(p) && !isIgnored(p)) {
                     problems.push(`${at}: path ${p} does not exist`);
                 }
