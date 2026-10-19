@@ -59,7 +59,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     }
     public async ensureInitialDiscovery(token: vscode.CancellationToken): Promise<void> {
         if (!this.discoveryDone && !this._discoveryPromise) {
-            // Safe to ignore: waitForDiscovery below rethrows this failure, unless the caller was cancelled and no longer needs it.
+            // eslint-disable-next-line no-restricted-syntax -- waitForDiscovery below rethrows the failure; a cancelled caller no longer needs it.
             void this.discoverModelsAndRegion().catch(() => {});
         }
         await this.waitForDiscovery(token);
@@ -232,7 +232,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
                         this._discoveryPromise = null;
                     }
                 })
-                // Safe to ignore: this chain only clears the shared promise; callers get the same rejection from the returned one.
+                // eslint-disable-next-line no-restricted-syntax -- this chain only clears the in-flight promise; callers get the rejection from the returned promise.
                 .catch(() => {});
         }
         return this._discoveryPromise;
@@ -883,7 +883,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         const revision = this.connectionRevision;
         // All features share discovery and retry one empty/error state per request.
         if (!this._discoveryPromise && (!this.discoveryDone || this.availableModels.length === 0)) {
-            // Safe to ignore: waitForDiscovery below rethrows this failure, unless the caller was cancelled and no longer needs it.
+            // eslint-disable-next-line no-restricted-syntax -- waitForDiscovery below rethrows the failure; a cancelled caller no longer needs it.
             void this.discoverModelsAndRegion().catch(() => {});
         }
         await this.waitForDiscovery(token);

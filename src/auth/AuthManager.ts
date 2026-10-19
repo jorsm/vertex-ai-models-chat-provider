@@ -185,7 +185,7 @@ export class AuthManager {
                         this.identityPromise = undefined;
                     }
                 })
-                // Safe to ignore: this chain only clears the shared promise; callers get the same rejection from the returned one.
+                // eslint-disable-next-line no-restricted-syntax -- this chain only clears the in-flight promise; callers get the rejection from the returned promise.
                 .catch(() => {});
         }
         return this.identityPromise;
