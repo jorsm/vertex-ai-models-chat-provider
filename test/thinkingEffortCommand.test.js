@@ -325,7 +325,8 @@ test("invalid saved value stays visible and can be reset rather than silently su
 test("empty catalogs and models without effort offer no fabricated choices", async () => {
     for (const selection of [
         [],
-        models.filter((m) => !m.effort),
+        // Every bundled model declares effort, so build one without it.
+        [{ ...models[0], id: "plain-model", version: "plain-model", effort: undefined }],
     ]) {
         const h = harness(selection);
         await h.command.run();

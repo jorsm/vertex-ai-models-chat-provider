@@ -85,6 +85,7 @@ This spec is a backlog, not a design. Each item states the problem, the evidence
 
 - Evidence: `src/models.json`. It no longer makes sense among the current models.
 - Target: entry removed, catalog tests updated, CHANGELOG entry.
+- Closed: [PR #22](https://github.com/jorsm/vertex-ai-models-chat-provider/pull/22). The catalog tests that counted bundled models now derive their counts from the catalog, and the effort test for a model without `effort` uses a custom catalog, since every bundled model now declares effort.
 
 **B11. Logs contain prompt text, tool arguments and user identity.**
 
