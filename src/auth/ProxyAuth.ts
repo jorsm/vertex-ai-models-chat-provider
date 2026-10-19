@@ -70,6 +70,7 @@ export class ProxyAuth {
                         this.proxyTokenPromise = undefined;
                     }
                 })
+                // Safe to ignore: this chain only clears the shared promise; callers get the same rejection from the returned one.
                 .catch(() => {});
         }
         return this.proxyTokenPromise;
