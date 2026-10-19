@@ -2,7 +2,7 @@
 id: "0002"
 title: Known defects backlog
 description: Unintended direct/proxy divergences and code defects found in the Step 1 analysis, to be fixed one per PR after the 0001 harness exists.
-status: draft
+status: approved
 supersedes: none
 code:
     - src/VertexChatModelDispatcher.ts
@@ -111,6 +111,6 @@ This spec is a backlog, not a design. Each item states the problem, the evidence
 
 ## Acceptance
 
-- [ ] Each item is closed by its own PR that links this spec and names the item.
+- [ ] Each item is closed by a PR that links this spec and names the item: one item per PR, or a few items that touch the same files.
 - [ ] B1-B4 each turn a parity-suite `todo` into a passing test.
 - [ ] When every item except B5 and B10 is closed, this spec moves to `implemented`, and B5 and B10 point to their successor specs.

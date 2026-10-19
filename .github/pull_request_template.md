@@ -24,7 +24,7 @@
 
 ## Docs
 
-- [ ] Governing spec updated
+- [ ] Governing spec updated (and its `status`, in the spec and in `docs/specs/index.md`, if it changed)
 - [ ] `AGENTS.md` checked against this change (`/align-agents-md`): updated, or still accurate <!-- which sections -->
 - [ ] Not needed: <!-- why -->
 

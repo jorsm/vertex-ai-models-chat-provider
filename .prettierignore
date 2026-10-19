@@ -6,6 +6,9 @@ dist/
 playground/
 *.vsix
 
+# Agent worktrees: other branches' checkouts, each checked in its own tree
+.claude/worktrees/
+
 # Machine-maintained and vendored files
 package-lock.json
 media/echarts.min.js
