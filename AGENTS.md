@@ -83,7 +83,7 @@ A change to transport, retry, auth or error behavior must either work the same o
 
 ## Writing code
 
-- No `.catch(() => {})` without a comment saying why the failure is safe to ignore.
+- No `.catch(() => {})` without a comment saying why the failure is safe to ignore. Lint enforces this: put the reason in `// eslint-disable-next-line no-restricted-syntax -- <reason>`, or log the failure instead.
 - Keep vendor-specific logic in the vendor's provider folder; don't grow `VertexChatModelDispatcher.ts` with it.
 - Match the existing style; Prettier and ESLint are authoritative. `any` is allowed for SDK payloads only.
 
