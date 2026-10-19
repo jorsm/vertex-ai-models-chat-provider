@@ -59,7 +59,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     }
     public async ensureInitialDiscovery(token: vscode.CancellationToken): Promise<void> {
         if (!this.discoveryDone && !this._discoveryPromise) {
-            // Safe to ignore: waitForDiscovery below awaits the same promise and rethrows its failure to the caller.
+            // Safe to ignore: waitForDiscovery below rethrows this failure, unless the caller was cancelled and no longer needs it.
             void this.discoverModelsAndRegion().catch(() => {});
         }
         await this.waitForDiscovery(token);
@@ -883,7 +883,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         const revision = this.connectionRevision;
         // All features share discovery and retry one empty/error state per request.
         if (!this._discoveryPromise && (!this.discoveryDone || this.availableModels.length === 0)) {
-            // Safe to ignore: waitForDiscovery below awaits the same promise and rethrows its failure to the caller.
+            // Safe to ignore: waitForDiscovery below rethrows this failure, unless the caller was cancelled and no longer needs it.
             void this.discoverModelsAndRegion().catch(() => {});
         }
         await this.waitForDiscovery(token);
