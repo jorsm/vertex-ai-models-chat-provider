@@ -70,6 +70,7 @@ export class ProxyAuth {
                         this.proxyTokenPromise = undefined;
                     }
                 })
+                // eslint-disable-next-line no-restricted-syntax -- this chain only clears the in-flight promise; callers get the rejection from the returned promise.
                 .catch(() => {});
         }
         return this.proxyTokenPromise;

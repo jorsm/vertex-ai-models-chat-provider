@@ -70,11 +70,13 @@ This spec is a backlog, not a design. Each item states the problem, the evidence
 
 - Evidence: five `.catch(() => {})` sites: `VertexChatModelDispatcher.ts:63, 235, 885`, `ProxyAuth.ts:73`, `AuthManager.ts:188`.
 - Target: each site either logs the failure or carries a comment explaining why ignoring it is safe.
+- Fixed: none of the five hid a failure, so each carries its reason in an `eslint-disable-next-line no-restricted-syntax -- <reason>` comment. A lint rule in `eslint.config.mjs` now rejects an empty `.catch` arrow callback in `src/`, so a new site needs a reason or a log. Closed together with B7 in one PR, by the owner's choice.
 
 **B7. Optional calls on required methods.**
 
 - Evidence: `setProxyCatalog?.(` four times and `clearProxyToken?.()` once in `VertexChatModelDispatcher.ts` (`:102, 218, 220, 282, 463`). Both methods are required (`ModelCatalogResolver.ts:27`, `AuthManager.ts:155`). The optional calls exist to tolerate partial test stubs.
 - Target: plain calls, with the test stubs fixed to implement the methods.
+- Fixed: plain calls; the stubs in `test/discovery.test.js`, `test/effortInference.test.js`, `test/proxy.test.js` and `test/host/thinkingEffortFixture.js` implement both methods. Closed together with B6 in one PR, by the owner's choice.
 
 **B8. Usage-report block duplicated in every provider.**
 

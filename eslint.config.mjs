@@ -59,6 +59,14 @@ export default [
             curly: "error",
             eqeqeq: "error",
             "no-throw-literal": "error",
+            // AGENTS.md: an ignored rejection needs a reason, given in the disable comment.
+            "no-restricted-syntax": [
+                "error",
+                {
+                    selector: "CallExpression[callee.property.name='catch'] > ArrowFunctionExpression.arguments[body.type='BlockStatement'][body.body.length=0]",
+                    message: "Log the failure, or disable this rule with a comment saying why ignoring it is safe.",
+                },
+            ],
         },
     },
     eslintConfigPrettier,

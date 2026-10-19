@@ -59,6 +59,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
     }
     public async ensureInitialDiscovery(token: vscode.CancellationToken): Promise<void> {
         if (!this.discoveryDone && !this._discoveryPromise) {
+            // eslint-disable-next-line no-restricted-syntax -- waitForDiscovery below rethrows the failure; a cancelled caller no longer needs it.
             void this.discoverModelsAndRegion().catch(() => {});
         }
         await this.waitForDiscovery(token);
@@ -98,7 +99,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         this.usageTracker = usageTracker;
         this.authManager = authManager;
         this.catalogResolver = catalogResolver;
-        this.catalogResolver.setProxyCatalog?.(this.getProxyUrl() ? { candidateModels: [], regionPriority: [] } : undefined);
+        this.catalogResolver.setProxyCatalog(this.getProxyUrl() ? { candidateModels: [], regionPriority: [] } : undefined);
         this.registerProviders();
         this._labelsPromise = this.updateLabels();
 
@@ -214,9 +215,9 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         this.gateway = undefined;
         this.directDiscoveryController?.abort();
         this.directDiscoveryController = undefined;
-        this.authManager.clearProxyToken?.();
+        this.authManager.clearProxyToken();
         this._discoveryPromise = null;
-        this.catalogResolver.setProxyCatalog?.(this.getProxyUrl() ? { candidateModels: [], regionPriority: [] } : undefined);
+        this.catalogResolver.setProxyCatalog(this.getProxyUrl() ? { candidateModels: [], regionPriority: [] } : undefined);
         this.clearModels("reset");
         this.discoveryDone = false;
     }
@@ -231,6 +232,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
                         this._discoveryPromise = null;
                     }
                 })
+                // eslint-disable-next-line no-restricted-syntax -- this chain only clears the in-flight promise; callers get the rejection from the returned promise.
                 .catch(() => {});
         }
         return this._discoveryPromise;
@@ -278,7 +280,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
                 this.availableModels = catalog.candidateModels;
                 this.catalogRevision++;
                 this.currentEffortCatalog();
-                this.catalogResolver.setProxyCatalog?.(catalog);
+                this.catalogResolver.setProxyCatalog(catalog);
                 this.discoveryDone = true;
                 this._onDidChange.fire();
                 const elapsedMs = Date.now() - startedAt;
@@ -459,7 +461,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         this.availableModels = [];
         this.catalogRevision++;
         if (this.getProxyUrl()) {
-            this.catalogResolver.setProxyCatalog?.({ candidateModels: [], regionPriority: [] });
+            this.catalogResolver.setProxyCatalog({ candidateModels: [], regionPriority: [] });
         }
         this.discoveryDone = true;
         this._onDidChange.fire();
@@ -881,6 +883,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         const revision = this.connectionRevision;
         // All features share discovery and retry one empty/error state per request.
         if (!this._discoveryPromise && (!this.discoveryDone || this.availableModels.length === 0)) {
+            // eslint-disable-next-line no-restricted-syntax -- waitForDiscovery below rethrows the failure; a cancelled caller no longer needs it.
             void this.discoverModelsAndRegion().catch(() => {});
         }
         await this.waitForDiscovery(token);
