@@ -35,7 +35,7 @@ In `full` mode, skip this step.
 node .claude/skills/align-agents-md/scripts/check-references.mjs
 ```
 
-It reports paths named in `AGENTS.md` that don't exist, `npm` commands missing from `package.json`, cited specs or spec items (`spec 0002 B5`) that don't exist, and a file over 150 lines. Its results are facts, not judgment: fix each hit, or say why it is a false alarm. A clean run says nothing about whether statements are still _true_; that is step 3.
+It reports paths named in `AGENTS.md` that don't exist, `npm` commands missing from `package.json`, settings not declared in `contributes.configuration`, cited specs or spec items (`spec 0002 B5`) that don't exist, and a file over 150 lines. Its results are facts, not judgment: fix each hit, or say why it is a false alarm. A clean run says nothing about whether statements are still _true_; that is step 3.
 
 ## 3. Check each statement the change could affect
 

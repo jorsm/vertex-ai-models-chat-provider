@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Deterministic checks for AGENTS.md: every path it names exists, every npm
-// command is a package.json script, every cited spec and spec item exists, and
-// the file stays within 150 lines. Prints one line per problem; exits 1 if any.
+// command is a package.json script, every named setting is declared in
+// contributes.configuration, every cited spec and spec item exists, and the
+// file stays within 150 lines. Prints one line per problem; exits 1 if any.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -10,11 +11,18 @@ const MAX_LINES = 150;
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" }).trim();
 const root = git("rev-parse", "--show-toplevel");
 const text = readFileSync(join(root, "AGENTS.md"), "utf8");
-const scripts = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).scripts ?? {};
-const tracked = git("-C", root, "ls-files").split("\n");
-const trackedNames = new Set(tracked.map((f) => basename(f)));
+const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const scripts = pkg.scripts ?? {};
+const settings = new Set([pkg.contributes?.configuration ?? []].flat().flatMap((c) => Object.keys(c.properties ?? {})));
+const settingPrefixes = new Set([...settings].map((s) => s.split(".")[0]));
+// Tracked plus untracked-but-not-ignored, so paths a branch adds before its first commit count.
+const files = [
+    ...git("-C", root, "ls-files").split("\n"),
+    ...git("-C", root, "ls-files", "--others", "--exclude-standard").split("\n"),
+].filter(Boolean);
+const fileNames = new Set(files.map((f) => basename(f)));
 const problems = [];
-const counts = { paths: 0, commands: 0, specs: 0 };
+const counts = { paths: 0, commands: 0, settings: 0, specs: 0 };
 
 // `src/{a,b}/x.ts` -> ["src/a/x.ts", "src/b/x.ts"]
 function expandBraces(s) {
@@ -41,9 +49,8 @@ function isIgnored(p) {
 function pathExists(p) {
     const clean = p.replace(/\/$/, "");
     if (clean.includes("*")) {
-        const dir = clean.slice(0, clean.indexOf("*")).replace(/[^/]*$/, "");
         const re = new RegExp("^" + clean.replace(/[.]/g, "\\.").replace(/\*/g, "[^/]*") + "$");
-        return tracked.some((f) => re.test(f)) || (dir !== "" && existsSync(join(root, dir)));
+        return files.some((f) => re.test(f));
     }
     return existsSync(join(root, clean));
 }
@@ -73,13 +80,18 @@ lines.forEach((line, i) => {
         // slash commands (/x), placeholders (…, NNNN) and git-ignored output.
         for (let token of span.split(/\s+/)) {
             token = token.replace(/[,;:)]+$/, "");
+            // Setting ids like vertexAiChat.x; other dotted names (Logger.log) are not checked.
+            if (/^[\w-]+\.[\w-]+$/.test(token) && settingPrefixes.has(token.split(".")[0])) {
+                counts.settings++;
+                if (!settings.has(token)) problems.push(`${at}: setting ${token} not declared in package.json`);
+                continue;
+            }
             const looksLikePath = /^[\w.{},*/-]+$/.test(token) && (token.includes("/") || /\.(ts|js|mjs|cjs|json|md)$/.test(token));
             if (!looksLikePath || token.startsWith("/") || token.includes("…") || /NNNN/.test(token)) continue;
-            if (/^[\w-]+\.[\w-]+$/.test(token) && !/\.(ts|js|mjs|cjs|json|md)$/.test(token)) continue; // setting ids like vertexAiChat.x
             for (const p of expandBraces(token)) {
                 counts.paths++;
                 if (!p.includes("/")) {
-                    if (!trackedNames.has(p) && !existsSync(join(root, p))) problems.push(`${at}: no tracked file named ${p}`);
+                    if (!fileNames.has(p) && !existsSync(join(root, p))) problems.push(`${at}: no tracked file named ${p}`);
                 } else if (!pathExists(p) && !isIgnored(p)) {
                     problems.push(`${at}: path ${p} does not exist`);
                 }
@@ -105,5 +117,5 @@ lines.forEach((line, i) => {
 });
 
 for (const p of problems) console.log(p);
-console.log(`${problems.length ? "FAIL" : "OK"}: ${counts.paths} paths, ${counts.commands} commands, ${counts.specs} spec citations, ${lines.length} lines`);
+console.log(`${problems.length ? "FAIL" : "OK"}: ${counts.paths} paths, ${counts.commands} commands, ${counts.settings} settings, ${counts.specs} spec citations, ${lines.length} lines`);
 process.exit(problems.length ? 1 : 0);
