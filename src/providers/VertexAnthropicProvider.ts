@@ -5,7 +5,7 @@ import { Logger } from "../utils/Logger";
 import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryableError } from "../utils/discovery";
 import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
-import { ClaudeThinkingReplayCache, claudeEffortConfig } from "./ClaudeThinking";
+import { ClaudeThinkingReplayCache, claudeEffortConfig } from "./anthropic/ClaudeThinking";
 import { mapClaudeMessages, mapClaudeTools, logClaudeMessages } from "./anthropic/ClaudeMessages";
 import { restoreClaudeThinking, applyClaudeCacheControl } from "./anthropic/ClaudeRequestContext";
 import { processClaudeStream } from "./anthropic/ClaudeStream";
