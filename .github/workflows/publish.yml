@@ -40,6 +40,13 @@ jobs:
             - name: Compile Extension
               run: npm run compile
 
+            # Never publish a build whose tests fail.
+            - name: Run Tests
+              run: npm test
+
+            - name: Lint Extension
+              run: npm run lint
+
             - name: Install Marketplace Publisher
               run: npm install --no-save --package-lock=false @vscode/vsce@4.0.0
 
