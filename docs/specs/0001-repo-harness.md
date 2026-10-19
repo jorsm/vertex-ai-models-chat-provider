@@ -2,7 +2,7 @@
 id: "0001"
 title: Repo harness
 description: Specs, PR workflow, agent instructions, behavior gate, docs reset and the transport parity suite that every later change relies on.
-status: draft
+status: approved
 supersedes: none
 code:
     - AGENTS.md
@@ -46,17 +46,18 @@ Evidence from the Step 1 analysis (18 Oct 2026):
 
 ## Decisions this spec builds on
 
-| Decision                                                                       | Consequence for the harness                                                             |
-| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| Plans are tracked as specs in the repo                                         | `docs/specs/` is the only place for plans, designs and decisions                        |
-| Work happens through PRs                                                       | Every change, including specs, reaches `develop` through a PR                           |
-| Discovery differs by design (the proxy enforces which models each person sees) | Declared divergence, excluded from parity checks                                        |
-| Auth differs by design for now (open to redesign)                              | Declared divergence, excluded from parity checks until a spec changes it                |
-| All other direct/proxy differences are candidates to fix                       | Parity checks treat them as failures to track, not as accepted behavior                 |
-| The 30-minute `withRetry` budget is the intended retry behavior                | Docs describing a 2-retry, 60-second budget are stale                                   |
-| Agents in use: Codex, VS Code chat with this extension, Claude Code            | One root `AGENTS.md`, no `CLAUDE.md`, no nested `AGENTS.md`                             |
-| Old docs will be trashed and restructured; the repo has a wiki                 | User-facing guides move to the wiki; the repo keeps only what agents and reviewers need |
-| Specs borrow OKF conventions, not OKF compliance                               | Frontmatter + index, no OKF version field, no OKF skill                                 |
+| Decision                                                                       | Consequence for the harness                                                                                                                                                                       |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Plans are tracked as specs in the repo                                         | `docs/specs/` is the only place for plans, designs and decisions                                                                                                                                  |
+| Work happens through PRs                                                       | Every change, including specs, reaches `develop` through a PR                                                                                                                                     |
+| Discovery differs by design (the proxy enforces which models each person sees) | Declared divergence, excluded from parity checks                                                                                                                                                  |
+| Auth differs by design for now (open to redesign)                              | Declared divergence, excluded from parity checks until a spec changes it                                                                                                                          |
+| All other direct/proxy differences are candidates to fix                       | Parity checks treat them as failures to track, not as accepted behavior                                                                                                                           |
+| The 30-minute `withRetry` budget is the intended retry behavior                | Docs describing a 2-retry, 60-second budget are stale                                                                                                                                             |
+| Main agent is Claude Code; Codex and VS Code Copilot chat are supported        | One root `AGENTS.md` that all three read, no `CLAUDE.md`, no nested `AGENTS.md`. Claude Code-only features (skills, hooks) are conveniences; the gate every agent meets is CI and `npm run check` |
+| Old docs are deleted; the code documents itself; the repo has a wiki           | User-facing guides go to the wiki. Design decisions live in specs; what the code cannot say goes in comments next to it                                                                           |
+| The owner works alone, through agents, and reviews every PR                    | Merging needs a PR and green CI, not an approving review; the rules apply to admins too                                                                                                           |
+| Specs borrow OKF conventions, not OKF compliance                               | Frontmatter + index, no OKF version field, no OKF skill                                                                                                                                           |
 
 ## Phase 1 — Setup
 
@@ -83,8 +84,9 @@ Frontmatter fields, all required:
 Rules:
 
 - A change needs a spec when it alters user-visible behavior, a provider or transport, the proxy interface, auth, the catalog format, or the harness itself. Typo fixes, dependency bumps and internal renames don't.
-- A spec reaches `approved` through its own PR, merged before implementation starts. Small specs may be approved in the same PR as the implementation if the reviewer agrees.
-- The implementing PR sets `status: implemented` and updates `index.md`.
+- A spec reaches `approved` through its own PR, merged before implementation starts. The spec PR sets `status: approved` once the reviewer has no more changes; merging it is the approval. Small specs may be approved in the same PR as the implementation if the reviewer agrees.
+- The PR that completes the last deliverable sets `status: implemented`.
+- Every PR that changes a spec's `status` updates the same row in `index.md`.
 - Specs are never deleted. A replaced spec gets `status: superseded`, and the new one names it in `supersedes`.
 - A spec that changes during implementation is updated in the same PR, with the change called out in the PR description. An agent never silently redefines acceptance checks to match what it built.
 
@@ -121,38 +123,42 @@ One file at the repo root, at most 150 lines, read by Codex, VS Code chat (`chat
     - Does this touch a declared divergence or a transport? If yes, which, and how parity is checked
     - Docs: updated / not needed, including whether `AGENTS.md` was checked against the change
     - Out of scope: anything noticed but deliberately not changed
-- **Review order:** the author's agent runs `/code-review` and `/simplify` (or the equivalent in Codex) on the branch before requesting review, and puts the resulting changes in separate commits. It then runs the `align-agents-md` project skill (`.claude/skills/align-agents-md/SKILL.md`; other tools follow the file directly), which updates `AGENTS.md` for whatever the branch made false, so `develop` never carries a stale `AGENTS.md`. Then a human reviews; the reviewer's approval is the gate, nothing is enforced in CI.
+- **Review order:** the author's agent runs `/code-review` and `/simplify` (or the equivalent in Codex) on the branch before requesting review, and puts the resulting changes in separate commits. It then runs the `align-agents-md` project skill (`.claude/skills/align-agents-md/SKILL.md`; other tools follow the file directly), which updates `AGENTS.md` for whatever the branch made false, so `develop` never carries a stale `AGENTS.md`. Then the owner reviews and merges. Branch protection makes the D4 CI check the only enforced gate; no approving review is required, because the owner is the only reviewer and cannot approve their own PRs.
 - **Merging:** PRs merge into `develop` only. `main` receives only release merges from `develop`.
-- **Manual step for the repo owner:** in GitHub settings, protect `develop` and `main`: require a PR, one approving review, and the CI check from D4 to pass.
+- **Branch protection** on `develop` and `main` (set 20 Oct 2026): a PR is required, the `build` check from D4 must pass, zero approving reviews, enforced for admins, no force pushes or deletions.
 
-**Acceptance:** the template exists, and the next PR after this spec uses it. Branch protection is enabled on both branches (manual, confirmed by the owner).
+**Acceptance:** the template exists, and the next PR after this spec uses it. Branch protection is enabled on both branches.
 
 ### D4. Behavior gate
 
 - `ci.yml`: add `npm test` after `npm run compile`, on pushes and PRs to `develop` and `main`.
-- `publish.yml`: add `npm test` before packaging and publishing.
+- `publish.yml`: add `npm test` and `npm run lint` before packaging and publishing.
 - Keep the Husky `pre-push` hook (`npm run check`) as the local gate.
-- Claude Code only: a `Stop` hook in `.claude/settings.json` that runs `npm run check` and reports failures back to the agent before it finishes. Codex and VS Code chat rely on CI and the pre-push hook.
+- Claude Code only: a `Stop` hook in `.claude/settings.json` that runs `npm run check` and reports failures back to the agent before it finishes. Codex and VS Code Copilot chat rely on CI and the pre-push hook.
 
 **Acceptance:** a PR that breaks one test fails CI. A tag push with a failing test does not publish.
 
 ### D5. Docs reset
 
-The repo keeps only what agents and reviewers need. User-facing guides move to the wiki.
+The repo keeps only what agents and reviewers need. User-facing guides go to the wiki; the code documents itself, and specs hold the decisions.
 
-| Keep in the repo           | Notes                                                                                                                                                                                                                                     |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `README.md`                | Rendered on the Marketplace listing, so it stays user-facing: what it does, prerequisites, quick start, link to the wiki. Move internals (discovery, effort, dev tooling) out                                                             |
-| `CHANGELOG.md`             | Unchanged                                                                                                                                                                                                                                 |
-| `AGENTS.md`, `docs/specs/` | New                                                                                                                                                                                                                                       |
-| `docs/proxy-interface.md`  | The client side of the proxy interface only (routes, request and response shapes, status codes, retry behavior), extracted from `docs/proxy.md` lines 121-353 and corrected to the current 30-minute retry behavior. Basis for stream (c) |
-| `test/host/README.md`      | Accurate; keep                                                                                                                                                                                                                            |
+| Keep in the repo           | Notes                                                                                                                                                                         |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `README.md`                | Rendered on the Marketplace listing, so it stays user-facing: what it does, prerequisites, quick start, link to the wiki. Move internals (discovery, effort, dev tooling) out |
+| `CHANGELOG.md`             | Unchanged                                                                                                                                                                     |
+| `AGENTS.md`, `docs/specs/` | New                                                                                                                                                                           |
+| `test/host/README.md`      | Accurate; keep                                                                                                                                                                |
 
-Everything else under `docs/`, plus `TODO.MD` and `vsc-extension-quickstart.md`, is deleted from the repo. Before deleting, the owner decides which parts move to the wiki (likely: usage and billing, provider setup, thinking effort for users). Two source comments point at `docs/providers-follow-up.md` (`ClaudeStream.ts:63`, `ClaudeMessages.ts:110`); they are updated to point at spec 0002.
+Everything else under `docs/`, plus `TODO.MD` and `vsc-extension-quickstart.md`, is deleted. Before deleting:
 
-Docs rule for `AGENTS.md`: a PR that changes transport, retry, auth, labels or the proxy interface updates `docs/proxy-interface.md` or the governing spec in the same PR.
+- The owner moves what users need to the wiki (likely: usage and billing, provider setup, thinking effort).
+- Knowledge that is still true, not obvious from the code, and needed to change it safely (why a retry budget, why a signature is replayed, why labels go in a header) moves into a short comment next to the code it explains, or into the governing spec. Nothing else is carried over; git history keeps the rest.
+- The client side of the proxy interface (routes, shapes, status codes, retry behavior) is not kept as a doc. It becomes part of the stream (c) spec when that is written; until then the code in `src/ProxyGateway.ts` and `src/auth/ProxyAuth.ts` is the reference.
+- Source comments that point at deleted files (for example `ClaudeStream.ts` and `ClaudeMessages.ts` point at `docs/providers-follow-up.md`) are updated to point at spec 0002 or removed.
 
-**Acceptance:** `docs/` contains only `specs/` and `proxy-interface.md`. No source comment links to a deleted file. The README still renders correctly on the Marketplace (check the packaged VSIX).
+Until this lands, `AGENTS.md` tells agents not to rely on files under `docs/` outside `docs/specs/`.
+
+**Acceptance:** `docs/` contains only `specs/`. No source comment links to a deleted file. The README still renders correctly on the Marketplace (check the packaged VSIX).
 
 ### D6. Test rules
 
@@ -189,31 +195,29 @@ The first piece of real build work. It turns "direct and proxy behave differentl
 
 ## Rollout
 
-| PR     | Content                                                                                  | Depends on |
-| ------ | ---------------------------------------------------------------------------------------- | ---------- |
-| 1      | `spec/0001-0002`: this spec and spec 0002, plus `docs/specs/index.md` and `_template.md` | none       |
-| 2      | `AGENTS.md` and the PR template (D2, D3, D6)                                             | 1          |
-| 3      | Behavior gate: CI and publish run tests, optional Claude Code Stop hook (D4)             | 1          |
-| 4      | Docs reset (D5), after the owner has moved chosen content to the wiki                    | 2          |
-| 5      | Parity suite (D7)                                                                        | 3          |
-| 6      | Recorded fixtures (D8)                                                                   | 5          |
-| Manual | Branch protection on `develop` and `main`                                                | 3          |
+| PR     | Content                                                                                  | Depends on | Status       |
+| ------ | ---------------------------------------------------------------------------------------- | ---------- | ------------ |
+| 1      | `spec/0001-0002`: this spec and spec 0002, plus `docs/specs/index.md` and `_template.md` | none       | merged (#18) |
+| 2      | `AGENTS.md` and the PR template (D2, D3, D6)                                             | 1          | merged (#19) |
+| 3      | Behavior gate: CI and publish run tests, Claude Code Stop hook (D4)                      | 1          | merged (#20) |
+| 4      | Docs reset (D5), after the owner has moved chosen content to the wiki                    | 2          |              |
+| 5      | Parity suite (D7)                                                                        | 3          |              |
+| 6      | Recorded fixtures (D8)                                                                   | 5          |              |
+| Manual | Branch protection on `develop` and `main`                                                | 3          | done         |
 
-PRs 2 and 3 can be done in parallel. Each PR uses the template from PR 2 once it exists.
-
-`AGENTS.md` and the PR template describe only what exists on `develop`, never work still to come. Each later PR adds its own rules to them when it lands: PR 4 adds `docs/proxy-interface.md` to the docs rule, the allowed-Markdown list and the template's Docs checklist; PR 5 points the test rules at the parity suite as the direct-transport example.
+`AGENTS.md` and the PR template describe only what exists on `develop`, never work still to come. Each later PR adds its own rules to them when it lands: PR 4 removes the warning about outdated docs; PR 5 points the test rules at the parity suite as the direct-transport example.
 
 ## Acceptance for the whole spec
 
-- [ ] A PR that breaks a test cannot merge into `develop` or publish to the Marketplace.
+- [x] A PR that breaks a test cannot merge into `develop` or publish to the Marketplace.
 - [ ] A fresh agent session finds the map, the commands, the declared divergences and the governing specs from `AGENTS.md` alone.
 - [ ] Every unintended direct/proxy divergence is visible as a passing or `todo` parity test.
-- [ ] `docs/` holds only specs and the proxy interface; no topic is documented twice.
-- [ ] Spec 0002 can be worked through one item per PR, each closing a `todo` in the parity suite where applicable.
+- [ ] `docs/` holds only specs; no topic is documented twice.
+- [ ] Spec 0002 can be worked through one item per PR (or a few items that touch the same files), each closing a `todo` in the parity suite where applicable.
 
 ## Open questions
 
-- Which parts of the deleted docs go to the wiki, and who moves them?
-- Should Nicola's approval be the required review for your PRs, and yours for his?
-- Is the Claude Code `Stop` hook wanted, given that the main agents are Codex and VS Code chat?
+- Which parts of the deleted docs go to the wiki? The owner moves them before PR 4.
 - Is a billable project available for running `scripts/record-fixtures.cjs` once per vendor?
+
+Resolved on 20 Oct 2026: no required second reviewer (the owner works alone; see D3); the Claude Code `Stop` hook is wanted, since Claude Code is the main agent.

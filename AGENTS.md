@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Instructions for coding agents (Codex, VS Code chat, Claude Code) and for humans reviewing their work. Keep this file under 150 lines; put plans and designs in `docs/specs/`, not here.
+Instructions for coding agents (Claude Code first; Codex and VS Code Copilot chat supported) and for humans reviewing their work. Keep this file under 150 lines; put plans and designs in `docs/specs/`, not here.
 
 ## What this is
 
@@ -15,7 +15,7 @@ A VS Code extension ("Google Agent Platform for Copilot Chat") that registers on
 2. If the change needs a spec and none covers it (see spec 0001, D1), write the spec first, from `docs/specs/_template.md`.
 3. Branch from `develop`. One concern per branch and PR.
 
-Don't create new Markdown outside `docs/specs/`, `.claude/skills/`, `AGENTS.md`, `README.md` and `CHANGELOG.md`.
+Don't create new Markdown outside `docs/specs/`, `.claude/skills/`, `AGENTS.md`, `README.md` and `CHANGELOG.md`. Files under `docs/` outside `docs/specs/` are outdated and will be deleted (spec 0001 D5): don't rely on them; the code and the specs are the reference.
 
 ## Map
 
@@ -97,4 +97,5 @@ A change to transport, retry, auth or error behavior must either work the same o
 - PRs target `develop`. `main` only receives release merges from `develop`. Never push to `develop` or `main` directly.
 - Don't bundle unrelated changes (catalog edits, version bumps, refactors) into a PR about something else.
 - A PR that changes transport, retry, auth, labels or the proxy interface updates the governing spec in the same PR.
-- If you change the behavior a spec describes, update the spec in the same PR and say so in the description. Set `status: implemented` and update `docs/specs/index.md` when a spec is complete.
+- If you change the behavior a spec describes, update the spec in the same PR and say so in the description.
+- Spec status: a spec PR sets `status: approved` once review is done (merging it is the approval); the PR that completes a spec's last deliverable sets `status: implemented`. Update the spec's row in `docs/specs/index.md` in the same PR.
