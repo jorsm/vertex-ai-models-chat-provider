@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Deterministic checks for AGENTS.md: every path it names exists, every npm
-// command is a package.json script, every named setting is declared in
-// contributes.configuration, every cited spec and spec item exists, and the
+// command is a package.json script, every named setting or command id is
+// declared in contributes, every cited spec and spec item exists, and the
 // file stays within 150 lines. Prints one line per problem; exits 1 if any.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -13,16 +13,20 @@ const root = git("rev-parse", "--show-toplevel");
 const text = readFileSync(join(root, "AGENTS.md"), "utf8");
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const scripts = pkg.scripts ?? {};
-const settings = new Set([pkg.contributes?.configuration ?? []].flat().flatMap((c) => Object.keys(c.properties ?? {})));
-const settingPrefixes = new Set([...settings].map((s) => s.split(".")[0]));
-// Tracked plus untracked-but-not-ignored, so paths a branch adds before its first commit count.
+const contributedIds = new Set([
+    ...[pkg.contributes?.configuration ?? []].flat().flatMap((c) => Object.keys(c.properties ?? {})),
+    ...(pkg.contributes?.commands ?? []).map((c) => c.command),
+]);
+const idPrefixes = new Set([...contributedIds].map((id) => id.split(".")[0]));
+// Tracked plus untracked-but-not-ignored, so paths a branch adds before its first commit
+// count; files deleted or moved but not yet staged don't.
 const files = [
     ...git("-C", root, "ls-files").split("\n"),
     ...git("-C", root, "ls-files", "--others", "--exclude-standard").split("\n"),
-].filter(Boolean);
+].filter((f) => f && existsSync(join(root, f)));
 const fileNames = new Set(files.map((f) => basename(f)));
 const problems = [];
-const counts = { paths: 0, commands: 0, settings: 0, specs: 0 };
+const counts = { paths: 0, commands: 0, ids: 0, specs: 0 };
 
 // `src/{a,b}/x.ts` -> ["src/a/x.ts", "src/b/x.ts"]
 function expandBraces(s) {
@@ -49,7 +53,13 @@ function isIgnored(p) {
 function pathExists(p) {
     const clean = p.replace(/\/$/, "");
     if (clean.includes("*")) {
-        const re = new RegExp("^" + clean.replace(/[.]/g, "\\.").replace(/\*/g, "[^/]*") + "$");
+        // `**/` spans zero or more directories; `*` stays within one segment.
+        const pattern = clean
+            .replace(/[.]/g, "\\.")
+            .replace(/\*\*\//g, "\0")
+            .replace(/\*/g, "[^/]*")
+            .replace(/\0/g, "(?:.*/)?");
+        const re = new RegExp("^" + pattern + "$");
         return files.some((f) => re.test(f));
     }
     return existsSync(join(root, clean));
@@ -80,10 +90,10 @@ lines.forEach((line, i) => {
         // slash commands (/x), placeholders (…, NNNN) and git-ignored output.
         for (let token of span.split(/\s+/)) {
             token = token.replace(/[,;:)]+$/, "");
-            // Setting ids like vertexAiChat.x; other dotted names (Logger.log) are not checked.
-            if (/^[\w-]+\.[\w-]+$/.test(token) && settingPrefixes.has(token.split(".")[0])) {
-                counts.settings++;
-                if (!settings.has(token)) problems.push(`${at}: setting ${token} not declared in package.json`);
+            // Setting and command ids like vertexAiChat.x; other dotted names (Logger.log) are not checked.
+            if (/^[\w-]+(\.[\w-]+)+$/.test(token) && idPrefixes.has(token.split(".")[0])) {
+                counts.ids++;
+                if (!contributedIds.has(token)) problems.push(`${at}: ${token} is not a setting or command declared in package.json`);
                 continue;
             }
             const looksLikePath = /^[\w.{},*/-]+$/.test(token) && (token.includes("/") || /\.(ts|js|mjs|cjs|json|md)$/.test(token));
@@ -117,5 +127,5 @@ lines.forEach((line, i) => {
 });
 
 for (const p of problems) console.log(p);
-console.log(`${problems.length ? "FAIL" : "OK"}: ${counts.paths} paths, ${counts.commands} commands, ${counts.settings} settings, ${counts.specs} spec citations, ${lines.length} lines`);
+console.log(`${problems.length ? "FAIL" : "OK"}: ${counts.paths} paths, ${counts.commands} commands, ${counts.ids} settings/command ids, ${counts.specs} spec citations, ${lines.length} lines`);
 process.exit(problems.length ? 1 : 0);
