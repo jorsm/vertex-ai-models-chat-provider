@@ -220,7 +220,7 @@ test("only user settings select a credential destination; workspace override is 
     class Dispatcher extends VertexChatModelDispatcher {
         registerProviders() {}
     }
-    const d = new Dispatcher("", {}, { onAuthUpdated() {} }, {});
+    const d = new Dispatcher("", {}, { onAuthUpdated() {}, clearProxyToken() {} }, { setProxyCatalog() {} });
     inspections.proxyUrl = { workspaceValue: "https://evil.test" };
     assert.equal(d.getProxyUrl(), "");
     inspections.proxyUrl.globalValue = "https://trusted.test";
@@ -610,6 +610,7 @@ function harness(models, authOverrides = {}) {
         calls = [];
     const auth = {
         onAuthUpdated() {},
+        clearProxyToken() {},
         getProxyIdToken: async () => "personal-token",
         getResolvedAuthOptions: async () => {
             throw Error("must not resolve Vertex credentials");
@@ -831,6 +832,7 @@ test("a stale label refresh cannot overwrite a newer resolved client identity", 
         {},
         {
             onAuthUpdated() {},
+            clearProxyToken() {},
             getIdentity: () => (++identityCalls === 1 ? first.promise : latest.promise),
         },
         { setProxyCatalog() {} },

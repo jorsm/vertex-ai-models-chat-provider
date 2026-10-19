@@ -99,7 +99,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         this.usageTracker = usageTracker;
         this.authManager = authManager;
         this.catalogResolver = catalogResolver;
-        this.catalogResolver.setProxyCatalog?.(this.getProxyUrl() ? { candidateModels: [], regionPriority: [] } : undefined);
+        this.catalogResolver.setProxyCatalog(this.getProxyUrl() ? { candidateModels: [], regionPriority: [] } : undefined);
         this.registerProviders();
         this._labelsPromise = this.updateLabels();
 
@@ -215,9 +215,9 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         this.gateway = undefined;
         this.directDiscoveryController?.abort();
         this.directDiscoveryController = undefined;
-        this.authManager.clearProxyToken?.();
+        this.authManager.clearProxyToken();
         this._discoveryPromise = null;
-        this.catalogResolver.setProxyCatalog?.(this.getProxyUrl() ? { candidateModels: [], regionPriority: [] } : undefined);
+        this.catalogResolver.setProxyCatalog(this.getProxyUrl() ? { candidateModels: [], regionPriority: [] } : undefined);
         this.clearModels("reset");
         this.discoveryDone = false;
     }
@@ -280,7 +280,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
                 this.availableModels = catalog.candidateModels;
                 this.catalogRevision++;
                 this.currentEffortCatalog();
-                this.catalogResolver.setProxyCatalog?.(catalog);
+                this.catalogResolver.setProxyCatalog(catalog);
                 this.discoveryDone = true;
                 this._onDidChange.fire();
                 const elapsedMs = Date.now() - startedAt;
@@ -461,7 +461,7 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
         this.availableModels = [];
         this.catalogRevision++;
         if (this.getProxyUrl()) {
-            this.catalogResolver.setProxyCatalog?.({ candidateModels: [], regionPriority: [] });
+            this.catalogResolver.setProxyCatalog({ candidateModels: [], regionPriority: [] });
         }
         this.discoveryDone = true;
         this._onDidChange.fire();

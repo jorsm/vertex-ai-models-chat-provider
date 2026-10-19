@@ -74,8 +74,8 @@ function harness(models, regions = ["global"]) {
     class Dispatcher extends VertexChatModelDispatcher {
         registerProviders() {}
     }
-    const catalog = { getEffectiveCatalog: async () => ({ candidateModels: models, regionPriority: regions }) };
-    const auth = { onAuthUpdated() {}, getResolvedAuthOptions: async () => undefined };
+    const catalog = { setProxyCatalog() {}, getEffectiveCatalog: async () => ({ candidateModels: models, regionPriority: regions }) };
+    const auth = { onAuthUpdated() {}, clearProxyToken() {}, getResolvedAuthOptions: async () => undefined };
     const dispatcher = new Dispatcher("test-project", {}, auth, catalog);
     dispatcher.discoveryStartDelayMs = () => 0;
     return {

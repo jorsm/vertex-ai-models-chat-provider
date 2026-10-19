@@ -83,7 +83,12 @@ function harness(catalogModels = models) {
     }
     const records = [],
         requests = [];
-    const d = new D("test-project", { recordUsage: async (...args) => records.push(args) }, { onAuthUpdated() {}, getResolvedAuthOptions: async () => undefined }, { getEffectiveCatalog: async () => ({ candidateModels: catalogModels, regionPriority: ["global"] }) });
+    const d = new D(
+        "test-project",
+        { recordUsage: async (...args) => records.push(args) },
+        { onAuthUpdated() {}, clearProxyToken() {}, getResolvedAuthOptions: async () => undefined },
+        { setProxyCatalog() {}, getEffectiveCatalog: async () => ({ candidateModels: catalogModels, regionPriority: ["global"] }) },
+    );
     d.availableModels = catalogModels;
     d.discoveryDone = true;
     for (const vendor of [
