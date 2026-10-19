@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Removed
 
-- Claude Haiku 4.5 from the bundled model catalog; Claude Haiku 5.5 remains. Custom `models.json` catalogs that list it keep working.
+- Claude Haiku 4.5 from the bundled model catalog. If `vertexAiChat.commitMessageModel` is set to `claude-haiku-4-5`, commit-message generation now reports the model as unavailable: choose another model, such as Claude Haiku 5.5, or add Haiku 4.5 to a custom `models.json` catalog.
 
 ## [0.7.12] — 2026-10-14 (Pre-release)
 
