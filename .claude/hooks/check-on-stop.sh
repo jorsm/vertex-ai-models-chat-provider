@@ -11,7 +11,11 @@ if printf '%s' "$input" | grep -q '"stop_hook_active"[[:space:]]*:[[:space:]]*tr
     exit 0
 fi
 
-cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
+# Check the tree the session works in. In a worktree session that is the
+# worktree (the input's `cwd`), not CLAUDE_PROJECT_DIR, the main checkout.
+cwd=$(printf '%s' "$input" | node -e 'let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => { try { process.stdout.write(JSON.parse(s).cwd || ""); } catch {} });')
+root=$(git -C "${cwd:-${CLAUDE_PROJECT_DIR:-.}}" rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$root" || exit 0
 
 # Nothing edited and nothing unpushed: a conversation-only turn, skip the check.
 if [ -z "$(git status --porcelain)" ] && [ -z "$(git log --oneline '@{u}..HEAD' 2>/dev/null)" ]; then
