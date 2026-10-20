@@ -1,6 +1,6 @@
 ---
 name: align-agents-md
-description: Keep AGENTS.md true for the code a branch will merge. Checks the AGENTS.md statements a branch could affect (paths, commands, settings and defaults, direct/proxy rules, invariants, cited spec items, test and PR rules), fixes the ones it made false with minimal edits, flags changes that break a rule instead, and reports what was checked. Use it before opening or updating any PR in this repo, after /code-review and /simplify, and whenever someone asks whether AGENTS.md is stale, outdated or drifted, or after renaming or moving files, adding npm scripts, changing a setting default, or fixing a known defect. Pass "full" to audit the whole file.
+description: Keep AGENTS.md true for the code a branch will merge. Checks the AGENTS.md statements a branch could affect (paths, commands, settings and defaults, direct/proxy rules, invariants, cited spec items, test and PR rules), fixes the ones it made false with minimal edits, flags changes that break a rule instead, and reports what was checked. Run it as a step of /prepare-pr before opening or updating any PR in this repo, and whenever someone asks whether AGENTS.md is stale, outdated or drifted, or after renaming or moving files, adding npm scripts, changing a setting default, or fixing a known defect. Pass "full" to audit the whole file.
 ---
 
 # Align AGENTS.md with the code
