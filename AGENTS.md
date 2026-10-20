@@ -97,4 +97,4 @@ A change to transport, retry, auth or error behavior must either work the same o
 - Don't bundle unrelated changes (catalog edits, version bumps, refactors) into a PR about something else.
 - A PR that changes transport, retry, auth, labels or the proxy interface updates the governing spec in the same PR.
 - If you change the behavior a spec describes, update the spec in the same PR and say so in the description.
-- Spec status (spec 0001 D1): `draft`, `accepted` (set by the spec PR once review is done; merging it is the approval), `implemented`, `rejected`, `deprecated`, `superseded`. Deliverables and backlog items are checkboxes the implementing PR ticks; `/prepare-pr` has the details.
+- Spec status (spec 0001 D1): `proposed`, `accepted` (set by the spec PR once review is done; merging it is the approval), `implemented`, `rejected`, `deprecated`, `superseded`. Deliverables and backlog items are checkboxes the implementing PR ticks; `/prepare-pr` has the details.

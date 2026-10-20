@@ -41,7 +41,7 @@ For each spec whose `code` paths the branch touches, or that the branch implemen
 - **Deliverable completed:** tick its box (`- [x] D3. …`, or `- [x] Delivered` under a `### D3.` heading). Tick acceptance checks the branch now satisfies.
 - **Status:** if the branch ticks the last deliverable, set `status: implemented`. Statuses and their meaning are in spec 0001 D1. Change the spec's row in `docs/specs/index.md` in the same commit.
 - **Behavior change:** if the branch changes behavior a spec describes, update the spec and call it out in the PR description. Never rewrite acceptance checks to match what was built.
-- **Spec-only PR:** keep `status: draft` until the owner's review has no more changes, then set `accepted` (spec and index) in a last commit before merge.
+- **Spec-only PR:** keep `status: proposed` until the owner's review has no more changes, then set `accepted` (spec and index) in a last commit before merge.
 
 Commit as `docs(specs): …`.
 

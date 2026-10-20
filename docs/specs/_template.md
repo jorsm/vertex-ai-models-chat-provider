@@ -2,7 +2,7 @@
 id: "NNNN"
 title: Short name
 description: One line an agent reads in the index to decide whether to open this file.
-status: draft
+status: proposed
 supersedes: none
 code:
     - src/path/governed/by/this/spec.ts

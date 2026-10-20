@@ -80,14 +80,14 @@ Frontmatter fields, all required:
 | `id`          | Four-digit string, never reused                                                         |
 | `title`       | Short name                                                                              |
 | `description` | One line; what an agent reads in the index to decide whether to open the file           |
-| `status`      | `draft` → `accepted` → `implemented`; or `rejected`, `deprecated`, `superseded`         |
+| `status`      | `proposed` → `accepted` → `implemented`; or `rejected`, `deprecated`, `superseded`      |
 | `supersedes`  | Spec id or `none`                                                                       |
 | `code`        | Paths the spec governs, so an agent editing a file can find the spec that constrains it |
 
 Rules:
 
 - A change needs a spec when it alters user-visible behavior, a provider or transport, the proxy interface, auth, the catalog format, or the harness itself. Typo fixes, dependency bumps and internal renames don't.
-- Status values are [MADR](https://adr.github.io/madr/)'s, with `draft` for its `proposed`, plus `implemented`, because a spec is a plan with deliverables. `draft`: under review. `accepted`: approved, deliverables still open. `implemented`: every deliverable done. `rejected`: turned down in review. `deprecated`: no longer applies, nothing replaces it. `superseded`: replaced by another spec.
+- Status values are [MADR](https://adr.github.io/madr/)'s, plus `implemented`, because a spec is a plan with deliverables. `proposed`: under review. `accepted`: approved, deliverables still open. `implemented`: every deliverable done. `rejected`: turned down in review. `deprecated`: no longer applies, nothing replaces it. `superseded`: replaced by another spec.
 - A spec reaches `accepted` through its own PR, merged before implementation starts. The spec PR sets `status: accepted` once the reviewer has no more changes; merging it is the approval. Small specs may be accepted in the same PR as the implementation if the reviewer agrees.
 - A rejected spec is merged too, with `status: rejected` and a short `## Why rejected` section, so the idea and the reason stay on record. It is never implemented; reviving it takes a new spec that links it.
 - Deliverables and backlog items are task-list items (`- [ ] D1. …`, `- [ ] **B1. …**`), ticked in place so their state is visible where they are read. A deliverable long enough for its own heading keeps the heading and puts `- [ ] Delivered` on the line under it, so links to the heading stay stable.
