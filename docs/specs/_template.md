@@ -36,7 +36,12 @@ Only if the change touches a transport: which behaviors may differ between direc
 
 ## Deliverables
 
-Numbered items (D1, D2, …), each small enough for one PR or one commit.
+Task-list items, each small enough for one PR or one commit, ticked by the PR that completes them:
+
+- [ ] D1. What is delivered
+- [ ] D2. …
+
+A deliverable long enough for its own `### D1. Title` heading puts `- [ ] Delivered` on the line under the heading instead.
 
 ## Acceptance checks
 
@@ -44,4 +49,4 @@ How a reviewer verifies each deliverable: commands to run, tests that must pass,
 
 ## Open questions
 
-Anything still undecided. A spec moves to `approved` only when these are answered or explicitly deferred.
+Anything still undecided. A spec moves to `accepted` only when these are answered or explicitly deferred.
