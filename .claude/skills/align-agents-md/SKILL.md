@@ -1,6 +1,6 @@
 ---
 name: align-agents-md
-description: Keep AGENTS.md true for the code a branch will merge. Checks the AGENTS.md statements a branch could affect (paths, commands, settings and defaults, direct/proxy rules, invariants, cited spec items, test and PR rules), fixes the ones it made false with minimal edits, flags changes that break a rule instead, and reports what was checked. Use it before opening or updating any PR in this repo, after /code-review and /simplify, and whenever someone asks whether AGENTS.md is stale, outdated or drifted, or after renaming or moving files, adding npm scripts, changing a setting default, or fixing a known defect. Pass "full" to audit the whole file.
+description: Keep AGENTS.md true for the code a branch will merge. Checks the AGENTS.md statements a branch could affect (paths, commands, settings and defaults, direct/proxy rules, invariants, cited spec items, test and PR rules), fixes the ones it made false with minimal edits, flags changes that break a rule instead, and reports what was checked. Run it as a step of /prepare-pr before opening or updating any PR in this repo, and whenever someone asks whether AGENTS.md is stale, outdated or drifted, or after renaming or moving files, adding npm scripts, changing a setting default, or fixing a known defect. Pass "full" to audit the whole file.
 ---
 
 # Align AGENTS.md with the code
@@ -49,13 +49,13 @@ Read `AGENTS.md` in full. For each statement, ask which code makes it true and w
 - a test rule, and the test file or helper it points to;
 - a PR rule, and `.github/` and the PR template.
 
-Then the other direction: does the branch add something an agent would get wrong without being told? That covers a new area of code the map should route to, a new command contributors run, or a new invariant or declared divergence (which needs an approved spec). Helper names, implementation details and anything found by listing files don't qualify.
+Then the other direction: does the branch add something an agent would get wrong without being told? That covers a new area of code the map should route to, a new command contributors run, or a new invariant or declared divergence (which needs an accepted spec). Helper names, implementation details and anything found by listing files don't qualify.
 
 ## 4. When code and AGENTS.md disagree, decide which is wrong
 
 - **Legitimate change made a statement stale** (a rename, a new script, a fixed defect): edit `AGENTS.md`.
 - **The change breaks a rule `AGENTS.md` sets** (a new direct/proxy difference, a second retry layer, prompt text in logs, a dropped billing label): the code is wrong. Leave `AGENTS.md` alone and report it as blocking, since editing the file would silently legalize the bug for every later session.
-- **The change deliberately alters a rule** (a divergence row, an invariant, a retry policy): that needs an approved spec. If the branch has one, edit `AGENTS.md` and link it; if not, stop and ask the user.
+- **The change deliberately alters a rule** (a divergence row, an invariant, a retry policy): that needs an accepted spec. If the branch has one, edit `AGENTS.md` and link it; if not, stop and ask the user.
 - **Drift the branch didn't cause:** in branch mode, report it as out of scope; in `full` mode, fix it.
 
 ## 5. Edit

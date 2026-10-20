@@ -32,7 +32,7 @@ Don't create new Markdown outside `docs/specs/`, `.claude/skills/`, `AGENTS.md`,
 - `src/UsageTrackerService.ts`, `src/CostStatusBar.ts`, `src/DashboardWebview.ts`, `media/` — local usage and cost tracking, status bar, dashboard webview
 - `src/commitMessage/` — SCM commit-message generation
 - `test/*.test.js`, `test/fixtures/` — Node test runner suites and their catalog fixtures; suites import compiled `out/*.js` and stub `vscode`
-- `test/host/` — fixtures that run inside a real extension host (see its README)
+- `test/host/` — fixtures that run inside a real extension host, by hand: not run by `npm test` or CI (see its README)
 - `scripts/` — manual tools, including a local proxy extension-host test
 
 ## Commands
@@ -62,7 +62,7 @@ The two transports may differ **only** in these ways:
 
 Everything else (request shape, retries, tool-schema handling, streaming, usage, cancellation, user-visible errors) must behave the same on both transports. Known unintended differences are tracked in spec 0002; don't add new ones. Grok rejecting the proxy is a known gap (spec 0002 B5), not a design.
 
-A change to transport, retry, auth or error behavior must either work the same on both transports, with tests for both, or add a row to this table through an approved spec.
+A change to transport, retry, auth or error behavior must either work the same on both transports, with tests for both, or add a row to this table through an accepted spec.
 
 ## Invariants
 
@@ -90,12 +90,11 @@ A change to transport, retry, auth or error behavior must either work the same o
 ## Pull requests
 
 - Use `.github/pull_request_template.md`. Link the spec, or say why none is needed.
-- Before requesting review, run an agent review on the branch (`/code-review` and `/simplify` in Claude Code, or the equivalent in your tool). Put resulting changes in separate commits.
-- Then run `/align-agents-md` (other tools: follow `.claude/skills/align-agents-md/SKILL.md`) so this file stays true for the code the PR merges.
-- Branches: `spec/NNNN-slug` for spec-only PRs, otherwise `feat/…`, `fix/…`, `chore/…` or `test/…`, always cut from `develop`.
+- Before opening a PR, run `/prepare-pr` (other tools: follow `.claude/skills/prepare-pr/SKILL.md`). It holds the order of checks and reviews, and the spec and `CHANGELOG.md` updates every PR makes.
+- Branches: `spec/NNNN-slug` for spec-only PRs, otherwise `feat/…`, `fix/…`, `chore/…` or `test/…`, always cut from `develop`. Name the spec items a branch implements: `fix/0002-b6-b7-…`. Pick the type as in Conventional Commits: removing a superseded model is `chore`, not `fix`.
 - Commits use Conventional Commits (`feat(scope): …`, `fix: …`, `docs(specs): …`); add a body when the reason isn't obvious.
 - PRs target `develop`. `main` only receives release merges from `develop`. Never push to `develop` or `main` directly.
 - Don't bundle unrelated changes (catalog edits, version bumps, refactors) into a PR about something else.
 - A PR that changes transport, retry, auth, labels or the proxy interface updates the governing spec in the same PR.
 - If you change the behavior a spec describes, update the spec in the same PR and say so in the description.
-- Spec status: a spec PR sets `status: approved` once review is done (merging it is the approval); the PR that completes a spec's last deliverable sets `status: implemented`. Update the spec's row in `docs/specs/index.md` in the same PR.
+- Spec status (spec 0001 D1): `proposed`, `accepted` (set by the spec PR once review is done; merging it is the approval), `implemented`, `rejected`, `deprecated`, `superseded`. Deliverables and backlog items are checkboxes the implementing PR ticks; `/prepare-pr` has the details.

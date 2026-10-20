@@ -2,12 +2,14 @@
 id: "0001"
 title: Repo harness
 description: Specs, PR workflow, agent instructions, behavior gate, docs reset and the transport parity suite that every later change relies on.
-status: approved
+status: accepted
+date: 2026-10-20
 supersedes: none
 code:
     - AGENTS.md
     - docs/specs/
     - .github/
+    - .claude/
     - .husky/
     - package.json
     - test/
@@ -65,10 +67,12 @@ Configuration, instructions and deletion. No production code changes.
 
 ### D1. Specs system
 
+- [x] Delivered
+
 Create:
 
 - `docs/specs/index.md`: one line per spec (`id`, title, status, governed `code` paths, description, link), newest first.
-- `docs/specs/_template.md` with these sections: Goal, Context, Non-goals, Decisions, Behavior and invariants, Declared divergences (only if the change touches transport), Deliverables, Acceptance checks, Open questions.
+- `docs/specs/_template.md` with these sections: Goal, Context, Non-goals, Considered options (only if the spec chooses between alternatives), Decisions, Behavior and invariants, Declared divergences (only if the change touches transport), Deliverables, Acceptance checks, Open questions.
 
 Frontmatter fields, all required:
 
@@ -77,16 +81,21 @@ Frontmatter fields, all required:
 | `id`          | Four-digit string, never reused                                                         |
 | `title`       | Short name                                                                              |
 | `description` | One line; what an agent reads in the index to decide whether to open the file           |
-| `status`      | `draft` → `approved` → `implemented`, or `superseded`                                   |
+| `status`      | `proposed` → `accepted` → `implemented`; or `rejected`, `deprecated`, `superseded`      |
+| `date`        | Date of the last status change, `YYYY-MM-DD`                                            |
 | `supersedes`  | Spec id or `none`                                                                       |
 | `code`        | Paths the spec governs, so an agent editing a file can find the spec that constrains it |
 
 Rules:
 
 - A change needs a spec when it alters user-visible behavior, a provider or transport, the proxy interface, auth, the catalog format, or the harness itself. Typo fixes, dependency bumps and internal renames don't.
-- A spec reaches `approved` through its own PR, merged before implementation starts. The spec PR sets `status: approved` once the reviewer has no more changes; merging it is the approval. Small specs may be approved in the same PR as the implementation if the reviewer agrees.
-- The PR that completes the last deliverable sets `status: implemented`.
-- Every PR that changes a spec's `status` updates the same row in `index.md`.
+- Status values are [MADR](https://adr.github.io/madr/)'s, plus `implemented`, because a spec is a plan with deliverables. `proposed`: under review. `accepted`: approved, deliverables still open. `implemented`: every deliverable done. `rejected`: turned down in review. `deprecated`: no longer applies, nothing replaces it. `superseded`: replaced by another spec.
+- A spec reaches `accepted` through its own PR, merged before implementation starts. The spec PR sets `status: accepted` once the reviewer has no more changes; merging it is the approval. Small specs may be accepted in the same PR as the implementation if the reviewer agrees.
+- A rejected spec is merged too, with `status: rejected` and a short `## Why rejected` section, so the idea and the reason stay on record. It is never implemented; reviving it takes a new spec that links it.
+- Deliverables and backlog items are task-list items (`- [ ] D1. …`, `- [ ] **B1. …**`), ticked in place so their state is visible where they are read. A deliverable long enough for its own heading keeps the heading and puts `- [ ] Delivered` on the line under it, so links to the heading stay stable.
+- The PR that completes a deliverable or fixes a backlog item ticks its box. A backlog item also gets a `Fixed:` line saying what changed. No PR number: a PR cannot cite its own number, and `git log` finds it.
+- The PR that ticks the last deliverable sets `status: implemented`.
+- Every PR that changes a spec's `status` also sets its `date` and updates the same row in `index.md`.
 - Specs are never deleted. A replaced spec gets `status: superseded`, and the new one names it in `supersedes`.
 - A spec that changes during implementation is updated in the same PR, with the change called out in the PR description. An agent never silently redefines acceptance checks to match what it built.
 
@@ -94,12 +103,14 @@ Rules:
 
 ### D2. `AGENTS.md`
 
+- [x] Delivered
+
 One file at the repo root, at most 150 lines, read by Codex, VS Code chat (`chat.useAgentsMdFile`) and Claude Code. It must contain:
 
 1. **What this is:** one paragraph on the extension and its two transports.
 2. **Map:** where providers, transport, auth, catalog, effort, usage and commit-message code live; the three files that change most (`VertexChatModelDispatcher.ts`, `VertexGoogleProvider.ts`, `extension.ts`).
 3. **Commands:** `npm run compile`, `npm test`, `npm run lint`, `npm run check`, `npm run bundle`, and how to run one test file.
-4. **Workflow:** branch from `develop`, read `docs/specs/index.md` first and open the specs whose `code` paths you will touch, one concern per PR, follow the PR template.
+4. **Workflow:** branch from `develop`, read `docs/specs/index.md` first and open the specs whose `code` paths you will touch, one concern per PR, run the `prepare-pr` skill before opening a PR, follow the PR template.
 5. **Declared divergences:** a table of the behaviors where direct and proxy are allowed to differ (discovery, auth) and the statement that everything else must behave the same. Grok rejecting the proxy is listed as a current known gap, not an intended design.
 6. **Invariants:**
     - `vertexAiChat.projectId` is the only source of truth for billing; never fall back to a credential's project (`VertexChatModelDispatcher.ts:313-320`).
@@ -113,23 +124,28 @@ One file at the repo root, at most 150 lines, read by Codex, VS Code chat (`chat
 
 ### D3. PR workflow
 
-- **Branches:** `spec/NNNN-slug` for spec-only PRs, `feat/…`, `fix/…`, `chore/…`, `test/…` otherwise. Always cut from `develop`.
+- [x] Delivered
+
+- **Branches:** `spec/NNNN-slug` for spec-only PRs, `feat/…`, `fix/…`, `chore/…`, `test/…` otherwise. Always cut from `develop`. A branch for spec items names them, e.g. `fix/0002-b6-b7-catch-and-optional-calls`. The type means what it means in Conventional Commits: `fix` only when something was broken (removing a superseded model from the catalog is `chore`).
 - **Commits:** keep the existing Conventional Commits style; a body explains why when the change isn't obvious.
 - **Template** `.github/pull_request_template.md` with:
     - Spec: link, or "none needed" with a one-line reason
     - What changed and why (three lines at most)
     - Details (optional): longer context for reviewers
     - Checks run: which commands, with results
-    - Does this touch a declared divergence or a transport? If yes, which, and how parity is checked
+    - Does this touch a declared divergence or a transport? If yes, which, and how parity is checked. The first option is "no runtime behavior change", for PRs that change only docs, specs, tests, types or lint
     - Docs: updated / not needed, including whether `AGENTS.md` was checked against the change
     - Out of scope: anything noticed but deliberately not changed
-- **Review order:** the author's agent runs `/code-review` and `/simplify` (or the equivalent in Codex) on the branch before requesting review, and puts the resulting changes in separate commits. It then runs the `align-agents-md` project skill (`.claude/skills/align-agents-md/SKILL.md`; other tools follow the file directly), which updates `AGENTS.md` for whatever the branch made false, so `develop` never carries a stale `AGENTS.md`. Then the owner reviews and merges. Branch protection makes the D4 CI check the only enforced gate; no approving review is required, because the owner is the only reviewer and cannot approve their own PRs.
+- **Before review:** the author's agent runs the `prepare-pr` project skill (`.claude/skills/prepare-pr/SKILL.md`; other tools follow the file directly). The skill is the one place that states the order of steps; `AGENTS.md`, the PR template and other skills point to it instead of repeating it. The order: `npm run check`, `/code-review`, `/simplify`, spec and CHANGELOG updates, the `align-agents-md` project skill, then open the PR. `/simplify` may be skipped only when the PR changes no code (docs, specs and skills only), and the PR says so. Review fixes go in separate commits. `align-agents-md` updates `AGENTS.md` for whatever the branch made false, so `develop` never carries a stale `AGENTS.md`. Then the owner reviews and merges. Branch protection makes the D4 CI check the only enforced gate; no approving review is required, because the owner is the only reviewer and cannot approve their own PRs.
+- **CHANGELOG:** a PR that changes what the packaged extension contains or does adds an entry under `## [Unreleased]`, even when users won't notice it. A PR that touches only tests, specs or harness files adds none. `## [Unreleased]` stays in the file, empty after a release.
 - **Merging:** PRs merge into `develop` only. `main` receives only release merges from `develop`.
 - **Branch protection** on `develop` and `main` (set 20 Oct 2026): a PR is required, the `build` check from D4 must pass, zero approving reviews, enforced for admins, no force pushes or deletions.
 
 **Acceptance:** the template exists, and the next PR after this spec uses it. Branch protection is enabled on both branches.
 
 ### D4. Behavior gate
+
+- [x] Delivered
 
 - `ci.yml`: add `npm test` after `npm run compile`, on pushes and PRs to `develop` and `main`.
 - `publish.yml`: add `npm test` and `npm run lint` before packaging and publishing.
@@ -139,6 +155,8 @@ One file at the repo root, at most 150 lines, read by Codex, VS Code chat (`chat
 **Acceptance:** a PR that breaks one test fails CI. A tag push with a failing test does not publish.
 
 ### D5. Docs reset
+
+- [ ] Delivered
 
 The repo keeps only what agents and reviewers need. User-facing guides go to the wiki; the code documents itself, and specs hold the decisions.
 
@@ -162,6 +180,8 @@ Until this lands, `AGENTS.md` tells agents not to rely on files under `docs/` ou
 
 ### D6. Test rules
 
+- [x] Delivered
+
 Written into `AGENTS.md`; existing tests are not rewritten.
 
 - New behavior tests use real SDKs against a fake `fetch` (the pattern in `proxy.test.js:1107-1352`), not recorder providers.
@@ -178,6 +198,8 @@ The first piece of real build work. It turns "direct and proxy behave differentl
 
 ### D7. Parity suite
 
+- [ ] Delivered
+
 - A new test file, `test/transportParity.test.js`, that runs each scenario through both transports for Gemini and Claude. Both use the real SDK; `fetch` is replaced by one fake upstream that serves the same responses to both.
 - **Scenarios:** plain chat; tool call and tool-result continuation; thinking or signed-reasoning replay; usage reporting; cancellation mid-stream; upstream 429 then success; upstream 403; upstream 500 exhausting retries; malformed stream chunk.
 - **Assertions:** what VS Code receives (text parts, tool calls, usage, errors and their user-visible message), and how many upstream requests were made.
@@ -188,6 +210,8 @@ The first piece of real build work. It turns "direct and proxy behave differentl
 
 ### D8. Recorded fixtures
 
+- [ ] Delivered
+
 - A script, `scripts/record-fixtures.cjs`, run manually with real credentials. It captures raw upstream responses for a small set of prompts per vendor (Gemini, Claude, Grok) on the direct transport, and saves them under `test/fixtures/recorded/` with secrets and identifiers stripped.
 - The parity suite and provider tests can replay these instead of hand-written streams.
 
@@ -195,15 +219,15 @@ The first piece of real build work. It turns "direct and proxy behave differentl
 
 ## Rollout
 
-| PR     | Content                                                                                  | Depends on | Status       |
-| ------ | ---------------------------------------------------------------------------------------- | ---------- | ------------ |
-| 1      | `spec/0001-0002`: this spec and spec 0002, plus `docs/specs/index.md` and `_template.md` | none       | merged (#18) |
-| 2      | `AGENTS.md` and the PR template (D2, D3, D6)                                             | 1          | merged (#19) |
-| 3      | Behavior gate: CI and publish run tests, Claude Code Stop hook (D4)                      | 1          | merged (#20) |
-| 4      | Docs reset (D5), after the owner has moved chosen content to the wiki                    | 2          |              |
-| 5      | Parity suite (D7)                                                                        | 3          |              |
-| 6      | Recorded fixtures (D8)                                                                   | 5          |              |
-| Manual | Branch protection on `develop` and `main`                                                | 3          | done         |
+| PR     | Content                                                                                  | Depends on |
+| ------ | ---------------------------------------------------------------------------------------- | ---------- |
+| 1      | `spec/0001-0002`: this spec and spec 0002, plus `docs/specs/index.md` and `_template.md` | none       |
+| 2      | `AGENTS.md` and the PR template (D2, D3, D6)                                             | 1          |
+| 3      | Behavior gate: CI and publish run tests, Claude Code Stop hook (D4)                      | 1          |
+| 4      | Docs reset (D5), after the owner has moved chosen content to the wiki                    | 2          |
+| 5      | Parity suite (D7)                                                                        | 3          |
+| 6      | Recorded fixtures (D8)                                                                   | 5          |
+| Manual | Branch protection on `develop` and `main`                                                | 3          |
 
 `AGENTS.md` and the PR template describe only what exists on `develop`, never work still to come. Each later PR adds its own rules to them when it lands: PR 4 removes the warning about outdated docs; PR 5 points the test rules at the parity suite as the direct-transport example.
 
