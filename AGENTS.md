@@ -91,7 +91,7 @@ A change to transport, retry, auth or error behavior must either work the same o
 
 - Use `.github/pull_request_template.md`. Link the spec, or say why none is needed.
 - Before opening a PR, run `/prepare-pr` (other tools: follow `.claude/skills/prepare-pr/SKILL.md`). It holds the order of checks and reviews, and the spec and `CHANGELOG.md` updates every PR makes.
-- Branches: `spec/NNNN-slug` for spec-only PRs, otherwise `feat/…`, `fix/…`, `chore/…` or `test/…`, always cut from `develop`. Name the spec items a branch implements: `fix/0002-b6-b7-…`. Pick the type as in Conventional Commits: removing a superseded model is `chore`, not `fix`.
+- Branches: `spec/NNNN-slug` for spec-only PRs, otherwise `feat/…`, `fix/…`, `chore/…` or `test/…`, always cut from `develop`. Name the spec items a branch implements: `fix/0002-b6-b7-…`.
 - Commits use Conventional Commits (`feat(scope): …`, `fix: …`, `docs(specs): …`); add a body when the reason isn't obvious.
 - PRs target `develop`. `main` only receives release merges from `develop`. Never push to `develop` or `main` directly.
 - Don't bundle unrelated changes (catalog edits, version bumps, refactors) into a PR about something else.
