@@ -3,6 +3,7 @@ id: "0004"
 title: Test suite audit
 description: Inventory every existing test, decide per suite what to keep, rewrite or delete, then rewrite to the AGENTS.md test rules with shared helpers.
 status: proposed
+date: 2026-10-21
 supersedes: none
 code:
     - test/
