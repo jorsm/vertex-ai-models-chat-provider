@@ -17,7 +17,7 @@ Know what the existing tests actually check, and make every remaining test meet 
 
 ## Context
 
-The suite was written by agents over many sessions, without review against shared rules. The owner does not know what is in it. Spec 0001 deliberately left existing tests alone ("rewriting existing tests" is one of its non-goals); this spec takes that work on.
+The suite grew over many sessions, before the test rules in `AGENTS.md` existed, and nothing records what each suite covers. Spec 0001 deliberately left existing tests alone ("rewriting existing tests" is one of its non-goals); this spec takes that work on.
 
 Facts on `develop`, 21 Oct 2026:
 
