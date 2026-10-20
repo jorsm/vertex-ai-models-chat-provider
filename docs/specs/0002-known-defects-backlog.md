@@ -3,6 +3,7 @@ id: "0002"
 title: Known defects backlog
 description: Unintended direct/proxy divergences and code defects found in the Step 1 analysis, to be fixed one per PR after the 0001 harness exists.
 status: accepted
+date: 2026-10-20
 supersedes: none
 code:
     - src/VertexChatModelDispatcher.ts

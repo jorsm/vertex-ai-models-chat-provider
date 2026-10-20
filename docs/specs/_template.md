@@ -3,6 +3,7 @@ id: "NNNN"
 title: Short name
 description: One line an agent reads in the index to decide whether to open this file.
 status: proposed
+date: YYYY-MM-DD
 supersedes: none
 code:
     - src/path/governed/by/this/spec.ts
@@ -21,6 +22,10 @@ The evidence that makes this necessary: what happens today, with file references
 ## Non-goals
 
 What this spec deliberately does not change, even if it is nearby.
+
+## Considered options
+
+Only if the spec chooses between alternatives: each option with its pros and cons, the chosen one and why (MADR's Considered Options and Decision Outcome). Delete this section otherwise.
 
 ## Decisions
 

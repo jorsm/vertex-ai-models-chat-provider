@@ -3,6 +3,7 @@ id: "0001"
 title: Repo harness
 description: Specs, PR workflow, agent instructions, behavior gate, docs reset and the transport parity suite that every later change relies on.
 status: accepted
+date: 2026-10-20
 supersedes: none
 code:
     - AGENTS.md
@@ -71,7 +72,7 @@ Configuration, instructions and deletion. No production code changes.
 Create:
 
 - `docs/specs/index.md`: one line per spec (`id`, title, status, governed `code` paths, description, link), newest first.
-- `docs/specs/_template.md` with these sections: Goal, Context, Non-goals, Decisions, Behavior and invariants, Declared divergences (only if the change touches transport), Deliverables, Acceptance checks, Open questions.
+- `docs/specs/_template.md` with these sections: Goal, Context, Non-goals, Considered options (only if the spec chooses between alternatives), Decisions, Behavior and invariants, Declared divergences (only if the change touches transport), Deliverables, Acceptance checks, Open questions.
 
 Frontmatter fields, all required:
 
@@ -81,6 +82,7 @@ Frontmatter fields, all required:
 | `title`       | Short name                                                                              |
 | `description` | One line; what an agent reads in the index to decide whether to open the file           |
 | `status`      | `proposed` → `accepted` → `implemented`; or `rejected`, `deprecated`, `superseded`      |
+| `date`        | Date of the last status change, `YYYY-MM-DD`                                            |
 | `supersedes`  | Spec id or `none`                                                                       |
 | `code`        | Paths the spec governs, so an agent editing a file can find the spec that constrains it |
 
@@ -93,7 +95,7 @@ Rules:
 - Deliverables and backlog items are task-list items (`- [ ] D1. …`, `- [ ] **B1. …**`), ticked in place so their state is visible where they are read. A deliverable long enough for its own heading keeps the heading and puts `- [ ] Delivered` on the line under it, so links to the heading stay stable.
 - The PR that completes a deliverable or fixes a backlog item ticks its box. A backlog item also gets a `Fixed:` line saying what changed. No PR number: a PR cannot cite its own number, and `git log` finds it.
 - The PR that ticks the last deliverable sets `status: implemented`.
-- Every PR that changes a spec's `status` updates the same row in `index.md`.
+- Every PR that changes a spec's `status` also sets its `date` and updates the same row in `index.md`.
 - Specs are never deleted. A replaced spec gets `status: superseded`, and the new one names it in `supersedes`.
 - A spec that changes during implementation is updated in the same PR, with the change called out in the PR description. An agent never silently redefines acceptance checks to match what it built.
 
