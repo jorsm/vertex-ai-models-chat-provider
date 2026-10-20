@@ -1,7 +1,7 @@
 ---
 id: "0002"
 title: Known defects backlog
-description: Unintended direct/proxy divergences and code defects found in the Step 1 analysis, to be fixed one per PR after the 0001 harness exists.
+description: Unintended direct/proxy divergences and code defects found in the Step 1 analysis and since, to be fixed one per PR after the 0001 harness exists.
 status: accepted
 date: 2026-10-20
 supersedes: none
@@ -17,7 +17,7 @@ code:
 
 ## Goal
 
-Record the defects found during the Step 1 analysis (18 Oct 2026), so a later session can fix them one at a time, each verified by the harness from spec 0001.
+Record the defects found during the Step 1 analysis (18 Oct 2026) and since, so a later session can fix them one at a time, each verified by the harness from spec 0001.
 
 This spec is a backlog, not a design. Each item states the problem, the evidence and the target behavior. Before fixing an item, re-check its evidence against `develop`: line numbers are from 18 Oct and the code may have moved.
 
@@ -84,9 +84,15 @@ An open item has an empty box. The PR that fixes an item ticks its box and adds 
     - Fixed: entry removed, CHANGELOG entry added. The catalog tests that counted bundled models now derive their counts from the catalog, and the effort test for a model without `effort` uses a custom catalog, since every bundled model now declares effort.
 
 - [ ] **B11. Logs contain prompt text, tool arguments and user identity.**
-    - Evidence: Claude request logging prints the last 300 characters of every text part and a preview of tool results (`providers/anthropic/ClaudeMessages.ts:116-118`). Grok logs tool-call arguments (`providers/grok/GrokStream.ts:155, 159`). Request labels, which can carry the user's email, are logged as JSON (`VertexChatModelDispatcher.ts:158`) and per request by each provider. The gcloud account email is logged on parse failure (`auth/AuthManager.ts:258`).
+    - Evidence: Claude request logging prints the last 300 characters of every text part and a preview of tool results (`providers/anthropic/ClaudeMessages.ts:116-118`). Grok logs tool-call arguments (`providers/grok/GrokStream.ts:155, 159`). Request labels, which can carry the user's email, are logged as JSON (`VertexChatModelDispatcher.ts:158`) and per request by each provider. The gcloud account email is logged on parse failure (`auth/AuthManager.ts:258`). Logged error stacks (`utils/Logger.ts:47`) carry absolute install paths, which include the OS user name.
     - Target: logs carry metadata only (roles, counts, sizes, statuses, ids), as the Gemini diagnostics already do. User identity appears hashed or not at all.
     - Check: a test that runs a request containing a known marker string in text, tool arguments and labels, and asserts the marker never appears in the captured log output.
+
+- [ ] **B12. Gemini rejects replayed tool calls that lack a thought signature.**
+    - Evidence: a user log from 20 Oct 2026 (extension 0.7.12, proxy transport, a Gemini 3 model in agent mode): the request fails with HTTP 400 `INVALID_ARGUMENT`, "Function call is missing a thought_signature in functionCall parts … position 31". The provider logs `NO thought signature found for callId=…` for that call while the cache holds 62 entries, so the cache was not cleared; that one call was never stored. Its call id is a UUID, which is not the local fallback format `<name>_<timestamp>_<random>` (`providers/google/GeminiStream.ts:72`); whether the API issued it is unknown.
+    - Mechanism: a signature is found only by call id in an in-memory map (`VertexGoogleProvider.ts:32`). The map is filled from the signature on the function-call part or on a preceding thought part in the same stream (`GeminiStream.ts:73, 100`), and read back on replay (`providers/google/GeminiMessages.ts:180-189`). A call gets no signature when (a) this provider instance did not produce it: another model earlier in the same chat, a restored chat after a window reload, or a call id rewritten by the host; (b) `initialize()` cleared the map after a configuration change (`VertexGoogleProvider.ts:54`); (c) the stream carried the signature somewhere the parser does not link to the call. Gemini 3 validates signatures for every function call in the current turn and returns 400 when one is missing ([Vertex docs](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/thought-signatures)). The map is also never bounded, unlike the 64-turn Claude replay cache (`providers/anthropic/ClaudeThinking.ts:224`).
+    - Target: first confirm which of (a)-(c) produced this failure. Then a function call in the current turn without a known signature no longer fails the request: Google documents `skip_thought_signature_validator` as a last resort for calls the API did not generate, and its use is logged as a count. The signature map is bounded. Both transports share this code, so the behavior is the same on both.
+    - Check: tests with the real SDK against a fake `fetch`, on both transports: a history whose current turn holds a function call with an unknown call id makes a request that the fake upstream accepts, and a call whose signature was streamed is replayed with that same signature.
 
 ### Structural follow-up
 
@@ -96,13 +102,13 @@ An open item has an empty box. The PR that fixes an item ticks its box and adds 
 
 ## Suggested order
 
-| Order | Items       | Reason                                                    |
-| ----- | ----------- | --------------------------------------------------------- |
-| 1     | B9, B6, B7  | Small, independent, no transport risk                     |
-| 2     | B11, B1, B4 | Privacy first, then retry and error behavior users notice |
-| 3     | B2, B3      | Gemini request shape                                      |
-| 4     | B8          | Shared code after transports are aligned                  |
-| 5     | B5, B10     | Covered by the Grok and proxy-interface specs             |
+| Order | Items            | Reason                                                              |
+| ----- | ---------------- | ------------------------------------------------------------------- |
+| 1     | B9, B6, B7       | Small, independent, no transport risk                               |
+| 2     | B11, B12, B1, B4 | Privacy first, then failures, retry and error behavior users notice |
+| 3     | B2, B3           | Gemini request shape                                                |
+| 4     | B8               | Shared code after transports are aligned                            |
+| 5     | B5, B10          | Covered by the Grok and proxy-interface specs                       |
 
 ## Acceptance
 
