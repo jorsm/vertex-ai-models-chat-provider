@@ -38,7 +38,8 @@ export function readGrokUsage(usage: OpenAI.CompletionUsage, modelPath: string):
  * are zero, a stream's optional finalChatCompletion method is attempted.
  *
  * @remarks Character counters are updated in place. Tool calls left without a
- * finish reason are not emitted.
+ * finish reason are not emitted, and neither are tool calls of a response that
+ * ends with `content_filter`: that turn fails, so its calls must never run.
  */
 export async function processGrokStream(
     stream: Stream<OpenAI.Chat.Completions.ChatCompletionChunk>,
@@ -47,10 +48,11 @@ export async function processGrokStream(
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
     token: vscode.CancellationToken,
     logger: Logger,
-): Promise<ModelUsageTokens> {
+): Promise<GrokStreamResult> {
     // Accumulate tool call deltas (OpenAI streams tool calls incrementally)
     const toolAccumulator: Map<number, ToolCallAccumulator> = new Map();
     const tokenUsage = { input: 0, output: 0, cache_read: 0, cache_create: 0 };
+    let contentFiltered = false;
     let chunkCount = 0;
 
     for await (const chunk of stream) {
@@ -63,6 +65,10 @@ export async function processGrokStream(
         // Extract usage if present
         if (chunk.usage) {
             Object.assign(tokenUsage, readGrokUsage(chunk.usage, modelPath));
+        }
+
+        if (chunk.choices?.[0]?.finish_reason === "content_filter") {
+            contentFiltered = true;
         }
 
         const delta = chunk.choices?.[0]?.delta;
@@ -85,7 +91,9 @@ export async function processGrokStream(
         // Check finish_reason — when the model finishes, emit any complete tool calls
         const finishReason = chunk.choices?.[0]?.finish_reason;
         if (finishReason) {
-            reportToolCalls(toolAccumulator, charCount, progress, logger);
+            if (!contentFiltered) {
+                reportToolCalls(toolAccumulator, charCount, progress, logger);
+            }
             toolAccumulator.clear();
         }
     }
@@ -110,8 +118,18 @@ export async function processGrokStream(
         }
     }
 
+    if (contentFiltered) {
+        logger.log(`  ⛔ Grok's content filter stopped the response (finish_reason: content_filter)`);
+    }
     logger.log(`  ✅ Stream finished — ${chunkCount} chunks total, input=${tokenUsage.input}, output=${tokenUsage.output}`);
-    return tokenUsage;
+    return { usage: tokenUsage, contentFiltered };
+}
+
+/** Usage and whether the content filter stopped the response. */
+export interface GrokStreamResult {
+    usage: ModelUsageTokens;
+    /** True when the stream ended with `finish_reason: "content_filter"`. */
+    contentFiltered: boolean;
 }
 
 interface ToolCallAccumulator {

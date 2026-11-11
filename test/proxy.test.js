@@ -2425,6 +2425,98 @@ for (const transport of [
         assert.deepEqual(requests[0].body.contents[1].parts, [{ text: "earlier answer" }]);
     });
 
+const geminiSafetyBlocks = [
+    {
+        name: "a response stopped with SAFETY",
+        reason: "SAFETY",
+        events: [
+            geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: "partial" }] } }] }),
+            geminiEvent({
+                candidates: [{ content: { role: "model", parts: [{ functionCall: { id: "blocked-call", name: "lookup", args: {} } }] }, finishReason: "SAFETY", finishMessage: "The response was blocked." }],
+                usageMetadata: { promptTokenCount: 9, candidatesTokenCount: 2, thoughtsTokenCount: 3 },
+            }),
+        ],
+        message: "Gemini blocked this response: flagged by the safety filters (SAFETY). The response was blocked.",
+        text: ["partial"],
+        usage: { input: 9, output: 5, cache_read: 0, cache_create: 0 },
+    },
+    ...[
+        [
+            "PROHIBITED_CONTENT",
+            "flagged as prohibited content",
+        ],
+        [
+            "BLOCKLIST",
+            "contains a blocklisted term",
+        ],
+        [
+            "SPII",
+            "may contain sensitive personal information",
+        ],
+    ].map(
+        ([
+            reason,
+            description,
+        ]) => ({
+            name: `a response stopped with ${reason}`,
+            reason,
+            // A filtered response clears the candidate content.
+            events: [geminiEvent({ candidates: [{ finishReason: reason }], usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 1 } })],
+            message: `Gemini blocked this response: ${description} (${reason}).`,
+            text: [],
+            usage: { input: 4, output: 1, cache_read: 0, cache_create: 0 },
+        }),
+    ),
+    {
+        name: "a prompt blocked with promptFeedback.blockReason",
+        reason: "PROHIBITED_CONTENT",
+        // Vertex returns no candidates for a blocked prompt.
+        events: [geminiEvent({ promptFeedback: { blockReason: "PROHIBITED_CONTENT", blockReasonMessage: "The prompt was blocked." }, usageMetadata: { promptTokenCount: 7, totalTokenCount: 7 } })],
+        message: "Gemini blocked this prompt: flagged as prohibited content (PROHIBITED_CONTENT). The prompt was blocked.",
+        text: [],
+        usage: { input: 7, output: 0, cache_read: 0, cache_create: 0 },
+    },
+];
+for (const transport of [
+    "direct",
+    "proxy",
+])
+    for (const block of geminiSafetyBlocks)
+        // Catches a Gemini safety block that ends as an empty or partial answer instead of an error the user can see.
+        test(`gemini ${transport} ${block.name} fails with the reason and keeps the billed usage`, async (t) => {
+            const requests = streamingFetch(t, block.events);
+            const spec = catalog.candidateModels.find((m) => m.id === "gemini-4-carbon");
+            const provider = new VertexGoogleProvider();
+            if (transport === "proxy") {
+                provider.initialize("p", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
+            } else {
+                const authClient = new OAuth2Client();
+                authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
+                provider.initialize("p", "global", { authClient });
+            }
+            const parts = [];
+            const run = provider.provideLanguageModelChatResponse(spec.id, userMessage(), {}, { report: (p) => parts.push(p) }, cancellation().token, {}, spec);
+            await assert.rejects(run, (error) => {
+                assert.equal(error.name, "ModelRefusalError");
+                assert.equal(error.message, block.message);
+                // Loggers print the stack: it carries the reason, never the API explanation.
+                assert.equal(error.stack, `ModelRefusalError: the model declined the request (category: ${block.reason})`);
+                assert.deepEqual(error.result.usage, block.usage);
+                return true;
+            });
+            assert.equal(requests.length, 1);
+            assert.ok(requests[0].url.startsWith(transport === "proxy" ? "https://gateway.test/" : "https://aiplatform.googleapis.com/"), requests[0].url);
+            assert.deepEqual(
+                parts.filter((p) => p instanceof TextPart).map((p) => p.value),
+                block.text,
+            );
+            // A tool call from a blocked response must never run.
+            assert.deepEqual(
+                parts.filter((p) => p instanceof ToolCallPart),
+                [],
+            );
+        });
+
 test("malformed local definitions are excluded at ingestion without falling through to User/bundle", async (t) => {
     const resolver = Object.create(ModelCatalogResolver.prototype);
     resolver.cached = null;

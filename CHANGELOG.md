@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - End every Gemini request with a user turn. Gemini 4 Carbon rejects a chat history whose last turn is the model's, so such a history now gets an empty user turn appended.
 - Report a Claude refusal as an error naming its policy category and explanation, instead of ending with an empty or partial answer. The refused request's tokens still count in usage and cost tracking.
+- Report a Gemini or Grok safety block as an error naming the reason, instead of ending with an empty or partial answer. Covers a Gemini prompt blocked by its safety filters, a Gemini response stopped for safety, prohibited content, a blocklisted term or sensitive personal information, and a Grok response stopped by its content filter. Tool calls from a blocked response are not run, and the blocked request's tokens still count in usage and cost tracking.
 
 ### Removed
 

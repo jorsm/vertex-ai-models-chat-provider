@@ -23,11 +23,61 @@ export interface GeminiStreamContext {
     reasoningHeaders: GeminiReasoningHeaders;
 }
 
+/** Response `finishReason` values that mean a safety filter stopped the answer, with their descriptions. */
+const RESPONSE_BLOCK_REASONS: Record<string, string> = {
+    SAFETY: "flagged by the safety filters",
+    PROHIBITED_CONTENT: "flagged as prohibited content",
+    BLOCKLIST: "contains a blocklisted term",
+    SPII: "may contain sensitive personal information",
+};
+
+/** Descriptions for `promptFeedback.blockReason`; any reason present means the prompt was blocked. */
+const PROMPT_BLOCK_REASONS: Record<string, string> = {
+    SAFETY: "flagged by the safety filters",
+    PROHIBITED_CONTENT: "flagged as prohibited content",
+    BLOCKLIST: "contains a blocklisted term",
+    IMAGE_SAFETY: "contains an image flagged by the safety filters",
+    MODEL_ARMOR: "blocked by Model Armor",
+    JAILBREAK: "flagged as a jailbreak attempt",
+};
+
+/** A Gemini safety filter that blocked the prompt or stopped the response. */
+export interface GeminiSafetyBlock {
+    /** Whether the prompt was rejected before generation or the response was stopped. */
+    stage: "prompt" | "response";
+    /** API reason: a `promptFeedback.blockReason` or a candidate `finishReason`. */
+    reason: string;
+    /** API explanation (`blockReasonMessage` or `finishMessage`); null when none. */
+    message: string | null;
+}
+
 /** Latest prompt, candidate plus thinking, and cache counters reported by the stream. */
 export interface GeminiStreamUsage {
     inputTokens: number;
     outputTokens: number;
     cacheRead: number;
+    /** Set when a safety filter blocked the prompt or stopped the response. */
+    safetyBlock?: GeminiSafetyBlock;
+}
+
+/** User-facing error message for a safety block, naming the API reason. */
+export function describeGeminiSafetyBlock(block: GeminiSafetyBlock): string {
+    const description = (block.stage === "prompt" ? PROMPT_BLOCK_REASONS : RESPONSE_BLOCK_REASONS)[block.reason];
+    const explanation = block.message ? ` ${block.message}` : "";
+    return `Gemini blocked this ${block.stage}${description ? `: ${description}` : ""} (${block.reason}).${explanation}`;
+}
+
+/** Reads a prompt block or a safety finish reason from one stream chunk. */
+function readSafetyBlock(chunk: any): GeminiSafetyBlock | undefined {
+    const feedback = chunk.promptFeedback;
+    if (feedback?.blockReason) {
+        return { stage: "prompt", reason: String(feedback.blockReason), message: feedback.blockReasonMessage ?? null };
+    }
+    const candidate = chunk.candidates?.[0];
+    if (typeof candidate?.finishReason === "string" && Object.hasOwn(RESPONSE_BLOCK_REASONS, candidate.finishReason)) {
+        return { stage: "response", reason: candidate.finishReason, message: candidate.finishMessage ?? null };
+    }
+    return undefined;
 }
 
 /**
@@ -37,7 +87,9 @@ export interface GeminiStreamUsage {
  * Inline signatures stay attached to their individual function-call parts, with a pending
  * preceding signature as fallback. API call IDs are retained when present. Signature
  * caches are updated only after the final cancellation check. Token fields carry
- * forward independently when later chunks omit them.
+ * forward independently when later chunks omit them. When a safety filter blocks the
+ * prompt or stops the response, buffered function calls are dropped and no signature
+ * is cached: the turn fails, so it is never run or replayed.
  */
 export async function processGeminiStream(stream: AsyncIterable<any>, context: GeminiStreamContext): Promise<GeminiStreamUsage> {
     const { modelId, actualId, progress, charCount, logger, signal, thoughtSignatureCache, apiToolCallIds, textSignatureCache, reasoningHeaders } = context;
@@ -47,6 +99,7 @@ export async function processGeminiStream(stream: AsyncIterable<any>, context: G
         cacheRead = 0;
     const processor = new StreamPartProcessor(reasoningHeaders, modelId, actualId, progress, charCount, logger);
     const bufferedCalls: Array<{ callId: string; callName: string; args: any; signature: string | undefined; hasApiId: boolean }> = [];
+    let safetyBlock: GeminiSafetyBlock | undefined;
 
     for await (const chunk of stream) {
         if (signal.aborted) {
@@ -77,6 +130,8 @@ export async function processGeminiStream(stream: AsyncIterable<any>, context: G
             processor.pendingThoughtSignature = undefined;
         }
 
+        safetyBlock ??= readSafetyBlock(chunk);
+
         if (chunk.usageMetadata) {
             inputTokens = chunk.usageMetadata.promptTokenCount ?? inputTokens;
             candidateTokens = chunk.usageMetadata.candidatesTokenCount ?? candidateTokens;
@@ -87,6 +142,12 @@ export async function processGeminiStream(stream: AsyncIterable<any>, context: G
 
     if (signal.aborted) {
         throw new vscode.CancellationError();
+    }
+    const usage: GeminiStreamUsage = { inputTokens, outputTokens: candidateTokens + thinkingTokens, cacheRead };
+    if (safetyBlock) {
+        // The reason is API metadata; the explanation and any partial text stay out of the logs.
+        logger.log(`  ⛔ Gemini blocked the ${safetyBlock.stage} (${safetyBlock.reason}); dropped ${bufferedCalls.length} buffered function call(s)`);
+        return { ...usage, safetyBlock };
     }
     // Emit all buffered function calls together so VS Code groups them into
     // a single model turn, matching the API's parallel-call expectations.
@@ -115,7 +176,7 @@ export async function processGeminiStream(stream: AsyncIterable<any>, context: G
 
     logger.log(`  ✅ Stream finished successfully`);
 
-    return { inputTokens, outputTokens: candidateTokens + thinkingTokens, cacheRead };
+    return usage;
 }
 
 function logRawParts(rawParts: any[], logger: Logger): void {

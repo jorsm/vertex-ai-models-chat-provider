@@ -6,7 +6,7 @@ import { Logger } from "../utils/Logger";
 import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryableError } from "../utils/discovery";
 import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
-import type { ChatInferenceResult, VertexModelProvider } from "./VertexModelProvider";
+import { ModelRefusalError, type ChatInferenceResult, type VertexModelProvider } from "./VertexModelProvider";
 import type { ProxyGateway } from "../ProxyGateway";
 import type { ModelSpec } from "./VertexModelProvider";
 import { resolveCatalogModel, type ResolvedModelRequest } from "../effort/Effort";
@@ -117,7 +117,8 @@ export class VertexGrokProvider implements VertexModelProvider {
      * @param request - Resolved model identity and optional effort selection.
      * @returns Usage counters and the accumulated message character counts.
      * @throws When proxy transport is configured, metadata is unavailable, or
-     * authentication, inference or cancellation fails.
+     * authentication, inference or cancellation fails; a {@link ModelRefusalError}
+     * carrying the billed usage when the content filter stops the response.
      */
     async provideLanguageModelChatResponse(
         modelId: string,
@@ -152,6 +153,8 @@ export class VertexGrokProvider implements VertexModelProvider {
         }
 
         const cancellation = requestCancellation(token);
+        let result: ChatInferenceResult;
+        let contentFiltered = false;
         try {
             const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
 
@@ -182,10 +185,12 @@ export class VertexGrokProvider implements VertexModelProvider {
 
             this.logger.log(`  Stream created successfully`);
 
-            const usage = await processGrokStream(stream, modelPath, charCount, progress, token, this.logger);
+            const streamed = await processGrokStream(stream, modelPath, charCount, progress, token, this.logger);
             if (cancellation.signal.aborted || token.isCancellationRequested) {
                 throw new vscode.CancellationError();
             }
+            const usage = streamed.usage;
+            contentFiltered = streamed.contentFiltered;
 
             // Report token usage to VS Code (MIME type 'usage') for Copilot Chat indicator
             if (typeof vscode.LanguageModelDataPart !== "undefined") {
@@ -202,7 +207,7 @@ export class VertexGrokProvider implements VertexModelProvider {
                 this.logger.log(`  📊 Reported token usage to VS Code: ${JSON.stringify(usagePayload)}`);
             }
 
-            return { usage, charCount };
+            result = { usage, charCount };
         } catch (e: any) {
             this.logger.log(`  ❌ Grok provideLanguageModelChatResponse error: ${e}`);
             checkAuthError(e);
@@ -210,6 +215,12 @@ export class VertexGrokProvider implements VertexModelProvider {
         } finally {
             cancellation.dispose();
         }
+
+        // A content-filter stop arrives in a successful response, so it stays out of the error handling above.
+        if (contentFiltered) {
+            throw new ModelRefusalError("Grok's content filter blocked this response (content_filter).", result, "content_filter");
+        }
+        return result;
     }
 
     /** Rejects proxy use before catalog lookup, authentication or network activity. */

@@ -252,6 +252,65 @@ test("a refused Claude request records its billed usage and still fails", async 
     assert.deepEqual({ input: tokens.input, output: tokens.output }, { input: 7, output: 1 });
 });
 
+// Catches Gemini and Grok safety blocks disappearing from cost tracking although Vertex bills them.
+for (const { vendor, modelId, body, message } of [
+    {
+        vendor: "google",
+        modelId: "gemini-4-carbon",
+        body: `data: ${JSON.stringify({ candidates: [{ finishReason: "SAFETY" }], usageMetadata: { promptTokenCount: 7, candidatesTokenCount: 1 } })}\n\n`,
+        message: "Gemini blocked this response: flagged by the safety filters (SAFETY).",
+    },
+    {
+        vendor: "grok",
+        modelId: "grok-4.6",
+        body: [
+            { choices: [{ index: 0, delta: {}, finish_reason: "content_filter" }] },
+            { choices: [], usage: { prompt_tokens: 7, completion_tokens: 1, total_tokens: 8 } },
+        ]
+            .map((data) => `data: ${JSON.stringify(data)}\n\n`)
+            .concat("data: [DONE]\n\n")
+            .join(""),
+        message: "Grok's content filter blocked this response (content_filter).",
+    },
+])
+    test(`a ${vendor} safety block records its billed usage and still fails`, async (t) => {
+        const originalFetch = global.fetch;
+        t.after(() => {
+            global.fetch = originalFetch;
+        });
+        global.fetch = async () => new Response(body, { headers: { "Content-Type": "text/event-stream" } });
+        const h = harness();
+        let provider;
+        if (vendor === "google") {
+            provider = new Google();
+            provider.initialize("test-project", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
+        } else {
+            const OpenAI = require("openai");
+            provider = new Grok();
+            provider.initialize("test-project", "global");
+            // The real OpenAI SDK, minus the GoogleAuth token exchange, over the provider's own fetch adapter.
+            provider.getClient = async () =>
+                new OpenAI({
+                    baseURL: "https://aiplatform.googleapis.com/v1/projects/test-project/locations/global/endpoints/openapi",
+                    apiKey: "token",
+                    maxRetries: 0,
+                    fetch: (url, init) => provider.fetchVertexStream(url, init),
+                });
+        }
+        h.d.activeProviders.set(vendor, provider);
+        await assert.rejects(h.d.provideLanguageModelChatResponse({ id: modelId }, messages, {}, progress, token()), { name: "ModelRefusalError", message });
+        const [
+            [
+                recordedModel,
+                tokens,
+            ],
+            ...others
+        ] = h.records;
+        assert.equal(others.length, 0);
+        assert.equal(recordedModel, modelId);
+        assert.deepEqual({ input: tokens.input, output: tokens.output }, { input: 7, output: 1 });
+    });
+
 for (const alias of legacyAliases) {
     test(`${alias.id} sends its historical effort and backend through public and internal requests`, async () => {
         const model = legacyModel(alias);
