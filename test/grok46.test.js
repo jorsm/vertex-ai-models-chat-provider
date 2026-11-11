@@ -288,6 +288,57 @@ test("filters malformed Vertex keepalive data events before OpenAI stream parsin
     assert.equal(await filtered.text(), '\ndata: {"choices":[]}\n\n');
 });
 
+// Catches a Grok content-filter stop that ends as an empty or partial answer instead of an error the user can see.
+test("Grok content_filter fails with the reason, drops its tool calls and keeps the billed usage", async (t) => {
+    const OpenAI = require("openai");
+    const sse = [
+        chunk({ role: "assistant", content: "partial" }),
+        chunk({ tool_calls: [{ index: 0, id: "blocked-call", type: "function", function: { name: "lookup", arguments: "{}" } }] }),
+        chunk({}, "content_filter"),
+        { choices: [], usage: { prompt_tokens: 6, completion_tokens: 2, total_tokens: 8 } },
+    ]
+        .map((data) => `data: ${JSON.stringify(data)}\n\n`)
+        .concat("data: [DONE]\n\n")
+        .join("");
+    const requests = [];
+    const originalFetch = global.fetch;
+    t.after(() => {
+        global.fetch = originalFetch;
+    });
+    global.fetch = async (url, init) => {
+        requests.push({ url: String(url), body: JSON.parse(init.body) });
+        return new Response(sse, { headers: { "content-type": "text/event-stream" } });
+    };
+    const { provider, parts, progress } = harness();
+    // The real OpenAI SDK, minus the GoogleAuth token exchange, over the provider's own fetch adapter.
+    provider.getClient = async () =>
+        new OpenAI({
+            baseURL: "https://aiplatform.googleapis.com/v1/projects/test-project/locations/global/endpoints/openapi",
+            apiKey: "token",
+            maxRetries: 0,
+            fetch: (url, init) => provider.fetchVertexStream(url, init),
+        });
+    const run = provider.provideLanguageModelChatResponse(spec.id, [user([new TextPart("hi")])], {}, progress, token, undefined, spec);
+    await assert.rejects(run, (error) => {
+        assert.equal(error.name, "ModelRefusalError");
+        assert.equal(error.message, "Grok's content filter blocked this response (content_filter).");
+        assert.equal(error.stack, "ModelRefusalError: the request was refused (reason: content_filter)");
+        assert.deepEqual(error.result.usage, { input: 6, output: 2, cache_read: 0, cache_create: 0 });
+        return true;
+    });
+    assert.equal(requests.length, 1);
+    assert.ok(requests[0].url.endsWith("/endpoints/openapi/chat/completions"), requests[0].url);
+    assert.deepEqual(
+        parts.filter((p) => p instanceof TextPart).map((p) => p.value),
+        ["partial"],
+    );
+    // A tool call from a filtered response must never run.
+    assert.deepEqual(
+        parts.filter((p) => p instanceof ToolCallPart),
+        [],
+    );
+});
+
 // Explicit opt-in: uses the selected project's billable Vertex endpoint and ADC.
 // GOOGLE_APPLICATION_CREDENTIALS=/path/to/adc.json GROK46_LIVE_PROJECT=your-project \
 //   node --test --test-name-pattern='live Grok' test/grok46.test.js

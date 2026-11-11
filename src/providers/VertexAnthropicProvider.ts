@@ -8,9 +8,9 @@ import { estimateTokens } from "../utils/tokens";
 import { ClaudeThinkingReplayCache, claudeEffortConfig } from "./anthropic/ClaudeThinking";
 import { mapClaudeMessages, mapClaudeTools, logClaudeMessages } from "./anthropic/ClaudeMessages";
 import { restoreClaudeThinking, applyClaudeCacheControl } from "./anthropic/ClaudeRequestContext";
-import { processClaudeStream, type ClaudeRefusal } from "./anthropic/ClaudeStream";
+import { processClaudeStream } from "./anthropic/ClaudeStream";
 import { resolveCatalogModel, type ResolvedModelRequest } from "../effort/Effort";
-import { ChatInferenceResult, ModelRefusalError, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
+import { ChatInferenceResult, ModelRefusal, ModelRefusalError, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 import { ProxyGateway, normalizeGatewayError } from "../ProxyGateway";
 import { requestCancellation, cancellableRequest } from "../utils/cancellation";
 
@@ -154,7 +154,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         const maxTokens = spec?.maxOutputTokens ?? 4096;
 
         let result: ChatInferenceResult;
-        let refusal: ClaudeRefusal | undefined;
+        let refusal: ModelRefusal | undefined;
         try {
             const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
 
@@ -235,9 +235,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
         // A refusal is a successful response, so it stays out of the transport error handling above.
         if (refusal) {
-            const category = refusal.category ? ` (${refusal.category})` : "";
-            const explanation = refusal.explanation ? ` ${refusal.explanation}` : "";
-            throw new ModelRefusalError(`Claude declined this request${category}.${explanation}`, result, refusal.category);
+            throw new ModelRefusalError(refusal, result);
         }
         return result;
     }

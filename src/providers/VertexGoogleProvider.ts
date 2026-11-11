@@ -4,7 +4,7 @@ import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryabl
 import { checkAuthError, withRetry } from "../utils/retry";
 import { resolveCatalogModel, type ResolvedModelRequest } from "../effort/Effort";
 import { estimateTokens } from "../utils/tokens";
-import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
+import { ChatInferenceResult, ModelRefusal, ModelRefusalError, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 import { ProxyGateway, normalizeGatewayError } from "../ProxyGateway";
 import { requestCancellation, cancellableRequest } from "../utils/cancellation";
 import { GeminiMessages, isLeakedReasoningHeader, stripLeakedReasoningHeader } from "./google/GeminiMessages";
@@ -130,7 +130,9 @@ export class VertexGoogleProvider implements VertexModelProvider {
      * stream; answer text is reported incrementally. Tracker input excludes cached
      * tokens, while the VS Code usage part displays the full prompt token count.
      *
-     * @throws {@link vscode.CancellationError} when the request is cancelled.
+     * @throws {@link vscode.CancellationError} when the request is cancelled, or a
+     * {@link ModelRefusalError} carrying the billed usage when a safety filter
+     * blocks the prompt or stops the response.
      */
     async provideLanguageModelChatResponse(
         modelId: string,
@@ -157,6 +159,8 @@ export class VertexGoogleProvider implements VertexModelProvider {
         const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
         const cacheCreate = 0;
 
+        let result: ChatInferenceResult;
+        let refusal: ModelRefusal | undefined;
         try {
             const { mappedContents, systemInstruction } = new GeminiMessages(this.thoughtSignatureCache, this.textSignatureCache, this, this.logger, this.apiToolCallIds).extractMessages(messages, charCount, modelId, actualId);
 
@@ -205,7 +209,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
                 { token },
             );
 
-            const { inputTokens, outputTokens, cacheRead } = await processGeminiStream(stream, {
+            const streamed = await processGeminiStream(stream, {
                 modelId,
                 actualId,
                 progress,
@@ -217,6 +221,8 @@ export class VertexGoogleProvider implements VertexModelProvider {
                 textSignatureCache: this.textSignatureCache,
                 reasoningHeaders: this,
             });
+            const { inputTokens, outputTokens, cacheRead } = streamed;
+            refusal = streamed.refusal;
 
             // For Gemini, promptTokenCount includes cachedContentTokenCount.
             // To correctly record usage in our tracker, we subtract cached tokens from
@@ -238,7 +244,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
                 this.logger.log(`  📊 Reported token usage to VS Code: ${JSON.stringify(usagePayload)}`);
             }
 
-            return {
+            result = {
                 usage: { input: newTokens, output: outputTokens, cache_read: cacheRead, cache_create: cacheCreate },
                 charCount,
             };
@@ -257,6 +263,12 @@ export class VertexGoogleProvider implements VertexModelProvider {
         } finally {
             cancellation.dispose();
         }
+
+        // A safety block arrives in a successful response, so it stays out of the transport error handling above.
+        if (refusal) {
+            throw new ModelRefusalError(refusal, result);
+        }
+        return result;
     }
 
     /** Lazily imports and constructs the SDK client, rejecting configuration changes during import. */

@@ -1,7 +1,7 @@
 import type OpenAI from "openai";
 import type { Stream } from "openai/streaming";
 import * as vscode from "vscode";
-import type { ModelUsageTokens } from "../VertexModelProvider";
+import type { ModelRefusal, ModelUsageTokens } from "../VertexModelProvider";
 import type { Logger } from "../../utils/Logger";
 
 /**
@@ -38,7 +38,8 @@ export function readGrokUsage(usage: OpenAI.CompletionUsage, modelPath: string):
  * are zero, a stream's optional finalChatCompletion method is attempted.
  *
  * @remarks Character counters are updated in place. Tool calls left without a
- * finish reason are not emitted.
+ * finish reason are not emitted, and neither are tool calls of a response that
+ * ends with `content_filter`: that turn fails, so its calls must never run.
  */
 export async function processGrokStream(
     stream: Stream<OpenAI.Chat.Completions.ChatCompletionChunk>,
@@ -47,10 +48,11 @@ export async function processGrokStream(
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
     token: vscode.CancellationToken,
     logger: Logger,
-): Promise<ModelUsageTokens> {
+): Promise<GrokStreamResult> {
     // Accumulate tool call deltas (OpenAI streams tool calls incrementally)
     const toolAccumulator: Map<number, ToolCallAccumulator> = new Map();
     const tokenUsage = { input: 0, output: 0, cache_read: 0, cache_create: 0 };
+    let refusal: ModelRefusal | undefined;
     let chunkCount = 0;
 
     for await (const chunk of stream) {
@@ -65,7 +67,13 @@ export async function processGrokStream(
             Object.assign(tokenUsage, readGrokUsage(chunk.usage, modelPath));
         }
 
-        const delta = chunk.choices?.[0]?.delta;
+        const choice = chunk.choices?.[0];
+        const finishReason = choice?.finish_reason;
+        if (finishReason === "content_filter") {
+            refusal = CONTENT_FILTER_REFUSAL;
+        }
+
+        const delta = choice?.delta;
         if (!delta) {
             continue;
         }
@@ -83,9 +91,10 @@ export async function processGrokStream(
         }
 
         // Check finish_reason — when the model finishes, emit any complete tool calls
-        const finishReason = chunk.choices?.[0]?.finish_reason;
-        if (finishReason) {
+        if (finishReason && !refusal) {
             reportToolCalls(toolAccumulator, charCount, progress, logger);
+        }
+        if (finishReason) {
             toolAccumulator.clear();
         }
     }
@@ -110,8 +119,20 @@ export async function processGrokStream(
         }
     }
 
+    if (refusal) {
+        logger.log(`  ⛔ Grok's content filter stopped the response (finish_reason: ${refusal.reason})`);
+    }
     logger.log(`  ✅ Stream finished — ${chunkCount} chunks total, input=${tokenUsage.input}, output=${tokenUsage.output}`);
-    return tokenUsage;
+    return refusal ? { usage: tokenUsage, refusal } : { usage: tokenUsage };
+}
+
+/** The refusal for a response that ends with `finish_reason: "content_filter"`. */
+const CONTENT_FILTER_REFUSAL: ModelRefusal = { message: "Grok's content filter blocked this response (content_filter).", reason: "content_filter" };
+
+/** Usage and, when the content filter stopped the response, the refusal. */
+export interface GrokStreamResult {
+    usage: ModelUsageTokens;
+    refusal?: ModelRefusal;
 }
 
 interface ToolCallAccumulator {
