@@ -2374,6 +2374,7 @@ for (const transport of [
             spec,
         );
         assert.equal(requests.length, 1);
+        assert.ok(requests[0].url.startsWith(transport === "proxy" ? "https://gateway.test/" : "https://aiplatform.googleapis.com/"), requests[0].url);
         assert.ok(requests[0].url.includes(`/publishers/google/models/${spec.id}:streamGenerateContent`));
         const roles = requests[0].body.contents.map((content) => content.role);
         assert.deepEqual(roles, [

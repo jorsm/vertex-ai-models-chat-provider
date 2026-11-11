@@ -74,8 +74,8 @@ export class GeminiMessages {
         if (merged.length === 0 || merged[0].role !== "user") {
             merged.unshift(userPlaceholder());
         }
-        // Gemini 4 rejects a history that ends with a model turn (it reads it as a
-        // prefill), so a request must always end with a user turn.
+        // A trailing model turn reads as a prefill, which Gemini 4 rejects. VS Code
+        // never means one, so every Gemini request ends with a user turn.
         if (merged[merged.length - 1].role !== "user") {
             merged.push(userPlaceholder());
         }
