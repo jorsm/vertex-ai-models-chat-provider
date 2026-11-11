@@ -67,7 +67,8 @@ export async function processGrokStream(
             Object.assign(tokenUsage, readGrokUsage(chunk.usage, modelPath));
         }
 
-        if (chunk.choices?.[0]?.finish_reason === "content_filter") {
+        const finishReason = chunk.choices?.[0]?.finish_reason;
+        if (finishReason === "content_filter") {
             contentFiltered = true;
         }
 
@@ -89,7 +90,6 @@ export async function processGrokStream(
         }
 
         // Check finish_reason — when the model finishes, emit any complete tool calls
-        const finishReason = chunk.choices?.[0]?.finish_reason;
         if (finishReason) {
             if (!contentFiltered) {
                 reportToolCalls(toolAccumulator, charCount, progress, logger);

@@ -24,18 +24,19 @@ export interface GeminiStreamContext {
 }
 
 /** Response `finishReason` values that mean a safety filter stopped the answer, with their descriptions. */
-const RESPONSE_BLOCK_REASONS: Record<string, string> = {
+const SHARED_BLOCK_REASONS = {
     SAFETY: "flagged by the safety filters",
     PROHIBITED_CONTENT: "flagged as prohibited content",
     BLOCKLIST: "contains a blocklisted term",
+};
+const RESPONSE_BLOCK_REASONS: Record<string, string> = {
+    ...SHARED_BLOCK_REASONS,
     SPII: "may contain sensitive personal information",
 };
 
 /** Descriptions for `promptFeedback.blockReason`; any reason present means the prompt was blocked. */
 const PROMPT_BLOCK_REASONS: Record<string, string> = {
-    SAFETY: "flagged by the safety filters",
-    PROHIBITED_CONTENT: "flagged as prohibited content",
-    BLOCKLIST: "contains a blocklisted term",
+    ...SHARED_BLOCK_REASONS,
     IMAGE_SAFETY: "contains an image flagged by the safety filters",
     MODEL_ARMOR: "blocked by Model Armor",
     JAILBREAK: "flagged as a jailbreak attempt",
