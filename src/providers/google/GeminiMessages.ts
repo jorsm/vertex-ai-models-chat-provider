@@ -13,10 +13,10 @@ export interface GeminiReasoningHeaders {
  *
  * @remarks
  * Cache maps are borrowed by reference. Mapping records tool names in history order,
- * groups adjacent user tool-result turns, and inserts a leading user placeholder when
- * required. API-provided call IDs are echoed and their results ordered by preceding
- * calls; generated VS Code fallback IDs remain internal. Character counters retain
- * their existing provider-specific units.
+ * groups adjacent user tool-result turns, and inserts leading and trailing user
+ * placeholders when required. API-provided call IDs are echoed and their results
+ * ordered by preceding calls; generated VS Code fallback IDs remain internal.
+ * Character counters retain their existing provider-specific units.
  */
 export class GeminiMessages {
     constructor(
@@ -29,8 +29,9 @@ export class GeminiMessages {
 
     /**
      * Separates system text and maps the remaining history into Gemini content turns.
-     * Adjacent user tool-result turns are merged and a leading user placeholder is
-     * inserted when the mapped history is empty or starts with a model turn.
+     * Adjacent user tool-result turns are merged. A user placeholder is inserted first
+     * when the mapped history is empty or starts with a model turn, and appended when
+     * it ends with a model turn.
      *
      * @param messages - The standard readonly VS Code message list representing the active chat history.
      * @param charCount - The running character count analytics object.
@@ -71,6 +72,11 @@ export class GeminiMessages {
 
         if (merged.length === 0 || merged[0].role !== "user") {
             merged.unshift({ role: "user", parts: [{ text: " " }] });
+        }
+        // Gemini 4 rejects a history that ends with a model turn (it reads it as a
+        // prefill), so a request must always end with a user turn.
+        if (merged[merged.length - 1].role !== "user") {
+            merged.push({ role: "user", parts: [{ text: " " }] });
         }
 
         return { mappedContents: merged, systemInstruction };

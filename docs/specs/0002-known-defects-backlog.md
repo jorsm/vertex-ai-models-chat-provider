@@ -88,6 +88,11 @@ An open item has an empty box. The PR that fixes an item ticks its box and adds 
     - Target: logs carry metadata only (roles, counts, sizes, statuses, ids), as the Gemini diagnostics already do. User identity appears hashed or not at all.
     - Check: a test that runs a request containing a known marker string in text, tool arguments and labels, and asserts the marker never appears in the captured log output.
 
+- [x] **B12. A Gemini history can end with a model turn.**
+    - Evidence: `GeminiMessages.extractMessages` adds a user placeholder only at the start of the history. Gemini 4 Carbon (added 11 Nov 2026) rejects a request whose history ends with a model turn, reading it as a prefill.
+    - Target: every Gemini request ends with a user turn, on both transports.
+    - Fixed: a trailing model turn gets a user placeholder appended, the same `" "` text part used at the start. Tested with the Gemini SDK against a fake `fetch` on the direct and proxy transports.
+
 ### Structural follow-up
 
 - [ ] **B10. `VertexChatModelDispatcher.ts` owns too much.**

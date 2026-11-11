@@ -162,6 +162,7 @@ try {
 }
 const { withRetry, isRetryableError } = require("../out/utils/retry.js");
 const catalog = require("../src/models.json");
+const { OAuth2Client } = require("google-auth-library");
 const model = (id, vendor = "google", version = id) => {
     const spec = { ...catalog.candidateModels[0], id, version, vendor };
     delete spec.effort;
@@ -2342,6 +2343,45 @@ for (const modelId of [
         assert.equal(requests.length, 2);
         assert.deepEqual(requests[1].body.contents[1].parts[0], { functionCall: { id: "argon-call-1", name: "lookup", args: { query: "value" } }, thoughtSignature: "argon-signed" });
         assert.deepEqual(requests[1].body.contents[2].parts[0].functionResponse, { id: "argon-call-1", name: "lookup", response: { value: 42 } });
+    });
+
+for (const transport of [
+    "direct",
+    "proxy",
+])
+    // Catches a request whose history ends with a model turn: Gemini 4 rejects it as a prefill.
+    test(`gemini ${transport} request never ends with a model turn`, async (t) => {
+        const requests = streamingFetch(t, [geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: "ok" }] } }] })]);
+        const spec = catalog.candidateModels.find((m) => m.id === "gemini-4-carbon");
+        const provider = new VertexGoogleProvider();
+        if (transport === "proxy") {
+            provider.initialize("p", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
+        } else {
+            const authClient = new OAuth2Client();
+            authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
+            provider.initialize("p", "global", { authClient });
+        }
+        await provider.provideLanguageModelChatResponse(
+            spec.id,
+            [
+                ...userMessage(),
+                { role: 2, content: [new TextPart("earlier answer")] },
+            ],
+            {},
+            { report() {} },
+            cancellation().token,
+            {},
+            spec,
+        );
+        assert.equal(requests.length, 1);
+        assert.ok(requests[0].url.includes(`/publishers/google/models/${spec.id}:streamGenerateContent`));
+        const roles = requests[0].body.contents.map((content) => content.role);
+        assert.deepEqual(roles, [
+            "user",
+            "model",
+            "user",
+        ]);
+        assert.deepEqual(requests[0].body.contents[1].parts, [{ text: "earlier answer" }]);
     });
 
 test("malformed local definitions are excluded at ingestion without falling through to User/bundle", async (t) => {

@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Claude Fable 5.2 with Low/Medium/High/XHigh/Max thinking effort (High default), vision, tool calling, a 1M-token context and 128,000 output tokens. Costs are estimated at its global Vertex rates: $8 input, $40 output, $0.20 cache read and $10 cache write per million tokens. Vertex serves it only on the `global`, `us` and `eu` endpoints.
 - Gemini 4 Carbon with Low/Medium/High thinking effort (Medium default), vision and tool calling. Like Gemini 4 Argon, it reserves a 65,536-token reasoning and output limit within its shared 1,048,576-token context, and costs are estimated at the global promotional rates through November 30, 2026. Google currently offers it to verified enterprise customers, so it appears only where discovery confirms access.
 
+### Fixed
+
+- End every Gemini request with a user turn. Gemini 4 Carbon rejects a chat history whose last turn is the model's, so such a history now gets an empty user turn appended.
+
 ### Removed
 
 - Claude Haiku 4.5 from the bundled model catalog. If `vertexAiChat.commitMessageModel` is set to `claude-haiku-4-5`, commit-message generation now reports the model as unavailable: choose another model, such as Claude Haiku 5.5, or add Haiku 4.5 to a custom `models.json` catalog.
