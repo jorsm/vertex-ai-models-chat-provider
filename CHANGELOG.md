@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.7.13] — 2026-11-11
+
 ### Added
 
 - Claude Fable 5.2 with Low/Medium/High/XHigh/Max thinking effort (High default), vision, tool calling, a 1M-token context and 128,000 output tokens. Costs are estimated at its global Vertex rates: $8 input, $40 output, $0.20 cache read and $10 cache write per million tokens. Vertex serves it only on the `global`, `us` and `eu` endpoints.
