@@ -70,13 +70,14 @@ export class GeminiMessages {
         const merged = this.mergeParallelToolResponses(mappedContents);
         this.orderToolResponses(merged, mappedPartCallIds);
 
+        const userPlaceholder = () => ({ role: "user", parts: [{ text: " " }] });
         if (merged.length === 0 || merged[0].role !== "user") {
-            merged.unshift({ role: "user", parts: [{ text: " " }] });
+            merged.unshift(userPlaceholder());
         }
         // Gemini 4 rejects a history that ends with a model turn (it reads it as a
         // prefill), so a request must always end with a user turn.
         if (merged[merged.length - 1].role !== "user") {
-            merged.push({ role: "user", parts: [{ text: " " }] });
+            merged.push(userPlaceholder());
         }
 
         return { mappedContents: merged, systemInstruction };
