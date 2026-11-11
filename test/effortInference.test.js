@@ -240,16 +240,7 @@ test("a refused Claude request records its billed usage and still fails", async 
     await assert.rejects(h.d.provideLanguageModelChatResponse({ id: "claude-fable-5-2" }, messages, {}, progress, token()), { name: "ModelRefusalError", message: "Claude declined this request. Rephrase it or choose another model." });
     assert.equal(h.records.length, 1);
     assert.equal(h.records[0][0], "claude-fable-5-2");
-    assert.deepEqual(
-        [
-            h.records[0][1].input,
-            h.records[0][1].output,
-        ],
-        [
-            7,
-            1,
-        ],
-    );
+    assert.deepEqual({ input: h.records[0][1].input, output: h.records[0][1].output }, { input: 7, output: 1 });
 });
 
 for (const alias of legacyAliases) {
