@@ -223,42 +223,36 @@ function adapter(vendor, onRequest) {
     return { provider, requests };
 }
 
-// Catches refused Claude requests disappearing from cost tracking although Vertex bills them.
-test("a refused Claude request records its billed usage and still fails", async (t) => {
-    const events = [
-        { type: "message_start", message: { id: "msg", role: "assistant", content: [], usage: { input_tokens: 7, output_tokens: 0 } } },
-        { type: "message_delta", delta: { stop_reason: "refusal", stop_details: { type: "refusal", category: null, explanation: null } }, usage: { output_tokens: 1 } },
-        { type: "message_stop" },
-    ];
-    const originalFetch = global.fetch;
-    t.after(() => {
-        global.fetch = originalFetch;
-    });
-    global.fetch = async () => new Response(events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } });
-    const h = harness();
-    const provider = new Anthropic();
-    provider.initialize("test-project", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
-    h.d.activeProviders.set("anthropic", provider);
-    await assert.rejects(h.d.provideLanguageModelChatResponse({ id: "claude-fable-5-2" }, messages, {}, progress, token()), { name: "ModelRefusalError", message: "Claude declined this request." });
-    const [
-        [
-            modelId,
-            tokens,
-        ],
-        ...others
-    ] = h.records;
-    assert.equal(others.length, 0);
-    assert.equal(modelId, "claude-fable-5-2");
-    assert.deepEqual({ input: tokens.input, output: tokens.output }, { input: 7, output: 1 });
-});
-
-// Catches Gemini and Grok safety blocks disappearing from cost tracking although Vertex bills them.
-for (const { vendor, modelId, body, message } of [
+const proxyGateway = () => new ProxyGateway("https://gateway.test", async () => "token");
+// Catches refused or safety-blocked requests disappearing from cost tracking although Vertex bills them.
+for (const { vendor, modelId, body, message, makeProvider } of [
+    {
+        vendor: "anthropic",
+        modelId: "claude-fable-5-2",
+        body: [
+            { type: "message_start", message: { id: "msg", role: "assistant", content: [], usage: { input_tokens: 7, output_tokens: 0 } } },
+            { type: "message_delta", delta: { stop_reason: "refusal", stop_details: { type: "refusal", category: null, explanation: null } }, usage: { output_tokens: 1 } },
+            { type: "message_stop" },
+        ]
+            .map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+            .join(""),
+        message: "Claude declined this request.",
+        makeProvider() {
+            const provider = new Anthropic();
+            provider.initialize("test-project", "global", undefined, proxyGateway());
+            return provider;
+        },
+    },
     {
         vendor: "google",
         modelId: "gemini-4-carbon",
         body: `data: ${JSON.stringify({ candidates: [{ finishReason: "SAFETY" }], usageMetadata: { promptTokenCount: 7, candidatesTokenCount: 1 } })}\n\n`,
         message: "Gemini blocked this response: flagged by the safety filters (SAFETY).",
+        makeProvider() {
+            const provider = new Google();
+            provider.initialize("test-project", "global", undefined, proxyGateway());
+            return provider;
+        },
     },
     {
         vendor: "grok",
@@ -271,22 +265,9 @@ for (const { vendor, modelId, body, message } of [
             .concat("data: [DONE]\n\n")
             .join(""),
         message: "Grok's content filter blocked this response (content_filter).",
-    },
-])
-    test(`a ${vendor} safety block records its billed usage and still fails`, async (t) => {
-        const originalFetch = global.fetch;
-        t.after(() => {
-            global.fetch = originalFetch;
-        });
-        global.fetch = async () => new Response(body, { headers: { "Content-Type": "text/event-stream" } });
-        const h = harness();
-        let provider;
-        if (vendor === "google") {
-            provider = new Google();
-            provider.initialize("test-project", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
-        } else {
+        makeProvider() {
             const OpenAI = require("openai");
-            provider = new Grok();
+            const provider = new Grok();
             provider.initialize("test-project", "global");
             // The real OpenAI SDK, minus the GoogleAuth token exchange, over the provider's own fetch adapter.
             provider.getClient = async () =>
@@ -296,8 +277,18 @@ for (const { vendor, modelId, body, message } of [
                     maxRetries: 0,
                     fetch: (url, init) => provider.fetchVertexStream(url, init),
                 });
-        }
-        h.d.activeProviders.set(vendor, provider);
+            return provider;
+        },
+    },
+])
+    test(`a refused ${vendor} request records its billed usage and still fails`, async (t) => {
+        const originalFetch = global.fetch;
+        t.after(() => {
+            global.fetch = originalFetch;
+        });
+        global.fetch = async () => new Response(body, { headers: { "Content-Type": "text/event-stream" } });
+        const h = harness();
+        h.d.activeProviders.set(vendor, makeProvider());
         await assert.rejects(h.d.provideLanguageModelChatResponse({ id: modelId }, messages, {}, progress, token()), { name: "ModelRefusalError", message });
         const [
             [

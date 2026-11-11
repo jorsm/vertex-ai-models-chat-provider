@@ -1107,6 +1107,16 @@ function streamingFetch(t, events, gate) {
 }
 const geminiEvent = (data) => `data: ${JSON.stringify(data)}\n\n`;
 const claudeEvent = (data) => `event: ${data.type}\ndata: ${JSON.stringify(data)}\n\n`;
+/** Initializes a provider for the direct transport (a fixed access token) or the proxy transport (a test gateway). */
+function initializeTransport(provider, transport) {
+    if (transport === "proxy") {
+        provider.initialize("p", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
+    } else {
+        const authClient = new OAuth2Client();
+        authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
+        provider.initialize("p", "global", { authClient });
+    }
+}
 test("pinned Gemini SDK sends ID-token Vertex wire format and delivers output before EOF", async (t) => {
     const gate = deferred();
     const requests = streamingFetch(
@@ -1202,20 +1212,14 @@ for (const transport of [
         ]);
         const spec = catalog.candidateModels.find((m) => m.id === "claude-fable-5-2");
         const provider = new VertexAnthropicProvider();
-        if (transport === "proxy") {
-            provider.initialize("p", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
-        } else {
-            const authClient = new OAuth2Client();
-            authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
-            provider.initialize("p", "global", { authClient });
-        }
+        initializeTransport(provider, transport);
         const parts = [];
         const run = provider.provideLanguageModelChatResponse(spec.id, userMessage(), {}, { report: (p) => parts.push(p) }, cancellation().token, {}, spec);
         await assert.rejects(run, (error) => {
             assert.equal(error.name, "ModelRefusalError");
             assert.equal(error.message, "Claude declined this request (cyber). This looks like exploit development.");
             // Loggers print the stack: it carries the category, never the explanation text.
-            assert.equal(error.stack, "ModelRefusalError: the model declined the request (category: cyber)");
+            assert.equal(error.stack, "ModelRefusalError: the request was refused (reason: cyber)");
             assert.deepEqual(error.result.usage, { input: 5, output: 2, cache_read: 0, cache_create: 0 });
             return true;
         });
@@ -2394,13 +2398,7 @@ for (const transport of [
         const requests = streamingFetch(t, [geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: "ok" }] } }] })]);
         const spec = catalog.candidateModels.find((m) => m.id === "gemini-4-carbon");
         const provider = new VertexGoogleProvider();
-        if (transport === "proxy") {
-            provider.initialize("p", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
-        } else {
-            const authClient = new OAuth2Client();
-            authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
-            provider.initialize("p", "global", { authClient });
-        }
+        initializeTransport(provider, transport);
         await provider.provideLanguageModelChatResponse(
             spec.id,
             [
@@ -2487,20 +2485,14 @@ for (const transport of [
             const requests = streamingFetch(t, block.events);
             const spec = catalog.candidateModels.find((m) => m.id === "gemini-4-carbon");
             const provider = new VertexGoogleProvider();
-            if (transport === "proxy") {
-                provider.initialize("p", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
-            } else {
-                const authClient = new OAuth2Client();
-                authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
-                provider.initialize("p", "global", { authClient });
-            }
+            initializeTransport(provider, transport);
             const parts = [];
             const run = provider.provideLanguageModelChatResponse(spec.id, userMessage(), {}, { report: (p) => parts.push(p) }, cancellation().token, {}, spec);
             await assert.rejects(run, (error) => {
                 assert.equal(error.name, "ModelRefusalError");
                 assert.equal(error.message, block.message);
                 // Loggers print the stack: it carries the reason, never the API explanation.
-                assert.equal(error.stack, `ModelRefusalError: the model declined the request (category: ${block.reason})`);
+                assert.equal(error.stack, `ModelRefusalError: the request was refused (reason: ${block.reason})`);
                 assert.deepEqual(error.result.usage, block.usage);
                 return true;
             });

@@ -292,9 +292,9 @@ test("filters malformed Vertex keepalive data events before OpenAI stream parsin
 test("Grok content_filter fails with the reason, drops its tool calls and keeps the billed usage", async (t) => {
     const OpenAI = require("openai");
     const sse = [
-        { choices: [{ index: 0, delta: { role: "assistant", content: "partial" }, finish_reason: null }] },
-        { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "blocked-call", type: "function", function: { name: "lookup", arguments: "{}" } }] }, finish_reason: null }] },
-        { choices: [{ index: 0, delta: {}, finish_reason: "content_filter" }] },
+        chunk({ role: "assistant", content: "partial" }),
+        chunk({ tool_calls: [{ index: 0, id: "blocked-call", type: "function", function: { name: "lookup", arguments: "{}" } }] }),
+        chunk({}, "content_filter"),
         { choices: [], usage: { prompt_tokens: 6, completion_tokens: 2, total_tokens: 8 } },
     ]
         .map((data) => `data: ${JSON.stringify(data)}\n\n`)
@@ -309,9 +309,7 @@ test("Grok content_filter fails with the reason, drops its tool calls and keeps 
         requests.push({ url: String(url), body: JSON.parse(init.body) });
         return new Response(sse, { headers: { "content-type": "text/event-stream" } });
     };
-    const provider = new VertexGrokProvider();
-    provider.initialize("test-project", "global");
-    provider.logger.log = () => {};
+    const { provider, parts, progress } = harness();
     // The real OpenAI SDK, minus the GoogleAuth token exchange, over the provider's own fetch adapter.
     provider.getClient = async () =>
         new OpenAI({
@@ -320,12 +318,11 @@ test("Grok content_filter fails with the reason, drops its tool calls and keeps 
             maxRetries: 0,
             fetch: (url, init) => provider.fetchVertexStream(url, init),
         });
-    const parts = [];
-    const run = provider.provideLanguageModelChatResponse(spec.id, [user([new TextPart("hi")])], {}, { report: (p) => parts.push(p) }, token, undefined, spec);
+    const run = provider.provideLanguageModelChatResponse(spec.id, [user([new TextPart("hi")])], {}, progress, token, undefined, spec);
     await assert.rejects(run, (error) => {
         assert.equal(error.name, "ModelRefusalError");
         assert.equal(error.message, "Grok's content filter blocked this response (content_filter).");
-        assert.equal(error.stack, "ModelRefusalError: the model declined the request (category: content_filter)");
+        assert.equal(error.stack, "ModelRefusalError: the request was refused (reason: content_filter)");
         assert.deepEqual(error.result.usage, { input: 6, output: 2, cache_read: 0, cache_create: 0 });
         return true;
     });
