@@ -8,9 +8,9 @@ import { estimateTokens } from "../utils/tokens";
 import { ClaudeThinkingReplayCache, claudeEffortConfig } from "./anthropic/ClaudeThinking";
 import { mapClaudeMessages, mapClaudeTools, logClaudeMessages } from "./anthropic/ClaudeMessages";
 import { restoreClaudeThinking, applyClaudeCacheControl } from "./anthropic/ClaudeRequestContext";
-import { processClaudeStream } from "./anthropic/ClaudeStream";
+import { processClaudeStream, type ClaudeRefusal } from "./anthropic/ClaudeStream";
 import { resolveCatalogModel, type ResolvedModelRequest } from "../effort/Effort";
-import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
+import { ChatInferenceResult, ModelRefusalError, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 import { ProxyGateway, normalizeGatewayError } from "../ProxyGateway";
 import { requestCancellation, cancellableRequest } from "../utils/cancellation";
 
@@ -121,8 +121,9 @@ export class VertexAnthropicProvider implements VertexModelProvider {
      * Cancellation links the VS Code token with the gateway lifetime signal.
      *
      * @returns Backend usage and the existing character attribution counters.
-     * @throws A VS Code cancellation error on abort, or the inference error
-     * normalized for gateway transport when applicable.
+     * @throws A VS Code cancellation error on abort, a {@link ModelRefusalError}
+     * carrying the billed usage when Claude declines to answer, or the inference
+     * error normalized for gateway transport when applicable.
      */
     async provideLanguageModelChatResponse(
         modelId: string,
@@ -152,6 +153,8 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
         const maxTokens = spec?.maxOutputTokens ?? 4096;
 
+        let result: ChatInferenceResult;
+        let refusal: ClaudeRefusal | undefined;
         try {
             const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
 
@@ -187,10 +190,12 @@ export class VertexAnthropicProvider implements VertexModelProvider {
 
             this.logger.log(`  Stream created successfully`);
 
-            const usage = await processClaudeStream(stream, charCount, progress, token, replayCache, this.logger, cancellation.signal, thinkingPrefix);
+            const streamed = await processClaudeStream(stream, charCount, progress, token, replayCache, this.logger, cancellation.signal, thinkingPrefix);
             if (cancellation.signal.aborted) {
                 throw new vscode.CancellationError();
             }
+            const usage = streamed.usage;
+            refusal = streamed.refusal;
 
             // Report token usage to VS Code (MIME type 'usage') for Copilot Chat indicator
             if (typeof vscode.LanguageModelDataPart !== "undefined") {
@@ -211,7 +216,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
                 this.logger.log(`  📊 Reported token usage to VS Code: ${JSON.stringify(usagePayload)}`);
             }
 
-            return { usage, charCount };
+            result = { usage, charCount };
         } catch (e: any) {
             if (cancellation.signal.aborted) {
                 throw new vscode.CancellationError();
@@ -227,5 +232,13 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         } finally {
             cancellation.dispose();
         }
+
+        // A refusal is a successful response, so it stays out of the transport error handling above.
+        if (refusal) {
+            const category = refusal.category ? ` (${refusal.category})` : "";
+            const explanation = refusal.explanation ? ` ${refusal.explanation}` : "";
+            throw new ModelRefusalError(`Claude declined this request${category}.${explanation}`, result, refusal.category);
+        }
+        return result;
     }
 }

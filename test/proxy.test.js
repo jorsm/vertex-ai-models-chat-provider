@@ -162,6 +162,7 @@ try {
 }
 const { withRetry, isRetryableError } = require("../out/utils/retry.js");
 const catalog = require("../src/models.json");
+const { OAuth2Client } = require("google-auth-library");
 const model = (id, vendor = "google", version = id) => {
     const spec = { ...catalog.candidateModels[0], id, version, vendor };
     delete spec.effort;
@@ -1185,6 +1186,46 @@ test("pinned Claude SDK uses gateway token, native SSE and label header, preserv
     ]);
     assert.equal(requests[1].body.messages[1].content[0].signature, "signed");
 });
+for (const transport of [
+    "direct",
+    "proxy",
+])
+    // Catches a Claude refusal that ends as an empty answer instead of an error the user can see.
+    test(`claude ${transport} refusal fails with its category and explanation and keeps the billed usage`, async (t) => {
+        const requests = streamingFetch(t, [
+            claudeEvent({ type: "message_start", message: { id: "msg", role: "assistant", content: [], usage: { input_tokens: 5, output_tokens: 0 } } }),
+            claudeEvent({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
+            claudeEvent({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "partial" } }),
+            claudeEvent({ type: "content_block_stop", index: 0 }),
+            claudeEvent({ type: "message_delta", delta: { stop_reason: "refusal", stop_details: { type: "refusal", category: "cyber", explanation: "This looks like exploit development." } }, usage: { output_tokens: 2 } }),
+            claudeEvent({ type: "message_stop" }),
+        ]);
+        const spec = catalog.candidateModels.find((m) => m.id === "claude-fable-5-2");
+        const provider = new VertexAnthropicProvider();
+        if (transport === "proxy") {
+            provider.initialize("p", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
+        } else {
+            const authClient = new OAuth2Client();
+            authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
+            provider.initialize("p", "global", { authClient });
+        }
+        const parts = [];
+        const run = provider.provideLanguageModelChatResponse(spec.id, userMessage(), {}, { report: (p) => parts.push(p) }, cancellation().token, {}, spec);
+        await assert.rejects(run, (error) => {
+            assert.equal(error.name, "ModelRefusalError");
+            assert.equal(error.message, "Claude declined this request (cyber). This looks like exploit development.");
+            // Loggers print the stack: it carries the category, never the explanation text.
+            assert.equal(error.stack, "ModelRefusalError: the model declined the request (category: cyber)");
+            assert.deepEqual(error.result.usage, { input: 5, output: 2, cache_read: 0, cache_create: 0 });
+            return true;
+        });
+        assert.equal(requests.length, 1);
+        assert.ok(requests[0].url.startsWith(transport === "proxy" ? "https://gateway.test/" : "https://aiplatform.googleapis.com/"), requests[0].url);
+        assert.deepEqual(
+            parts.filter((p) => p instanceof TextPart).map((p) => p.value),
+            ["partial"],
+        );
+    });
 test("Gemini cancellation during streaming aborts the actual SDK transport without retry", async (t) => {
     const gate = deferred();
     const requests = streamingFetch(
@@ -2291,6 +2332,7 @@ for (const modelId of [
     "gemini-3.7-flash",
     "gemini-3.8-flash",
     "gemini-4-argon",
+    "gemini-4-carbon",
 ])
     test(`${modelId} SDK transport preserves tool IDs and reasoning usage without following checkpoints`, async (t) => {
         const requests = streamingFetch(t, [
@@ -2341,6 +2383,46 @@ for (const modelId of [
         assert.equal(requests.length, 2);
         assert.deepEqual(requests[1].body.contents[1].parts[0], { functionCall: { id: "argon-call-1", name: "lookup", args: { query: "value" } }, thoughtSignature: "argon-signed" });
         assert.deepEqual(requests[1].body.contents[2].parts[0].functionResponse, { id: "argon-call-1", name: "lookup", response: { value: 42 } });
+    });
+
+for (const transport of [
+    "direct",
+    "proxy",
+])
+    // Catches a request whose history ends with a model turn: Gemini 4 rejects it as a prefill.
+    test(`gemini ${transport} request never ends with a model turn`, async (t) => {
+        const requests = streamingFetch(t, [geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: "ok" }] } }] })]);
+        const spec = catalog.candidateModels.find((m) => m.id === "gemini-4-carbon");
+        const provider = new VertexGoogleProvider();
+        if (transport === "proxy") {
+            provider.initialize("p", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
+        } else {
+            const authClient = new OAuth2Client();
+            authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
+            provider.initialize("p", "global", { authClient });
+        }
+        await provider.provideLanguageModelChatResponse(
+            spec.id,
+            [
+                ...userMessage(),
+                { role: 2, content: [new TextPart("earlier answer")] },
+            ],
+            {},
+            { report() {} },
+            cancellation().token,
+            {},
+            spec,
+        );
+        assert.equal(requests.length, 1);
+        assert.ok(requests[0].url.startsWith(transport === "proxy" ? "https://gateway.test/" : "https://aiplatform.googleapis.com/"), requests[0].url);
+        assert.ok(requests[0].url.includes(`/publishers/google/models/${spec.id}:streamGenerateContent`));
+        const roles = requests[0].body.contents.map((content) => content.role);
+        assert.deepEqual(roles, [
+            "user",
+            "model",
+            "user",
+        ]);
+        assert.deepEqual(requests[0].body.contents[1].parts, [{ text: "earlier answer" }]);
     });
 
 test("malformed local definitions are excluded at ingestion without falling through to User/bundle", async (t) => {
