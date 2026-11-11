@@ -8,7 +8,7 @@ import { ModelCatalogResolver } from "./ModelCatalogResolver";
 import { VertexAnthropicProvider } from "./providers/VertexAnthropicProvider";
 import { VertexGoogleProvider } from "./providers/VertexGoogleProvider";
 import { VertexGrokProvider } from "./providers/VertexGrokProvider";
-import { ModelSpec, VertexModelProvider } from "./providers/VertexModelProvider";
+import { ChatInferenceResult, ModelRefusalError, ModelSpec, VertexModelProvider } from "./providers/VertexModelProvider";
 import { UsageTrackerService } from "./UsageTrackerService";
 import { Logger } from "./utils/Logger";
 import { DISCOVERY_PROBE_TIMEOUT_MS, getDiscoveryStartDelayMs, probeWithRetries, resolveDiscoveryTimeoutMs, runDiscoveryQueue } from "./utils/discovery";
@@ -911,24 +911,33 @@ export class VertexChatModelDispatcher implements vscode.LanguageModelChatProvid
             }
             this.logger.log(`  ✅ Successfully completed request via plugin ${provider.vendor}`);
 
-            if (result.usage.input > 0 || result.usage.output > 0) {
-                await this.usageTracker
-                    .recordUsage(
-                        modelId,
-                        {
-                            input: result.usage.input,
-                            output: result.usage.output,
-                            cache_read: result.usage.cache_read,
-                            cache_create: result.usage.cache_create,
-                            characters: result.charCount,
-                        },
-                        spec.pricing,
-                    )
-                    .catch((err) => this.logger.log(`  ⚠️ Failed to record usage: ${err}`));
-            }
+            await this.recordUsage(modelId, result, spec);
         } catch (e) {
+            if (e instanceof ModelRefusalError) {
+                // A refused request is still billed.
+                await this.recordUsage(modelId, e.result, spec);
+            }
             this.logger.error(`  ❌ provideLanguageModelChatResponse error`, e);
             throw e;
+        }
+    }
+
+    /** Records nonzero token usage; a tracker failure is logged, never thrown. */
+    private async recordUsage(modelId: string, result: ChatInferenceResult, spec: ModelSpec): Promise<void> {
+        if (result.usage.input > 0 || result.usage.output > 0) {
+            await this.usageTracker
+                .recordUsage(
+                    modelId,
+                    {
+                        input: result.usage.input,
+                        output: result.usage.output,
+                        cache_read: result.usage.cache_read,
+                        cache_create: result.usage.cache_create,
+                        characters: result.charCount,
+                    },
+                    spec.pricing,
+                )
+                .catch((err) => this.logger.log(`  ⚠️ Failed to record usage: ${err}`));
         }
     }
 }

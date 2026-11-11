@@ -93,6 +93,11 @@ An open item has an empty box. The PR that fixes an item ticks its box and adds 
     - Target: every Gemini request ends with a user turn, on both transports.
     - Fixed: a trailing model turn gets a user placeholder appended, the same `" "` text part used at the start. Tested with the Gemini SDK against a fake `fetch` on the direct and proxy transports.
 
+- [x] **B13. A Claude refusal ends as a silent empty answer.**
+    - Evidence: `processClaudeStream` ignores `stop_reason`. When Claude declines (`stop_reason: "refusal"`, with `stop_details.category` and `explanation`), VS Code receives whatever text came before the refusal and a successful end, with no reason. Commit-message generation reports "no usable text". Vertex has no server-side fallback for refusals, and Fable 5.2 (added 11 Nov 2026) documents them as a case clients must handle.
+    - Target: a refusal fails the request with an error that names the category and explanation, on both transports, and the billed usage is still recorded.
+    - Fixed: the provider throws a `ModelRefusalError` that carries the request's usage, and the dispatcher records that usage before rethrowing. The error bypasses gateway normalization, so both transports show the same message. A refused turn is not kept for thinking replay. Tested with the Anthropic SDK against a fake `fetch` on the direct and proxy transports, and through the dispatcher for usage recording.
+
 ### Structural follow-up
 
 - [ ] **B10. `VertexChatModelDispatcher.ts` owns too much.**

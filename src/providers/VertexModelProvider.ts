@@ -46,6 +46,22 @@ export interface ChatInferenceResult {
 }
 
 /**
+ * The model declined to answer after the request was accepted.
+ *
+ * @remarks The request is still billed, so the error carries its usage for the
+ * dispatcher to record before the failure reaches the caller.
+ */
+export class ModelRefusalError extends Error {
+    constructor(
+        message: string,
+        readonly result: ChatInferenceResult,
+    ) {
+        super(message);
+        this.name = "ModelRefusalError";
+    }
+}
+
+/**
  * One model entry from the effective catalog.
  *
  * @remarks

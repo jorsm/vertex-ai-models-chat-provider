@@ -1186,6 +1186,44 @@ test("pinned Claude SDK uses gateway token, native SSE and label header, preserv
     ]);
     assert.equal(requests[1].body.messages[1].content[0].signature, "signed");
 });
+for (const transport of [
+    "direct",
+    "proxy",
+])
+    // Catches a Claude refusal that ends as an empty answer instead of an error the user can see.
+    test(`claude ${transport} refusal fails with its category and explanation and keeps the billed usage`, async (t) => {
+        const requests = streamingFetch(t, [
+            claudeEvent({ type: "message_start", message: { id: "msg", role: "assistant", content: [], usage: { input_tokens: 5, output_tokens: 0 } } }),
+            claudeEvent({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
+            claudeEvent({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "partial" } }),
+            claudeEvent({ type: "content_block_stop", index: 0 }),
+            claudeEvent({ type: "message_delta", delta: { stop_reason: "refusal", stop_details: { type: "refusal", category: "cyber", explanation: "This looks like exploit development." } }, usage: { output_tokens: 2 } }),
+            claudeEvent({ type: "message_stop" }),
+        ]);
+        const spec = catalog.candidateModels.find((m) => m.id === "claude-fable-5-2");
+        const provider = new VertexAnthropicProvider();
+        if (transport === "proxy") {
+            provider.initialize("p", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
+        } else {
+            const authClient = new OAuth2Client();
+            authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
+            provider.initialize("p", "global", { authClient });
+        }
+        const parts = [];
+        const run = provider.provideLanguageModelChatResponse(spec.id, userMessage(), {}, { report: (p) => parts.push(p) }, cancellation().token, {}, spec);
+        await assert.rejects(run, (error) => {
+            assert.equal(error.name, "ModelRefusalError");
+            assert.equal(error.message, "Claude declined this request (cyber). This looks like exploit development. Rephrase it or choose another model.");
+            assert.deepEqual(error.result.usage, { input: 5, output: 2, cache_read: 0, cache_create: 0 });
+            return true;
+        });
+        assert.equal(requests.length, 1);
+        assert.ok(requests[0].url.startsWith(transport === "proxy" ? "https://gateway.test/" : "https://aiplatform.googleapis.com/"), requests[0].url);
+        assert.deepEqual(
+            parts.filter((p) => p instanceof TextPart).map((p) => p.value),
+            ["partial"],
+        );
+    });
 test("Gemini cancellation during streaming aborts the actual SDK transport without retry", async (t) => {
     const gate = deferred();
     const requests = streamingFetch(

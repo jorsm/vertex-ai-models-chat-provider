@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 
 - End every Gemini request with a user turn. Gemini 4 Carbon rejects a chat history whose last turn is the model's, so such a history now gets an empty user turn appended.
+- Report a Claude refusal as an error naming its policy category and explanation, instead of ending with an empty or partial answer. The refused request's tokens still count in usage and cost tracking.
 
 ### Removed
 

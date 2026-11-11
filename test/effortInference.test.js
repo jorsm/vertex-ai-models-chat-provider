@@ -222,6 +222,36 @@ function adapter(vendor, onRequest) {
     return { provider, requests };
 }
 
+// Catches refused Claude requests disappearing from cost tracking although Vertex bills them.
+test("a refused Claude request records its billed usage and still fails", async () => {
+    const h = harness();
+    const provider = new Anthropic();
+    provider.region = "global";
+    provider.client = {
+        messages: {
+            create: async () =>
+                (async function* () {
+                    yield { type: "message_start", message: { usage: { input_tokens: 7, output_tokens: 0 } } };
+                    yield { type: "message_delta", delta: { stop_reason: "refusal", stop_details: { type: "refusal", category: null, explanation: null } }, usage: { output_tokens: 1 } };
+                })(),
+        },
+    };
+    h.d.activeProviders.set("anthropic", provider);
+    await assert.rejects(h.d.provideLanguageModelChatResponse({ id: "claude-fable-5-2" }, messages, {}, progress, token()), { name: "ModelRefusalError", message: "Claude declined this request. Rephrase it or choose another model." });
+    assert.equal(h.records.length, 1);
+    assert.equal(h.records[0][0], "claude-fable-5-2");
+    assert.deepEqual(
+        [
+            h.records[0][1].input,
+            h.records[0][1].output,
+        ],
+        [
+            7,
+            1,
+        ],
+    );
+});
+
 for (const alias of legacyAliases) {
     test(`${alias.id} sends its historical effort and backend through public and internal requests`, async () => {
         const model = legacyModel(alias);
