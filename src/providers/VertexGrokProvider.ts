@@ -6,7 +6,7 @@ import { Logger } from "../utils/Logger";
 import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryableError } from "../utils/discovery";
 import { checkAuthError, withRetry } from "../utils/retry";
 import { estimateTokens } from "../utils/tokens";
-import { ModelRefusalError, type ChatInferenceResult, type VertexModelProvider } from "./VertexModelProvider";
+import { ModelRefusalError, type ChatInferenceResult, type ModelRefusal, type VertexModelProvider } from "./VertexModelProvider";
 import type { ProxyGateway } from "../ProxyGateway";
 import type { ModelSpec } from "./VertexModelProvider";
 import { resolveCatalogModel, type ResolvedModelRequest } from "../effort/Effort";
@@ -154,7 +154,7 @@ export class VertexGrokProvider implements VertexModelProvider {
 
         const cancellation = requestCancellation(token);
         let result: ChatInferenceResult;
-        let contentFiltered = false;
+        let refusal: ModelRefusal | undefined;
         try {
             const charCount = { system: 0, user_text: 0, assistant_text: 0, image: 0, tool_use: 0, tool_result: 0 };
 
@@ -190,7 +190,7 @@ export class VertexGrokProvider implements VertexModelProvider {
                 throw new vscode.CancellationError();
             }
             const usage = streamed.usage;
-            contentFiltered = streamed.contentFiltered;
+            refusal = streamed.refusal;
 
             // Report token usage to VS Code (MIME type 'usage') for Copilot Chat indicator
             if (typeof vscode.LanguageModelDataPart !== "undefined") {
@@ -217,8 +217,8 @@ export class VertexGrokProvider implements VertexModelProvider {
         }
 
         // A content-filter stop arrives in a successful response, so it stays out of the error handling above.
-        if (contentFiltered) {
-            throw new ModelRefusalError("Grok's content filter blocked this response (content_filter).", result, "content_filter");
+        if (refusal) {
+            throw new ModelRefusalError(refusal, result);
         }
         return result;
     }

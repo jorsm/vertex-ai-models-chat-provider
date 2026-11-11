@@ -46,22 +46,39 @@ export interface ChatInferenceResult {
 }
 
 /**
- * The model declined to answer after the request was accepted.
+ * Why an accepted request produced no usable answer: the model declined it, or a
+ * safety filter blocked the prompt or stopped the response.
+ *
+ * @remarks Each vendor's stream parser builds this, so the wording stays in the
+ * vendor folder and every provider throws it the same way.
+ */
+export interface ModelRefusal {
+    /** User-facing text naming the reason; it can hold the API's explanation. */
+    message: string;
+    /** Vendor reason or policy category, such as `cyber`, `SAFETY` or `content_filter`; null when none. */
+    reason: string | null;
+}
+
+/**
+ * A request was accepted but refused: the model declined it, or a safety filter
+ * blocked the prompt or stopped the response.
  *
  * @remarks The request is still billed, so the error carries its usage for the
  * dispatcher to record before the failure reaches the caller. The message, shown
  * to the user, can hold the API's explanation; the stack, which the loggers
- * print, holds only the policy category, so no response text reaches the logs.
+ * print, holds only the vendor reason, so no response text reaches the logs.
  */
 export class ModelRefusalError extends Error {
+    readonly reason: string | null;
+
     constructor(
-        message: string,
+        refusal: ModelRefusal,
         readonly result: ChatInferenceResult,
-        readonly category: string | null,
     ) {
-        super(message);
+        super(refusal.message);
         this.name = "ModelRefusalError";
-        this.stack = `${this.name}: the model declined the request (category: ${category ?? "none"})`;
+        this.reason = refusal.reason;
+        this.stack = `${this.name}: the request was refused (reason: ${refusal.reason ?? "none"})`;
     }
 }
 

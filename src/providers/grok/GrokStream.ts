@@ -1,7 +1,7 @@
 import type OpenAI from "openai";
 import type { Stream } from "openai/streaming";
 import * as vscode from "vscode";
-import type { ModelUsageTokens } from "../VertexModelProvider";
+import type { ModelRefusal, ModelUsageTokens } from "../VertexModelProvider";
 import type { Logger } from "../../utils/Logger";
 
 /**
@@ -52,7 +52,7 @@ export async function processGrokStream(
     // Accumulate tool call deltas (OpenAI streams tool calls incrementally)
     const toolAccumulator: Map<number, ToolCallAccumulator> = new Map();
     const tokenUsage = { input: 0, output: 0, cache_read: 0, cache_create: 0 };
-    let contentFiltered = false;
+    let refusal: ModelRefusal | undefined;
     let chunkCount = 0;
 
     for await (const chunk of stream) {
@@ -67,12 +67,13 @@ export async function processGrokStream(
             Object.assign(tokenUsage, readGrokUsage(chunk.usage, modelPath));
         }
 
-        const finishReason = chunk.choices?.[0]?.finish_reason;
+        const choice = chunk.choices?.[0];
+        const finishReason = choice?.finish_reason;
         if (finishReason === "content_filter") {
-            contentFiltered = true;
+            refusal = CONTENT_FILTER_REFUSAL;
         }
 
-        const delta = chunk.choices?.[0]?.delta;
+        const delta = choice?.delta;
         if (!delta) {
             continue;
         }
@@ -90,10 +91,10 @@ export async function processGrokStream(
         }
 
         // Check finish_reason — when the model finishes, emit any complete tool calls
+        if (finishReason && !refusal) {
+            reportToolCalls(toolAccumulator, charCount, progress, logger);
+        }
         if (finishReason) {
-            if (!contentFiltered) {
-                reportToolCalls(toolAccumulator, charCount, progress, logger);
-            }
             toolAccumulator.clear();
         }
     }
@@ -118,18 +119,20 @@ export async function processGrokStream(
         }
     }
 
-    if (contentFiltered) {
-        logger.log(`  ⛔ Grok's content filter stopped the response (finish_reason: content_filter)`);
+    if (refusal) {
+        logger.log(`  ⛔ Grok's content filter stopped the response (finish_reason: ${refusal.reason})`);
     }
     logger.log(`  ✅ Stream finished — ${chunkCount} chunks total, input=${tokenUsage.input}, output=${tokenUsage.output}`);
-    return { usage: tokenUsage, contentFiltered };
+    return refusal ? { usage: tokenUsage, refusal } : { usage: tokenUsage };
 }
 
-/** Usage and whether the content filter stopped the response. */
+/** The refusal for a response that ends with `finish_reason: "content_filter"`. */
+const CONTENT_FILTER_REFUSAL: ModelRefusal = { message: "Grok's content filter blocked this response (content_filter).", reason: "content_filter" };
+
+/** Usage and, when the content filter stopped the response, the refusal. */
 export interface GrokStreamResult {
     usage: ModelUsageTokens;
-    /** True when the stream ended with `finish_reason: "content_filter"`. */
-    contentFiltered: boolean;
+    refusal?: ModelRefusal;
 }
 
 interface ToolCallAccumulator {

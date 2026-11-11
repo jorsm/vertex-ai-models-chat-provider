@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { Logger } from "../../utils/Logger";
-import type { CharacterCounts } from "../VertexModelProvider";
+import type { CharacterCounts, ModelRefusal } from "../VertexModelProvider";
 import type { GeminiReasoningHeaders } from "./GeminiMessages";
 
 /** Provider-owned state and response sinks borrowed for one Gemini stream. */
@@ -23,34 +23,24 @@ export interface GeminiStreamContext {
     reasoningHeaders: GeminiReasoningHeaders;
 }
 
-/** Response `finishReason` values that mean a safety filter stopped the answer, with their descriptions. */
-const SHARED_BLOCK_REASONS = {
+/** Candidate `finishReason` values that mean a safety filter stopped the response. */
+const RESPONSE_BLOCK_REASONS = new Set([
+    "SAFETY",
+    "PROHIBITED_CONTENT",
+    "BLOCKLIST",
+    "SPII",
+]);
+
+/** User-facing descriptions of the response block reasons and the `promptFeedback.blockReason` values. */
+const BLOCK_REASON_DESCRIPTIONS: Record<string, string> = {
     SAFETY: "flagged by the safety filters",
     PROHIBITED_CONTENT: "flagged as prohibited content",
     BLOCKLIST: "contains a blocklisted term",
-};
-const RESPONSE_BLOCK_REASONS: Record<string, string> = {
-    ...SHARED_BLOCK_REASONS,
     SPII: "may contain sensitive personal information",
-};
-
-/** Descriptions for `promptFeedback.blockReason`; any reason present means the prompt was blocked. */
-const PROMPT_BLOCK_REASONS: Record<string, string> = {
-    ...SHARED_BLOCK_REASONS,
     IMAGE_SAFETY: "contains an image flagged by the safety filters",
     MODEL_ARMOR: "blocked by Model Armor",
     JAILBREAK: "flagged as a jailbreak attempt",
 };
-
-/** A Gemini safety filter that blocked the prompt or stopped the response. */
-export interface GeminiSafetyBlock {
-    /** Whether the prompt was rejected before generation or the response was stopped. */
-    stage: "prompt" | "response";
-    /** API reason: a `promptFeedback.blockReason` or a candidate `finishReason`. */
-    reason: string;
-    /** API explanation (`blockReasonMessage` or `finishMessage`); null when none. */
-    message: string | null;
-}
 
 /** Latest prompt, candidate plus thinking, and cache counters reported by the stream. */
 export interface GeminiStreamUsage {
@@ -58,25 +48,27 @@ export interface GeminiStreamUsage {
     outputTokens: number;
     cacheRead: number;
     /** Set when a safety filter blocked the prompt or stopped the response. */
-    safetyBlock?: GeminiSafetyBlock;
+    refusal?: ModelRefusal;
 }
 
-/** User-facing error message for a safety block, naming the API reason. */
-export function describeGeminiSafetyBlock(block: GeminiSafetyBlock): string {
-    const description = (block.stage === "prompt" ? PROMPT_BLOCK_REASONS : RESPONSE_BLOCK_REASONS)[block.reason];
-    const explanation = block.message ? ` ${block.message}` : "";
-    return `Gemini blocked this ${block.stage}${description ? `: ${description}` : ""} (${block.reason}).${explanation}`;
+/** Builds the refusal for a blocked prompt or response: the API reason, its description and the API's explanation. */
+function geminiRefusal(stage: "prompt" | "response", reason: string, explanation: string | null): ModelRefusal {
+    const description = BLOCK_REASON_DESCRIPTIONS[reason];
+    return {
+        message: `Gemini blocked this ${stage}${description ? `: ${description}` : ""} (${reason}).${explanation ? ` ${explanation}` : ""}`,
+        reason,
+    };
 }
 
-/** Reads a prompt block or a safety finish reason from one stream chunk. */
-function readSafetyBlock(chunk: any): GeminiSafetyBlock | undefined {
+/** Reads a prompt block (any `promptFeedback.blockReason`) or a safety finish reason from one stream chunk. */
+function readSafetyBlock(chunk: any): ModelRefusal | undefined {
     const feedback = chunk.promptFeedback;
     if (feedback?.blockReason) {
-        return { stage: "prompt", reason: String(feedback.blockReason), message: feedback.blockReasonMessage ?? null };
+        return geminiRefusal("prompt", String(feedback.blockReason), feedback.blockReasonMessage ?? null);
     }
     const candidate = chunk.candidates?.[0];
-    if (typeof candidate?.finishReason === "string" && Object.hasOwn(RESPONSE_BLOCK_REASONS, candidate.finishReason)) {
-        return { stage: "response", reason: candidate.finishReason, message: candidate.finishMessage ?? null };
+    if (RESPONSE_BLOCK_REASONS.has(candidate?.finishReason)) {
+        return geminiRefusal("response", candidate.finishReason, candidate.finishMessage ?? null);
     }
     return undefined;
 }
@@ -100,7 +92,7 @@ export async function processGeminiStream(stream: AsyncIterable<any>, context: G
         cacheRead = 0;
     const processor = new StreamPartProcessor(reasoningHeaders, modelId, actualId, progress, charCount, logger);
     const bufferedCalls: Array<{ callId: string; callName: string; args: any; signature: string | undefined; hasApiId: boolean }> = [];
-    let safetyBlock: GeminiSafetyBlock | undefined;
+    let refusal: ModelRefusal | undefined;
 
     for await (const chunk of stream) {
         if (signal.aborted) {
@@ -131,7 +123,7 @@ export async function processGeminiStream(stream: AsyncIterable<any>, context: G
             processor.pendingThoughtSignature = undefined;
         }
 
-        safetyBlock ??= readSafetyBlock(chunk);
+        refusal ??= readSafetyBlock(chunk);
 
         if (chunk.usageMetadata) {
             inputTokens = chunk.usageMetadata.promptTokenCount ?? inputTokens;
@@ -145,10 +137,11 @@ export async function processGeminiStream(stream: AsyncIterable<any>, context: G
         throw new vscode.CancellationError();
     }
     const usage: GeminiStreamUsage = { inputTokens, outputTokens: candidateTokens + thinkingTokens, cacheRead };
-    if (safetyBlock) {
+    if (refusal) {
         // The reason is API metadata; the explanation and any partial text stay out of the logs.
-        logger.log(`  ⛔ Gemini blocked the ${safetyBlock.stage} (${safetyBlock.reason}); dropped ${bufferedCalls.length} buffered function call(s)`);
-        return { ...usage, safetyBlock };
+        logger.log(`  ⛔ Gemini safety block (${refusal.reason}); dropped ${bufferedCalls.length} buffered function call(s)`);
+        usage.refusal = refusal;
+        return usage;
     }
     // Emit all buffered function calls together so VS Code groups them into
     // a single model turn, matching the API's parallel-call expectations.

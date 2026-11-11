@@ -1,22 +1,24 @@
 import * as vscode from "vscode";
 import type { Logger } from "../../utils/Logger";
-import type { CharacterCounts, ModelUsageTokens } from "../VertexModelProvider";
+import type { CharacterCounts, ModelRefusal, ModelUsageTokens } from "../VertexModelProvider";
 import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix } from "./ClaudeThinking";
 
 type StreamCharacterCounts = Pick<CharacterCounts, "assistant_text" | "tool_use">;
 
-/** Why Claude declined to answer, from `stop_details` when `stop_reason` is `refusal`. */
-export interface ClaudeRefusal {
-    /** Policy category, such as `cyber`; null when the refusal has no named category. */
-    category: string | null;
-    /** Human-readable explanation from the API; null when none is available. */
-    explanation: string | null;
-}
-
-/** Usage and, when Claude declined to answer, the refusal details. */
+/** Usage and, when Claude declined to answer, the refusal. */
 export interface ClaudeStreamResult {
     usage: ModelUsageTokens;
-    refusal?: ClaudeRefusal;
+    refusal?: ModelRefusal;
+}
+
+/** Builds the refusal from `stop_details`: its policy category is the reason, and its explanation joins the message. */
+function readClaudeRefusal(stopDetails: any): ModelRefusal {
+    const category: string | null = stopDetails?.category ?? null;
+    const explanation: string | null = stopDetails?.explanation ?? null;
+    return {
+        message: `Claude declined this request${category ? ` (${category})` : ""}.${explanation ? ` ${explanation}` : ""}`,
+        reason: category,
+    };
 }
 
 /**
@@ -61,7 +63,7 @@ export async function processClaudeStream(
         throw new vscode.CancellationError();
     }
     if (result.refusal) {
-        logger.log(`  ⛔ Claude declined to respond (category: ${result.refusal.category ?? "none"})`);
+        logger.log(`  ⛔ Claude declined to respond (category: ${result.refusal.reason ?? "none"})`);
     } else if (!cancelled) {
         const replay = contentAccumulator.createThinkingReplay();
         if (replay) {
@@ -92,7 +94,7 @@ function handleClaudeStreamChunk(chunk: any, charCount: StreamCharacterCounts, p
         }
     } else if (chunk.type === "message_delta") {
         if (chunk.delta?.stop_reason === "refusal") {
-            result.refusal = { category: chunk.delta.stop_details?.category ?? null, explanation: chunk.delta.stop_details?.explanation ?? null };
+            result.refusal = readClaudeRefusal(chunk.delta.stop_details);
         }
         const usage = chunk.usage;
         if (usage) {

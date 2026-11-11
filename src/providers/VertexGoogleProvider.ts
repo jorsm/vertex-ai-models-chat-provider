@@ -4,11 +4,11 @@ import { DISCOVERY_PROBE_TIMEOUT_MS, DiscoveryProbeOptions, getDiscoveryRetryabl
 import { checkAuthError, withRetry } from "../utils/retry";
 import { resolveCatalogModel, type ResolvedModelRequest } from "../effort/Effort";
 import { estimateTokens } from "../utils/tokens";
-import { ChatInferenceResult, ModelRefusalError, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
+import { ChatInferenceResult, ModelRefusal, ModelRefusalError, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
 import { ProxyGateway, normalizeGatewayError } from "../ProxyGateway";
 import { requestCancellation, cancellableRequest } from "../utils/cancellation";
 import { GeminiMessages, isLeakedReasoningHeader, stripLeakedReasoningHeader } from "./google/GeminiMessages";
-import { describeGeminiSafetyBlock, processGeminiStream, type GeminiSafetyBlock } from "./google/GeminiStream";
+import { processGeminiStream } from "./google/GeminiStream";
 import { VertexToolSchema } from "./google/VertexToolSchema";
 
 /**
@@ -160,7 +160,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
         const cacheCreate = 0;
 
         let result: ChatInferenceResult;
-        let safetyBlock: GeminiSafetyBlock | undefined;
+        let refusal: ModelRefusal | undefined;
         try {
             const { mappedContents, systemInstruction } = new GeminiMessages(this.thoughtSignatureCache, this.textSignatureCache, this, this.logger, this.apiToolCallIds).extractMessages(messages, charCount, modelId, actualId);
 
@@ -222,7 +222,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
                 reasoningHeaders: this,
             });
             const { inputTokens, outputTokens, cacheRead } = streamed;
-            safetyBlock = streamed.safetyBlock;
+            refusal = streamed.refusal;
 
             // For Gemini, promptTokenCount includes cachedContentTokenCount.
             // To correctly record usage in our tracker, we subtract cached tokens from
@@ -265,8 +265,8 @@ export class VertexGoogleProvider implements VertexModelProvider {
         }
 
         // A safety block arrives in a successful response, so it stays out of the transport error handling above.
-        if (safetyBlock) {
-            throw new ModelRefusalError(describeGeminiSafetyBlock(safetyBlock), result, safetyBlock.reason);
+        if (refusal) {
+            throw new ModelRefusalError(refusal, result);
         }
         return result;
     }
