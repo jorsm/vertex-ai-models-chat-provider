@@ -237,7 +237,7 @@ export class VertexAnthropicProvider implements VertexModelProvider {
         if (refusal) {
             const category = refusal.category ? ` (${refusal.category})` : "";
             const explanation = refusal.explanation ? ` ${refusal.explanation}` : "";
-            throw new ModelRefusalError(`Claude declined this request${category}.${explanation} Rephrase it or choose another model.`, result);
+            throw new ModelRefusalError(`Claude declined this request${category}.${explanation}`, result, refusal.category);
         }
         return result;
     }

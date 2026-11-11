@@ -1213,7 +1213,9 @@ for (const transport of [
         const run = provider.provideLanguageModelChatResponse(spec.id, userMessage(), {}, { report: (p) => parts.push(p) }, cancellation().token, {}, spec);
         await assert.rejects(run, (error) => {
             assert.equal(error.name, "ModelRefusalError");
-            assert.equal(error.message, "Claude declined this request (cyber). This looks like exploit development. Rephrase it or choose another model.");
+            assert.equal(error.message, "Claude declined this request (cyber). This looks like exploit development.");
+            // Loggers print the stack: it carries the category, never the explanation text.
+            assert.equal(error.stack, "ModelRefusalError: the model declined the request (category: cyber)");
             assert.deepEqual(error.result.usage, { input: 5, output: 2, cache_read: 0, cache_create: 0 });
             return true;
         });
