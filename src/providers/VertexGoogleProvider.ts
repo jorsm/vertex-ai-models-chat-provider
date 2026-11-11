@@ -5,7 +5,7 @@ import { checkAuthError, withRetry } from "../utils/retry";
 import { resolveCatalogModel, type ResolvedModelRequest } from "../effort/Effort";
 import { estimateTokens } from "../utils/tokens";
 import { ChatInferenceResult, ModelSpec, VertexModelProvider } from "./VertexModelProvider";
-import { ProxyGateway, isGatewayRetryable, normalizeGatewayError, gatewayRetryDelayMs } from "../ProxyGateway";
+import { ProxyGateway, normalizeGatewayError } from "../ProxyGateway";
 import { requestCancellation, cancellableRequest } from "../utils/cancellation";
 import { GeminiMessages, isLeakedReasoningHeader, stripLeakedReasoningHeader } from "./google/GeminiMessages";
 import { processGeminiStream } from "./google/GeminiStream";
@@ -202,10 +202,7 @@ export class VertexGoogleProvider implements VertexModelProvider {
                             }),
                         cancellation.signal,
                     ),
-                {
-                    token: token,
-                    ...(gateway ? { maxRetries: 2, maxRetryDurationMs: 60_000, shouldRetry: isGatewayRetryable, retryDelayMs: gatewayRetryDelayMs } : {}),
-                },
+                { token },
             );
 
             const { inputTokens, outputTokens, cacheRead } = await processGeminiStream(stream, {
@@ -250,7 +247,9 @@ export class VertexGoogleProvider implements VertexModelProvider {
                 throw new vscode.CancellationError();
             }
             if (gateway) {
-                throw normalizeGatewayError(e);
+                const normalized = normalizeGatewayError(e);
+                this.logger.log(`  ❌ Google provideLanguageModelChatResponse gateway error (HTTP ${normalized.status ?? "unknown"}${normalized.policyCode ? ` ${normalized.policyCode}` : ""}): ${normalized.message}`);
+                throw normalized;
             }
             this.logger.log(`  ❌ Google provideLanguageModelChatResponse error: ${e}`);
             checkAuthError(e);

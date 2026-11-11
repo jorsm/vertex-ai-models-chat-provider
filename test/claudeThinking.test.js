@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix, claudeEffortConfig } = require("../out/providers/ClaudeThinking.js");
+const { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix, claudeEffortConfig } = require("../out/providers/anthropic/ClaudeThinking.js");
 
 test("maps a catalog effort to Claude request configuration without changing its value", () => {
     assert.deepEqual(claudeEffortConfig("custom-effort"), {

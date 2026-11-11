@@ -22,6 +22,7 @@ let commands;
 let terminal;
 let information, errors, logs, inputValues, inputOptions, selectedFiles;
 const shellListeners = new Set();
+const shellStartListeners = new Set();
 const closeListeners = new Set();
 const subscribe = (listeners, listener) => {
     listeners.add(listener);
@@ -53,6 +54,7 @@ const vscode = {
                 },
             }),
         onDidEndTerminalShellExecution: (listener) => subscribe(shellListeners, listener),
+        onDidStartTerminalShellExecution: (listener) => subscribe(shellStartListeners, listener),
         onDidCloseTerminal: (listener) => subscribe(closeListeners, listener),
     },
     workspace: {
@@ -76,6 +78,7 @@ try {
             };
         if (request.endsWith("/utils/gcloud")) {
             return {
+                ...originalLoad.call(this, request, parent, main),
                 runGcloud: async (args) => {
                     commands.push(args);
                     return { stdout: typeof gcloudResult === "function" ? await gcloudResult(args) : gcloudResult, stderr: "" };
@@ -91,6 +94,7 @@ try {
     Module._load = originalLoad;
 }
 const { AuthManager, AuthConfigurationError } = current;
+const { getConfiguredGcloudTimeoutMs } = require("../out/auth/AuthCredentials.js");
 const authKey = "vertexAiChat.activeAuthMethod";
 const namesKey = "vertexAiChat.serviceAccountNames";
 const credentials = (email = "selected@example.iam.gserviceaccount.com") => ({ type: "service_account", project_id: "fixture-project", client_email: email, private_key: "fixture-key" });
@@ -155,6 +159,7 @@ test.beforeEach(() => {
     inputOptions = [];
     selectedFiles = undefined;
     shellListeners.clear();
+    shellStartListeners.clear();
     closeListeners.clear();
 });
 test.afterEach(() => {
@@ -162,6 +167,55 @@ test.afterEach(() => {
     else process.env.GOOGLE_APPLICATION_CREDENTIALS = originalCredentialPath;
 });
 test.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+test("gcloud timeout settings accept 1–300 integer seconds and otherwise use 20 seconds", (t) => {
+    let seconds;
+    vscode.workspace.getConfiguration = () => ({ get: () => seconds });
+    t.after(() => {
+        delete vscode.workspace.getConfiguration;
+    });
+    for (const value of [
+        undefined,
+        null,
+        false,
+        0,
+        -5,
+        1.5,
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+        "20",
+        301,
+        2_147_483,
+    ]) {
+        seconds = value;
+        assert.equal(getConfiguredGcloudTimeoutMs(), 20_000);
+    }
+    for (const [
+        value,
+        expectedMs,
+    ] of [
+        [
+            1,
+            1_000,
+        ],
+        [
+            35,
+            35_000,
+        ],
+        [
+            300,
+            300_000,
+        ],
+    ]) {
+        seconds = value;
+        assert.equal(getConfiguredGcloudTimeoutMs(), expectedMs);
+    }
+    const setting = require("../package.json").contributes.configuration.properties["vertexAiChat.gcloudCommandTimeoutSeconds"];
+    assert.equal(setting.type, "integer");
+    assert.equal(setting.default, 20);
+    assert.equal(setting.minimum, 1);
+    assert.equal(setting.maximum, 300);
+});
 
 test("the manager exposes the credential error constructor used by direct authentication", () => {
     assert.equal(current.AuthConfigurationError, credentialModule.AuthConfigurationError);
@@ -235,6 +289,53 @@ test("environment credential resolution is used only when no method is selected"
     assert.equal(await harness({ type: "adc" }).auth.getResolvedAuthOptions(), undefined);
     process.env.GOOGLE_APPLICATION_CREDENTIALS = malformedFile;
     assert.equal(await harness(undefined).auth.getResolvedAuthOptions(), undefined);
+});
+
+test("the manager suppresses ADC fallback logs for user or default proxy settings only", async (t) => {
+    let proxySetting;
+    vscode.workspace.getConfiguration = () => ({ inspect: () => proxySetting });
+    t.after(() => {
+        delete vscode.workspace.getConfiguration;
+    });
+    for (const [
+        setting,
+        shouldLog,
+    ] of [
+        [
+            {},
+            true,
+        ],
+        [
+            { globalValue: "https://gateway.test" },
+            false,
+        ],
+        [
+            { defaultValue: "https://gateway.test" },
+            false,
+        ],
+        [
+            { globalValue: "   ", defaultValue: "" },
+            true,
+        ],
+        [
+            { workspaceValue: "https://workspace.test" },
+            true,
+        ],
+    ]) {
+        proxySetting = setting;
+        for (const method of [
+            undefined,
+            { type: "adc" },
+        ]) {
+            logs.length = 0;
+            assert.equal(await harness(method).auth.getResolvedAuthOptions(), undefined);
+            assert.equal(
+                logs.some((message) => message.includes("Application Default Credentials (ADC)")),
+                shouldLog,
+            );
+        }
+    }
+    assert.equal(commands.length, 0);
 });
 
 test("explicit legacy files fail closed while readable legacy files still resolve", async () => {
@@ -358,6 +459,52 @@ test("expired identity cache survives a CLI failure but clears an explicitly uns
     assert.equal(commands.length, 3);
 });
 
+test("an authentication change stops identity timeout retries and a later lookup uses the new revision", async () => {
+    const { auth } = harness({ type: "adc" });
+    let attempts = 0;
+    gcloudResult = async () => {
+        attempts++;
+        await auth.clearAuthMethod();
+        throw Object.assign(new Error("Fixture timeout"), { code: "GCLOUD_TIMEOUT", killed: true });
+    };
+    assert.equal(await auth.getIdentity(), undefined);
+    assert.equal(attempts, 1);
+    gcloudResult = "current@example.com";
+    assert.equal(await auth.getIdentity(), "current@example.com");
+    assert.equal(await auth.getIdentity(), "current@example.com");
+    assert.equal(commands.length, 2);
+});
+
+test("a failed identity lookup releases the shared CLI queue for proxy token acquisition", async () => {
+    const { auth } = harness({ type: "adc" });
+    const entered = deferred(),
+        release = deferred();
+    const expected = jwt();
+    gcloudResult = async (args) => {
+        if (args[0] === "config") {
+            entered.resolve();
+            await release.promise;
+            throw Object.assign(new Error("Fixture executable missing"), { code: "ENOENT" });
+        }
+        return expected;
+    };
+    const identity = auth.getIdentity();
+    await entered.promise;
+    const token = auth.getProxyIdToken();
+    await flush();
+    assert.equal(commands.length, 1);
+    release.resolve();
+    assert.equal(await identity, undefined);
+    assert.equal(await token, expected);
+    assert.deepEqual(
+        commands.map((args) => args[0]),
+        [
+            "config",
+            "auth",
+        ],
+    );
+});
+
 test("invalid claim shapes and overflowing expiration fail with sanitized proxy errors", async () => {
     const { auth } = harness({ type: "adc" });
     for (const claims of [
@@ -413,6 +560,7 @@ for (const removeActive of [
 for (const exitCode of [
     0,
     1,
+    undefined,
 ]) {
     test(`ADC terminal login with exit code ${exitCode} activates ADC and refreshes only on success`, async () => {
         const { auth } = harness({ type: "secret", value: "selected" }, { selected: JSON.stringify(credentials()) });
@@ -432,9 +580,37 @@ for (const exitCode of [
         assert.equal(refreshed, exitCode === 0 ? 1 : 0);
         assert.equal(updates, exitCode === 0 ? 1 : 0);
         assert.equal(shellListeners.size, 0);
+        assert.equal(shellStartListeners.size, 0);
         assert.equal(closeListeners.size, 0);
     });
 }
+
+test("proxy terminal login uses gcloud auth login without changing direct auth selection", async (t) => {
+    vscode.workspace.getConfiguration = () => ({
+        inspect: (key) => (key === "proxyUrl" ? { globalValue: "https://gateway.test" } : undefined),
+    });
+    t.after(() => {
+        delete vscode.workspace.getConfiguration;
+    });
+    const { auth } = harness({ type: "secret", value: "selected" }, { selected: JSON.stringify(credentials()) });
+    let refreshed = 0,
+        updates = 0;
+    auth.onAuthUpdated(() => {
+        updates++;
+    });
+    await auth.reauthenticate("fixture-project", () => {
+        refreshed++;
+    });
+    assert.equal(terminal.command, "gcloud auth login --project fixture-project --quiet");
+    for (const listener of shellListeners) listener({ terminal, execution: { commandLine: { value: terminal.command } }, exitCode: 0 });
+    await flush();
+    assert.equal(auth.getActiveMethod().type, "secret");
+    assert.equal(refreshed, 1);
+    assert.equal(updates, 1);
+    assert.equal(shellListeners.size, 0);
+    assert.equal(shellStartListeners.size, 0);
+    assert.equal(closeListeners.size, 0);
+});
 
 test("closing the login terminal releases subscriptions and ignores its late completion", async () => {
     const { auth } = harness({ type: "secret", value: "selected" });
@@ -445,6 +621,7 @@ test("closing the login terminal releases subscriptions and ignores its late com
     const completion = [...shellListeners][0];
     for (const listener of closeListeners) listener(terminal);
     assert.equal(shellListeners.size, 0);
+    assert.equal(shellStartListeners.size, 0);
     assert.equal(closeListeners.size, 0);
     completion({ terminal, execution: { commandLine: { value: terminal.command } }, exitCode: 0 });
     await flush();
@@ -452,24 +629,123 @@ test("closing the login terminal releases subscriptions and ignores its late com
     assert.equal(refreshed, 0);
 });
 
-test("unrelated terminal commands are ignored and successful login refreshes once", async () => {
+for (const mode of [
+    "adc",
+    "proxy",
+]) {
+    test(`${mode} login ignores command lookalikes and refreshes only once for the submitted command`, async (t) => {
+        vscode.workspace.getConfiguration = () => ({ inspect: () => (mode === "proxy" ? { globalValue: "https://gateway.test" } : undefined) });
+        t.after(() => {
+            delete vscode.workspace.getConfiguration;
+        });
+        const { auth } = harness({ type: "secret", value: "selected" });
+        let refreshed = 0;
+        await auth.reauthenticate("fixture-project", () => {
+            refreshed++;
+        });
+        const completion = [...shellListeners][0];
+        completion({ terminal: {}, execution: { commandLine: { value: terminal.command } }, exitCode: 0 });
+        for (const value of [
+            "echo fixture",
+            "echo 'gcloud auth login'",
+            `echo '${terminal.command}'`,
+            terminal.command.replace("fixture-project", "another-project"),
+            terminal.command.replace(" --quiet", ""),
+            `${terminal.command} --extra-argument`,
+            `${terminal.command} && echo done`,
+            `${terminal.command}; echo done`,
+            `${terminal.command}\necho done`,
+        ]) {
+            completion({ terminal, execution: { commandLine: { value } }, exitCode: 0 });
+        }
+        assert.equal(shellListeners.size, 1);
+        assert.equal(shellStartListeners.size, 1);
+        assert.equal(refreshed, 0);
+        assert.equal(auth.getActiveMethod().type, "secret");
+        const success = { terminal, execution: { commandLine: { value: `  ${terminal.command}\r\n` } }, exitCode: 0 };
+        completion(success);
+        completion(success);
+        await flush();
+        assert.equal(refreshed, 1);
+        assert.equal(auth.getActiveMethod().type, mode === "adc" ? "adc" : "secret");
+        assert.equal(shellListeners.size, 0);
+        assert.equal(shellStartListeners.size, 0);
+        assert.equal(closeListeners.size, 0);
+    });
+}
+
+test("login completion belongs to the recorded execution and still checks its complete command", async () => {
     const { auth } = harness({ type: "secret", value: "selected" });
     let refreshed = 0;
-    await auth.reauthenticate("", () => {
+    await auth.reauthenticate("fixture-project", () => {
         refreshed++;
     });
+    const execution = { commandLine: { value: terminal.command } };
+    for (const listener of shellStartListeners) {
+        listener({ terminal: {}, execution });
+        listener({ terminal, execution: { commandLine: { value: `echo '${terminal.command}'` } } });
+        listener({ terminal, execution });
+    }
     const completion = [...shellListeners][0];
-    completion({ terminal: {}, execution: { commandLine: { value: terminal.command } }, exitCode: 0 });
-    completion({ terminal, execution: { commandLine: { value: "echo fixture" } }, exitCode: 0 });
-    assert.equal(shellListeners.size, 1);
+    completion({ terminal, execution: { commandLine: { value: terminal.command } }, exitCode: 0 });
+    execution.commandLine.value = `${terminal.command} && echo done`;
+    completion({ terminal, execution, exitCode: 0 });
+    assert.equal(refreshed, 0);
     assert.equal(auth.getActiveMethod().type, "secret");
-    const success = { terminal, execution: { commandLine: { value: terminal.command } }, exitCode: 0 };
-    completion(success);
-    completion(success);
+    execution.commandLine.value = terminal.command;
+    completion({ terminal, execution, exitCode: 0 });
+    completion({ terminal, execution, exitCode: 0 });
     await flush();
     assert.equal(refreshed, 1);
     assert.equal(auth.getActiveMethod().type, "adc");
     assert.equal(shellListeners.size, 0);
+    assert.equal(shellStartListeners.size, 0);
+    assert.equal(closeListeners.size, 0);
+});
+
+test("login completion can use the full command when start metadata was incomplete", async () => {
+    const { auth } = harness({ type: "secret", value: "selected" });
+    let refreshed = 0;
+    await auth.reauthenticate("fixture-project", () => {
+        refreshed++;
+    });
+    const execution = { commandLine: { value: "gcloud auth" } };
+    for (const listener of shellStartListeners) listener({ terminal, execution });
+    execution.commandLine.value = terminal.command;
+    for (const listener of shellListeners) listener({ terminal, execution, exitCode: 0 });
+    await flush();
+    assert.equal(refreshed, 1);
+    assert.equal(auth.getActiveMethod().type, "adc");
+    assert.equal(shellListeners.size, 0);
+    assert.equal(shellStartListeners.size, 0);
+    assert.equal(closeListeners.size, 0);
+});
+
+test("login command construction preserves project argument quoting", async () => {
+    for (const [
+        projectId,
+        argument,
+    ] of [
+        [
+            "fixture-project",
+            "fixture-project",
+        ],
+        [
+            "team  project",
+            "'team  project'",
+        ],
+        [
+            "team'project",
+            String.raw`'team'\''project'`,
+        ],
+    ]) {
+        const { auth } = harness({ type: "adc" });
+        await auth.reauthenticate(projectId);
+        assert.equal(terminal.command, `gcloud auth application-default login --project ${argument} --quiet`);
+        for (const listener of closeListeners) listener(terminal);
+    }
+    assert.equal(shellListeners.size, 0);
+    assert.equal(shellStartListeners.size, 0);
     assert.equal(closeListeners.size, 0);
 });
 
@@ -488,6 +764,7 @@ test("terminal setup failures release listeners without changing the auth select
     const { auth } = harness({ type: "secret", value: "selected" });
     await assert.rejects(auth.reauthenticate("fixture-project"), /Fixture terminal setup failed/);
     assert.equal(shellListeners.size, 0);
+    assert.equal(shellStartListeners.size, 0);
     assert.equal(closeListeners.size, 0);
     assert.equal(auth.getActiveMethod().type, "secret");
 });
@@ -503,5 +780,6 @@ test("post-login refresh failures are logged without exposing callback error con
     assert.ok(logs.some((message) => message.includes("Post-authentication")));
     assert.ok(logs.every((message) => !message.includes("fixture-sensitive-fragment")));
     assert.equal(shellListeners.size, 0);
+    assert.equal(shellStartListeners.size, 0);
     assert.equal(closeListeners.size, 0);
 });

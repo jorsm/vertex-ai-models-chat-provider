@@ -46,6 +46,26 @@ export interface ChatInferenceResult {
 }
 
 /**
+ * The model declined to answer after the request was accepted.
+ *
+ * @remarks The request is still billed, so the error carries its usage for the
+ * dispatcher to record before the failure reaches the caller. The message, shown
+ * to the user, can hold the API's explanation; the stack, which the loggers
+ * print, holds only the policy category, so no response text reaches the logs.
+ */
+export class ModelRefusalError extends Error {
+    constructor(
+        message: string,
+        readonly result: ChatInferenceResult,
+        readonly category: string | null,
+    ) {
+        super(message);
+        this.name = "ModelRefusalError";
+        this.stack = `${this.name}: the model declined the request (category: ${category ?? "none"})`;
+    }
+}
+
+/**
  * One model entry from the effective catalog.
  *
  * @remarks

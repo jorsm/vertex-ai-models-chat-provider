@@ -63,6 +63,7 @@ try {
     Module._load = load;
 }
 const { EffortCatalog, resolveEffort } = require("../out/effort/Effort.js");
+const { ProxyGateway } = require("../out/ProxyGateway.js");
 const models = require("../src/models.json").candidateModels;
 const catalog = new EffortCatalog(models);
 const legacyAliases = require("./fixtures/legacy-effort-aliases.json");
@@ -83,7 +84,12 @@ function harness(catalogModels = models) {
     }
     const records = [],
         requests = [];
-    const d = new D("test-project", { recordUsage: async (...args) => records.push(args) }, { onAuthUpdated() {}, getResolvedAuthOptions: async () => undefined }, { getEffectiveCatalog: async () => ({ candidateModels: catalogModels, regionPriority: ["global"] }) });
+    const d = new D(
+        "test-project",
+        { recordUsage: async (...args) => records.push(args) },
+        { onAuthUpdated() {}, clearProxyToken() {}, getResolvedAuthOptions: async () => undefined },
+        { setProxyCatalog() {}, getEffectiveCatalog: async () => ({ candidateModels: catalogModels, regionPriority: ["global"] }) },
+    );
     d.availableModels = catalogModels;
     d.discoveryDone = true;
     for (const vendor of [
@@ -217,6 +223,35 @@ function adapter(vendor, onRequest) {
     return { provider, requests };
 }
 
+// Catches refused Claude requests disappearing from cost tracking although Vertex bills them.
+test("a refused Claude request records its billed usage and still fails", async (t) => {
+    const events = [
+        { type: "message_start", message: { id: "msg", role: "assistant", content: [], usage: { input_tokens: 7, output_tokens: 0 } } },
+        { type: "message_delta", delta: { stop_reason: "refusal", stop_details: { type: "refusal", category: null, explanation: null } }, usage: { output_tokens: 1 } },
+        { type: "message_stop" },
+    ];
+    const originalFetch = global.fetch;
+    t.after(() => {
+        global.fetch = originalFetch;
+    });
+    global.fetch = async () => new Response(events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } });
+    const h = harness();
+    const provider = new Anthropic();
+    provider.initialize("test-project", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
+    h.d.activeProviders.set("anthropic", provider);
+    await assert.rejects(h.d.provideLanguageModelChatResponse({ id: "claude-fable-5-2" }, messages, {}, progress, token()), { name: "ModelRefusalError", message: "Claude declined this request." });
+    const [
+        [
+            modelId,
+            tokens,
+        ],
+        ...others
+    ] = h.records;
+    assert.equal(others.length, 0);
+    assert.equal(modelId, "claude-fable-5-2");
+    assert.deepEqual({ input: tokens.input, output: tokens.output }, { input: 7, output: 1 });
+});
+
 for (const alias of legacyAliases) {
     test(`${alias.id} sends its historical effort and backend through public and internal requests`, async () => {
         const model = legacyModel(alias);
@@ -239,25 +274,30 @@ for (const alias of legacyAliases) {
     });
 }
 
-test("Argon uses a single-stream output limit without continuation or unsupported controls", async () => {
-    const h = adapter("google");
-    const request = resolveEffort(catalog, "gemini-4-argon");
-    await h.provider.provideLanguageModelChatResponse(request.spec.id, messages, {}, progress, token(), {}, request.spec, request);
-    const { model, config } = h.requests[0];
-    assert.equal(model, "gemini-4-argon");
-    assert.equal(config.maxOutputTokens, 65536);
-    assert.equal(config.automaticContinuation, false);
-    assert.deepEqual(config.thinkingConfig, { thinkingLevel: "MEDIUM" });
-    for (const field of [
-        "thinkingBudget",
-        "candidateCount",
-        "presencePenalty",
-        "frequencyPenalty",
-        "cachedContent",
-    ]) {
-        assert.equal(config[field], undefined);
-    }
-});
+for (const id of [
+    "gemini-4-carbon",
+    "gemini-4-argon",
+])
+    // Catches a Gemini 4 request that follows SDK continuation (on by default) or sends controls the model rejects.
+    test(`${id} uses a single-stream output limit without continuation or unsupported controls`, async () => {
+        const h = adapter("google");
+        const request = resolveEffort(catalog, id);
+        await h.provider.provideLanguageModelChatResponse(request.spec.id, messages, {}, progress, token(), {}, request.spec, request);
+        const { model, config } = h.requests[0];
+        assert.equal(model, id);
+        assert.equal(config.maxOutputTokens, 65536);
+        assert.equal(config.automaticContinuation, false);
+        assert.deepEqual(config.thinkingConfig, { thinkingLevel: "MEDIUM" });
+        for (const field of [
+            "thinkingBudget",
+            "candidateCount",
+            "presencePenalty",
+            "frequencyPenalty",
+            "cachedContent",
+        ]) {
+            assert.equal(config[field], undefined);
+        }
+    });
 
 for (const vendor of [
     "anthropic",

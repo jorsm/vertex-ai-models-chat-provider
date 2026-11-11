@@ -53,11 +53,6 @@ export class ModelCatalogResolver implements vscode.Disposable {
         return vscode.Uri.joinPath(folder.uri, ".vscode", "models.json");
     }
 
-    /** URI of the user-level catalog in the extension's global storage. Does NOT create the file. */
-    getUserCatalogUri(): vscode.Uri {
-        return this.userCatalogUri;
-    }
-
     // ── Seeding (used by the open-file commands) ──────────────────────────
 
     /**

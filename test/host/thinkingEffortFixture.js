@@ -23,8 +23,8 @@ exports.run = async () => {
         const d = new Fixture(
             "fixture-project",
             { recordUsage: async (...args) => records.push(args) },
-            { onAuthUpdated: () => new vscode.Disposable(() => {}), getResolvedAuthOptions: async () => undefined },
-            { getEffectiveCatalog: async () => ({ candidateModels: models, regionPriority: ["global"] }) },
+            { onAuthUpdated: () => new vscode.Disposable(() => {}), clearProxyToken() {}, getResolvedAuthOptions: async () => undefined },
+            { setProxyCatalog() {}, getEffectiveCatalog: async () => ({ candidateModels: models, regionPriority: ["global"] }) },
         );
         d.availableModels = models;
         d.discoveryDone = true;

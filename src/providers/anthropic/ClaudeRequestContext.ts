@@ -1,5 +1,5 @@
 import type { Logger } from "../../utils/Logger";
-import { ClaudeThinkingPrefix, ClaudeThinkingReplayCache } from "../ClaudeThinking";
+import { ClaudeThinkingPrefix, ClaudeThinkingReplayCache } from "./ClaudeThinking";
 
 /**
  * Restores cached signed blocks when a tool turn still has its original prefix.

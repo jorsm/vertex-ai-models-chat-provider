@@ -4,3 +4,6 @@ node_modules
 .vscode-test/
 playground/
 *.vsix
+
+# Agent worktrees (Claude Code)
+.claude/worktrees/

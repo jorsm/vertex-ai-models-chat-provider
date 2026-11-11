@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const childProcess = require("node:child_process");
-const { resolveGcloudCommand, runGcloud } = require("../out/utils/gcloud.js");
+const { formatGcloudCommand, resolveGcloudCommand, runGcloud } = require("../out/utils/gcloud.js");
 
 const bin = "C:\\SDK with spaces\\bin";
 const python = "C:\\SDK with spaces\\platform\\bundledpython\\python.exe";
@@ -33,6 +33,19 @@ test("Windows uses bundled Python directly with separate arguments and no shell 
             ],
             direct: true,
         },
+    );
+    assert.equal(
+        formatGcloudCommand({
+            executable: python,
+            args: [
+                "-S",
+                script,
+                "auth",
+                "print-identity-token",
+            ],
+            direct: true,
+        }),
+        `"${python}" -S "${script}" auth print-identity-token`,
     );
 });
 test("explicit SDK interpreter options preserve the standard launcher", () => {

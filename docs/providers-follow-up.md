@@ -12,7 +12,7 @@ Code: [GeminiStream.ts](../src/providers/google/GeminiStream.ts).
 
 ## 2. Malformed streamed tool arguments
 
-Code: [ClaudeThinking.ts](../src/providers/ClaudeThinking.ts), [ClaudeStream.ts](../src/providers/anthropic/ClaudeStream.ts), [GrokStream.ts](../src/providers/grok/GrokStream.ts).
+Code: [ClaudeThinking.ts](../src/providers/anthropic/ClaudeThinking.ts), [ClaudeStream.ts](../src/providers/anthropic/ClaudeStream.ts), [GrokStream.ts](../src/providers/grok/GrokStream.ts).
 
 **Current behavior:** Claude's accumulator marks invalid JSON as unsuitable for signed replay but still returns its tool block to the stream handler. That handler can emit the tool call with its initial input. Grok logs a JSON parse failure and emits the tool call with `{}`. Local fixtures reproduced both outcomes.
 

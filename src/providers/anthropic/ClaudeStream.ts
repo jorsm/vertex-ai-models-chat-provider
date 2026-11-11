@@ -1,19 +1,35 @@
 import * as vscode from "vscode";
 import type { Logger } from "../../utils/Logger";
 import type { CharacterCounts, ModelUsageTokens } from "../VertexModelProvider";
-import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix } from "../ClaudeThinking";
+import { ClaudeStreamContentAccumulator, ClaudeThinkingReplayCache, ClaudeThinkingPrefix } from "./ClaudeThinking";
 
 type StreamCharacterCounts = Pick<CharacterCounts, "assistant_text" | "tool_use">;
+
+/** Why Claude declined to answer, from `stop_details` when `stop_reason` is `refusal`. */
+export interface ClaudeRefusal {
+    /** Policy category, such as `cyber`; null when the refusal has no named category. */
+    category: string | null;
+    /** Human-readable explanation from the API; null when none is available. */
+    explanation: string | null;
+}
+
+/** Usage and, when Claude declined to answer, the refusal details. */
+export interface ClaudeStreamResult {
+    usage: ModelUsageTokens;
+    refusal?: ClaudeRefusal;
+}
 
 /**
  * Streams visible text/tool calls and retains completed signed tool turns.
  *
  * @remarks
  * Abort signals throw a VS Code cancellation error. A requested cancellation
- * token stops consumption and prevents replay storage. Thinking blocks stay in
- * {@link ClaudeStreamContentAccumulator}, and never become response parts.
+ * token stops consumption and prevents replay storage, and so does a refusal.
+ * Thinking blocks stay in {@link ClaudeStreamContentAccumulator}, and never
+ * become response parts.
  *
- * @returns The latest usage values supplied by Claude message events.
+ * @returns The latest usage values supplied by Claude message events, and the
+ * refusal details when `stop_reason` is `refusal`.
  */
 export async function processClaudeStream(
     stream: AsyncIterable<any>,
@@ -24,9 +40,9 @@ export async function processClaudeStream(
     logger: Logger,
     signal?: AbortSignal,
     thinkingPrefix?: ClaudeThinkingPrefix,
-): Promise<ModelUsageTokens> {
+): Promise<ClaudeStreamResult> {
     const contentAccumulator = new ClaudeStreamContentAccumulator();
-    const tokenUsage = { input: 0, output: 0, cache_read: 0, cache_create: 0 };
+    const result: ClaudeStreamResult = { usage: { input: 0, output: 0, cache_read: 0, cache_create: 0 } };
     let chunkCount = 0;
     let cancelled = false;
     for await (const chunk of stream) {
@@ -39,12 +55,14 @@ export async function processClaudeStream(
             cancelled = true;
             break;
         }
-        handleClaudeStreamChunk(chunk, charCount, progress, contentAccumulator, tokenUsage, logger);
+        handleClaudeStreamChunk(chunk, charCount, progress, contentAccumulator, result, logger);
     }
     if (signal?.aborted) {
         throw new vscode.CancellationError();
     }
-    if (!cancelled) {
+    if (result.refusal) {
+        logger.log(`  ⛔ Claude declined to respond (category: ${result.refusal.category ?? "none"})`);
+    } else if (!cancelled) {
         const replay = contentAccumulator.createThinkingReplay();
         if (replay) {
             replayCache.store(replay, thinkingPrefix?.fingerprint(replay.blocks));
@@ -53,7 +71,7 @@ export async function processClaudeStream(
         }
     }
     logger.log(`  ✅ Stream finished — ${chunkCount} chunks total`);
-    return tokenUsage;
+    return result;
 }
 
 /**
@@ -62,7 +80,8 @@ export async function processClaudeStream(
  * @remarks Tool blocks are emitted on stop even when their JSON made the replay
  * invalid; this existing behavior is deferred in `docs/providers-follow-up.md`.
  */
-function handleClaudeStreamChunk(chunk: any, charCount: StreamCharacterCounts, progress: vscode.Progress<vscode.LanguageModelResponsePart>, contentAccumulator: ClaudeStreamContentAccumulator, tokenUsage: ModelUsageTokens, logger: Logger): void {
+function handleClaudeStreamChunk(chunk: any, charCount: StreamCharacterCounts, progress: vscode.Progress<vscode.LanguageModelResponsePart>, contentAccumulator: ClaudeStreamContentAccumulator, result: ClaudeStreamResult, logger: Logger): void {
+    const tokenUsage = result.usage;
     if (chunk.type === "message_start") {
         const usage = chunk.message?.usage;
         if (usage) {
@@ -72,6 +91,9 @@ function handleClaudeStreamChunk(chunk: any, charCount: StreamCharacterCounts, p
             logger.log(`  📊 Input tokens: ${tokenUsage.input}, cache_read: ${tokenUsage.cache_read}, cache_create: ${tokenUsage.cache_create}`);
         }
     } else if (chunk.type === "message_delta") {
+        if (chunk.delta?.stop_reason === "refusal") {
+            result.refusal = { category: chunk.delta.stop_details?.category ?? null, explanation: chunk.delta.stop_details?.explanation ?? null };
+        }
         const usage = chunk.usage;
         if (usage) {
             tokenUsage.output = usage.output_tokens ?? 0;
