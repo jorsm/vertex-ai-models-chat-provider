@@ -244,25 +244,30 @@ for (const alias of legacyAliases) {
     });
 }
 
-test("Argon uses a single-stream output limit without continuation or unsupported controls", async () => {
-    const h = adapter("google");
-    const request = resolveEffort(catalog, "gemini-4-argon");
-    await h.provider.provideLanguageModelChatResponse(request.spec.id, messages, {}, progress, token(), {}, request.spec, request);
-    const { model, config } = h.requests[0];
-    assert.equal(model, "gemini-4-argon");
-    assert.equal(config.maxOutputTokens, 65536);
-    assert.equal(config.automaticContinuation, false);
-    assert.deepEqual(config.thinkingConfig, { thinkingLevel: "MEDIUM" });
-    for (const field of [
-        "thinkingBudget",
-        "candidateCount",
-        "presencePenalty",
-        "frequencyPenalty",
-        "cachedContent",
-    ]) {
-        assert.equal(config[field], undefined);
-    }
-});
+for (const id of [
+    "gemini-4-carbon",
+    "gemini-4-argon",
+])
+    // Catches a Gemini 4 request that follows SDK continuation (on by default) or sends controls the model rejects.
+    test(`${id} uses a single-stream output limit without continuation or unsupported controls`, async () => {
+        const h = adapter("google");
+        const request = resolveEffort(catalog, id);
+        await h.provider.provideLanguageModelChatResponse(request.spec.id, messages, {}, progress, token(), {}, request.spec, request);
+        const { model, config } = h.requests[0];
+        assert.equal(model, id);
+        assert.equal(config.maxOutputTokens, 65536);
+        assert.equal(config.automaticContinuation, false);
+        assert.deepEqual(config.thinkingConfig, { thinkingLevel: "MEDIUM" });
+        for (const field of [
+            "thinkingBudget",
+            "candidateCount",
+            "presencePenalty",
+            "frequencyPenalty",
+            "cachedContent",
+        ]) {
+            assert.equal(config[field], undefined);
+        }
+    });
 
 for (const vendor of [
     "anthropic",

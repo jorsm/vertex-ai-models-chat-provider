@@ -10,6 +10,7 @@ test("bundles the focused Gemini coding catalog", () => {
     assert.deepEqual(
         googleModels.map((model) => model.id),
         [
+            "gemini-4-carbon",
             "gemini-4-argon",
             "gemini-3.8-flash",
             "gemini-3.7-flash",
@@ -35,21 +36,37 @@ test("bundles the focused Gemini coding catalog", () => {
     assert.equal(pro.displayName, "Gemini 3.1 Pro");
 });
 
-test("Argon reserves its single-stream thinking and answer budget within the shared context", () => {
-    const argon = new EffortCatalog(catalog.candidateModels).get("gemini-4-argon");
-    assert.equal(argon.version, "gemini-4-argon");
-    assert.equal(argon.displayName, "Gemini 4 Argon");
-    assert.equal(argon.maxOutputTokens, 65536);
-    assert.equal(argon.maxInputTokens + argon.maxOutputTokens, 1048576);
-    assert.deepEqual(argon.capabilities, { imageInput: true, toolCalling: true });
-    assert.deepEqual(argon.effort, {
-        values: [
-            "low",
-            "medium",
-            "high",
-        ],
-        default: "medium",
+for (const [
+    id,
+    displayName,
+] of [
+    [
+        "gemini-4-carbon",
+        "Gemini 4 Carbon",
+    ],
+    [
+        "gemini-4-argon",
+        "Gemini 4 Argon",
+    ],
+]) {
+    // Catches a Gemini 4 entry that advertises the 1M-token continuation output we don't support,
+    // or overlaps input and output in the shared 1,048,576-token context.
+    test(`${id} reserves its single-stream thinking and answer budget within the shared context`, () => {
+        const model = new EffortCatalog(catalog.candidateModels).get(id);
+        assert.equal(model.version, id);
+        assert.equal(model.displayName, displayName);
+        assert.equal(model.maxOutputTokens, 65536);
+        assert.equal(model.maxInputTokens + model.maxOutputTokens, 1048576);
+        assert.deepEqual(model.capabilities, { imageInput: true, toolCalling: true });
+        assert.deepEqual(model.effort, {
+            values: [
+                "low",
+                "medium",
+                "high",
+            ],
+            default: "medium",
+        });
+        // Use the current global promotional rates through November 30, 2026.
+        assert.deepEqual(model.pricing, { input: 2, output: 10, cache_read: 0.1, cache_create: 0 });
     });
-    // Use the current global promotional rates through November 30, 2026.
-    assert.deepEqual(argon.pricing, { input: 2, output: 10, cache_read: 0.1, cache_create: 0 });
-});
+}

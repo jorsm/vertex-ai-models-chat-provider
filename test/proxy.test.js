@@ -2291,6 +2291,7 @@ for (const modelId of [
     "gemini-3.7-flash",
     "gemini-3.8-flash",
     "gemini-4-argon",
+    "gemini-4-carbon",
 ])
     test(`${modelId} SDK transport preserves tool IDs and reasoning usage without following checkpoints`, async (t) => {
         const requests = streamingFetch(t, [

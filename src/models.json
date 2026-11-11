@@ -88,6 +88,35 @@
             }
         },
         {
+            "id": "claude-fable-5-2",
+            "vendor": "anthropic",
+            "displayName": "Claude Fable 5.2",
+            "family": "claude",
+            "version": "claude-fable-5-2",
+            "maxInputTokens": 1000000,
+            "maxOutputTokens": 128000,
+            "capabilities": {
+                "imageInput": true,
+                "toolCalling": true
+            },
+            "pricing": {
+                "input": 8.0,
+                "output": 40.0,
+                "cache_read": 0.2,
+                "cache_create": 10.0
+            },
+            "effort": {
+                "values": [
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max"
+                ],
+                "default": "high"
+            }
+        },
+        {
             "id": "claude-fable-5-1",
             "vendor": "anthropic",
             "displayName": "Claude Fable 5.1",
@@ -263,6 +292,33 @@
                     "high",
                     "xhigh",
                     "max"
+                ],
+                "default": "medium"
+            }
+        },
+        {
+            "id": "gemini-4-carbon",
+            "vendor": "google",
+            "displayName": "Gemini 4 Carbon",
+            "family": "gemini",
+            "version": "gemini-4-carbon",
+            "maxInputTokens": 983040,
+            "maxOutputTokens": 65536,
+            "capabilities": {
+                "imageInput": true,
+                "toolCalling": true
+            },
+            "pricing": {
+                "input": 2.0,
+                "output": 10.0,
+                "cache_read": 0.1,
+                "cache_create": 0.0
+            },
+            "effort": {
+                "values": [
+                    "low",
+                    "medium",
+                    "high"
                 ],
                 "default": "medium"
             }
