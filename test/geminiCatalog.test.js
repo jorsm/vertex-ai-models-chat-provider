@@ -68,8 +68,6 @@ for (const [
         assert.equal(model.maxOutputTokens, 65536);
         assert.equal(model.maxInputTokens + model.maxOutputTokens, 1048576);
         assert.deepEqual(model.capabilities, { imageInput: true, toolCalling: true });
-        assert.equal(model.effort.default, id === "gemini-4-neon" || id === "gemini-4-hydrogen" ? "high" : "medium");
-        assert.ok(model.effort.values.includes(model.effort.default));
     });
 }
 
@@ -77,6 +75,7 @@ for (const [
     id,
     pricing,
     effortValues,
+    effortDefault,
 ] of [
     [
         "gemini-4-neon",
@@ -87,6 +86,7 @@ for (const [
             "high",
             "xhigh",
         ],
+        "high",
     ],
     [
         "gemini-4-hydrogen",
@@ -97,7 +97,9 @@ for (const [
             "high",
             "xhigh",
         ],
+        "high",
     ],
+    // Carbon and Argon use the global promotional rates through November 30, 2026.
     [
         "gemini-4-carbon",
         { input: 2, output: 10, cache_read: 0.1, cache_create: 0 },
@@ -106,6 +108,7 @@ for (const [
             "medium",
             "high",
         ],
+        "medium",
     ],
     [
         "gemini-4-argon",
@@ -115,12 +118,13 @@ for (const [
             "medium",
             "high",
         ],
+        "medium",
     ],
 ]) {
-    // Catches a Gemini 4 entry offering a thinking level the model rejects (xhigh on Carbon/Argon) or omitting one it supports, or stale prices.
-    test(`${id} offers its documented thinking levels and standard global prices`, () => {
+    // Catches a Gemini 4 entry offering a thinking level the model rejects (xhigh on Carbon/Argon), omitting one it supports, a wrong default, or stale prices.
+    test(`${id} offers its documented thinking levels, default and prices`, () => {
         const model = new EffortCatalog(catalog.candidateModels).get(id);
-        assert.deepEqual(model.effort.values, effortValues);
+        assert.deepEqual(model.effort, { values: effortValues, default: effortDefault });
         assert.deepEqual(model.pricing, pricing);
     });
 }
