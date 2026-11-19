@@ -98,6 +98,11 @@ An open item has an empty box. The PR that fixes an item ticks its box and adds 
     - Target: a refusal fails the request with an error that names the category and explanation, on both transports, and the billed usage is still recorded.
     - Fixed: the provider throws a `ModelRefusalError` that carries the request's usage, and the dispatcher records that usage before rethrowing. The error bypasses gateway normalization, so both transports show the same message. The error message shows the explanation to the user, while its stack, which the loggers print, carries only the category. A refused turn is not kept for thinking replay. Tested with the Anthropic SDK against a fake `fetch` on the direct and proxy transports, and through the dispatcher for usage recording.
 
+- [ ] **B16. A Gemini error sent as the first stream event is not retried.**
+    - Evidence: `withRetry` wraps only `generateContentStream`, which resolves once the HTTP response headers arrive (`VertexGoogleProvider.ts`, the `withRetry` call before `processGeminiStream`). Since `@google/genai` 3.x (0.7.14), an SSE error event (`data: {"error":{"code":429,...}}`) raises an `ApiError` while `processGeminiStream` iterates, outside `withRetry`. A 429 or 503 sent that way before any content therefore fails at once. The same status as an HTTP response is retried for up to `retryMaxDurationMinutes`. Before 3.x the event was ignored and the answer ended silently truncated.
+    - Target: an error event that arrives before any part has been reported to VS Code is retried like an HTTP error with the same status, under the same `withRetry` budget, on both transports. Once a part has been reported, the request still fails without restarting, as today. This changes the retry policy, so the PR that fixes it updates `AGENTS.md` only if a rule there changes.
+    - Check: on both transports, a stream whose first event is a 429 error and whose retry succeeds makes two upstream requests and delivers the second answer. A stream that reports text and then a 503 event makes one request and fails.
+
 ### Structural follow-up
 
 - [ ] **B10. `VertexChatModelDispatcher.ts` owns too much.**
@@ -106,13 +111,13 @@ An open item has an empty box. The PR that fixes an item ticks its box and adds 
 
 ## Suggested order
 
-| Order | Items       | Reason                                                    |
-| ----- | ----------- | --------------------------------------------------------- |
-| 1     | B9, B6, B7  | Small, independent, no transport risk                     |
-| 2     | B11, B1, B4 | Privacy first, then retry and error behavior users notice |
-| 3     | B2, B3      | Gemini request shape                                      |
-| 4     | B8          | Shared code after transports are aligned                  |
-| 5     | B5, B10     | Covered by the Grok and proxy-interface specs             |
+| Order | Items            | Reason                                                    |
+| ----- | ---------------- | --------------------------------------------------------- |
+| 1     | B9, B6, B7       | Small, independent, no transport risk                     |
+| 2     | B11, B1, B4, B16 | Privacy first, then retry and error behavior users notice |
+| 3     | B2, B3           | Gemini request shape                                      |
+| 4     | B8               | Shared code after transports are aligned                  |
+| 5     | B5, B10          | Covered by the Grok and proxy-interface specs             |
 
 ## Acceptance
 
