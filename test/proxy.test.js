@@ -1072,15 +1072,16 @@ test("configuration reset aborts in-flight discovery and a late result cannot pu
     assert.deepEqual(await h.dispatcher.provideLanguageModelChatInformation(), []);
 });
 
-/** Initializes a vendor provider on the direct transport (static token) or the proxy transport. */
+/** Initializes a vendor provider on the direct transport (static token) or the proxy transport; returns the expected request base URL. */
 function initializeOn(provider, transport) {
     if (transport === "proxy") {
         provider.initialize("p", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
-    } else {
-        const authClient = new OAuth2Client();
-        authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
-        provider.initialize("p", "global", { authClient });
+        return "https://gateway.test/";
     }
+    const authClient = new OAuth2Client();
+    authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
+    provider.initialize("p", "global", { authClient });
+    return "https://aiplatform.googleapis.com/";
 }
 function streamingFetch(t, events, gate) {
     const originalFetch = global.fetch;
@@ -1212,7 +1213,7 @@ for (const transport of [
         ]);
         const spec = catalog.candidateModels.find((m) => m.id === "claude-fable-5-2");
         const provider = new VertexAnthropicProvider();
-        initializeOn(provider, transport);
+        const base = initializeOn(provider, transport);
         const parts = [];
         const run = provider.provideLanguageModelChatResponse(spec.id, userMessage(), {}, { report: (p) => parts.push(p) }, cancellation().token, {}, spec);
         await assert.rejects(run, (error) => {
@@ -1224,7 +1225,7 @@ for (const transport of [
             return true;
         });
         assert.equal(requests.length, 1);
-        assert.ok(requests[0].url.startsWith(transport === "proxy" ? "https://gateway.test/" : "https://aiplatform.googleapis.com/"), requests[0].url);
+        assert.ok(requests[0].url.startsWith(base), requests[0].url);
         assert.deepEqual(
             parts.filter((p) => p instanceof TextPart).map((p) => p.value),
             ["partial"],
@@ -1320,7 +1321,7 @@ for (const transport of [
             geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: " never shown" }] }, finishReason: "STOP" }] }),
         ]);
         const provider = new VertexGoogleProvider();
-        initializeOn(provider, transport);
+        const base = initializeOn(provider, transport);
         const parts = [];
         const run = provider.provideLanguageModelChatResponse("gemini-test", userMessage(), { tools: [] }, { report: (p) => parts.push(p) }, cancellation().token, {}, model("gemini-test"));
         await assert.rejects(run, (error) => {
@@ -1329,7 +1330,7 @@ for (const transport of [
             return true;
         });
         assert.equal(requests.length, 1);
-        assert.ok(requests[0].url.startsWith(transport === "proxy" ? "https://gateway.test/" : "https://aiplatform.googleapis.com/"), requests[0].url);
+        assert.ok(requests[0].url.startsWith(base), requests[0].url);
         assert.deepEqual(
             parts.filter((p) => p instanceof TextPart).map((p) => p.value),
             ["partial"],
@@ -2425,7 +2426,7 @@ for (const transport of [
         const requests = streamingFetch(t, [geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: "ok" }] } }] })]);
         const spec = catalog.candidateModels.find((m) => m.id === "gemini-4-carbon");
         const provider = new VertexGoogleProvider();
-        initializeOn(provider, transport);
+        const base = initializeOn(provider, transport);
         await provider.provideLanguageModelChatResponse(
             spec.id,
             [
@@ -2439,7 +2440,7 @@ for (const transport of [
             spec,
         );
         assert.equal(requests.length, 1);
-        assert.ok(requests[0].url.startsWith(transport === "proxy" ? "https://gateway.test/" : "https://aiplatform.googleapis.com/"), requests[0].url);
+        assert.ok(requests[0].url.startsWith(base), requests[0].url);
         assert.ok(requests[0].url.includes(`/publishers/google/models/${spec.id}:streamGenerateContent`));
         const roles = requests[0].body.contents.map((content) => content.role);
         assert.deepEqual(roles, [
