@@ -10,6 +10,8 @@ test("bundles the focused Gemini coding catalog", () => {
     assert.deepEqual(
         googleModels.map((model) => model.id),
         [
+            "gemini-4-neon",
+            "gemini-4-hydrogen",
             "gemini-4-carbon",
             "gemini-4-argon",
             "gemini-3.8-flash",
@@ -41,6 +43,14 @@ for (const [
     displayName,
 ] of [
     [
+        "gemini-4-neon",
+        "Gemini 4 Neon",
+    ],
+    [
+        "gemini-4-hydrogen",
+        "Gemini 4 Hydrogen",
+    ],
+    [
         "gemini-4-carbon",
         "Gemini 4 Carbon",
     ],
@@ -58,15 +68,63 @@ for (const [
         assert.equal(model.maxOutputTokens, 65536);
         assert.equal(model.maxInputTokens + model.maxOutputTokens, 1048576);
         assert.deepEqual(model.capabilities, { imageInput: true, toolCalling: true });
-        assert.deepEqual(model.effort, {
-            values: [
-                "low",
-                "medium",
-                "high",
-            ],
-            default: "medium",
-        });
-        // Use the current global promotional rates through November 30, 2026.
-        assert.deepEqual(model.pricing, { input: 2, output: 10, cache_read: 0.1, cache_create: 0 });
+    });
+}
+
+for (const [
+    id,
+    pricing,
+    effortValues,
+    effortDefault,
+] of [
+    [
+        "gemini-4-neon",
+        { input: 3, output: 15, cache_read: 0.15, cache_create: 0 },
+        [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+        ],
+        "high",
+    ],
+    [
+        "gemini-4-hydrogen",
+        { input: 1.5, output: 7.5, cache_read: 0.075, cache_create: 0 },
+        [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+        ],
+        "high",
+    ],
+    // Carbon and Argon use the global promotional rates through November 30, 2026.
+    [
+        "gemini-4-carbon",
+        { input: 2, output: 10, cache_read: 0.1, cache_create: 0 },
+        [
+            "low",
+            "medium",
+            "high",
+        ],
+        "medium",
+    ],
+    [
+        "gemini-4-argon",
+        { input: 2, output: 10, cache_read: 0.1, cache_create: 0 },
+        [
+            "low",
+            "medium",
+            "high",
+        ],
+        "medium",
+    ],
+]) {
+    // Catches a Gemini 4 entry offering a thinking level the model rejects (xhigh on Carbon/Argon), omitting one it supports, a wrong default, or stale prices.
+    test(`${id} offers its documented thinking levels, default and prices`, () => {
+        const model = new EffortCatalog(catalog.candidateModels).get(id);
+        assert.deepEqual(model.effort, { values: effortValues, default: effortDefault });
+        assert.deepEqual(model.pricing, pricing);
     });
 }
