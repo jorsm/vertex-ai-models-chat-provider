@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- Gemini 4 Neon and Gemini 4 Hydrogen with Low/Medium/High/XHigh thinking effort (High default), vision and tool calling. Like the other Gemini 4 models, each reserves a 65,536-token reasoning and output limit within its shared 1,048,576-token context. Costs are estimated at the global Standard rates per million tokens: Neon $3 input, $15 output and $0.15 cache read; Hydrogen $1.50 input, $7.50 output and $0.075 cache read. Google offers Neon to verified enterprise customers, so it appears only where discovery confirms access.
+
 ## [0.7.13] — 2026-11-11
 
 ### Added
