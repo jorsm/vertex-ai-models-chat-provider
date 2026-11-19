@@ -1072,6 +1072,16 @@ test("configuration reset aborts in-flight discovery and a late result cannot pu
     assert.deepEqual(await h.dispatcher.provideLanguageModelChatInformation(), []);
 });
 
+/** Initializes a vendor provider on the direct transport (static token) or the proxy transport. */
+function initializeOn(provider, transport) {
+    if (transport === "proxy") {
+        provider.initialize("p", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
+    } else {
+        const authClient = new OAuth2Client();
+        authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
+        provider.initialize("p", "global", { authClient });
+    }
+}
 function streamingFetch(t, events, gate) {
     const originalFetch = global.fetch;
     const requests = [];
@@ -1202,13 +1212,7 @@ for (const transport of [
         ]);
         const spec = catalog.candidateModels.find((m) => m.id === "claude-fable-5-2");
         const provider = new VertexAnthropicProvider();
-        if (transport === "proxy") {
-            provider.initialize("p", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
-        } else {
-            const authClient = new OAuth2Client();
-            authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
-            provider.initialize("p", "global", { authClient });
-        }
+        initializeOn(provider, transport);
         const parts = [];
         const run = provider.provideLanguageModelChatResponse(spec.id, userMessage(), {}, { report: (p) => parts.push(p) }, cancellation().token, {}, spec);
         await assert.rejects(run, (error) => {
@@ -1316,13 +1320,7 @@ for (const transport of [
             geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: " never shown" }] }, finishReason: "STOP" }] }),
         ]);
         const provider = new VertexGoogleProvider();
-        if (transport === "proxy") {
-            provider.initialize("p", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
-        } else {
-            const authClient = new OAuth2Client();
-            authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
-            provider.initialize("p", "global", { authClient });
-        }
+        initializeOn(provider, transport);
         const parts = [];
         const run = provider.provideLanguageModelChatResponse("gemini-test", userMessage(), { tools: [] }, { report: (p) => parts.push(p) }, cancellation().token, {}, model("gemini-test"));
         await assert.rejects(run, (error) => {
@@ -2427,13 +2425,7 @@ for (const transport of [
         const requests = streamingFetch(t, [geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: "ok" }] } }] })]);
         const spec = catalog.candidateModels.find((m) => m.id === "gemini-4-carbon");
         const provider = new VertexGoogleProvider();
-        if (transport === "proxy") {
-            provider.initialize("p", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
-        } else {
-            const authClient = new OAuth2Client();
-            authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
-            provider.initialize("p", "global", { authClient });
-        }
+        initializeOn(provider, transport);
         await provider.provideLanguageModelChatResponse(
             spec.id,
             [
