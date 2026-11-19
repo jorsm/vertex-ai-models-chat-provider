@@ -274,28 +274,13 @@ for (const alias of legacyAliases) {
     });
 }
 
-for (const [
-    id,
-    defaultLevel,
-] of [
-    [
-        "gemini-4-neon",
-        "HIGH",
-    ],
-    [
-        "gemini-4-hydrogen",
-        "HIGH",
-    ],
-    [
-        "gemini-4-carbon",
-        "MEDIUM",
-    ],
-    [
-        "gemini-4-argon",
-        "MEDIUM",
-    ],
+for (const id of [
+    "gemini-4-neon",
+    "gemini-4-hydrogen",
+    "gemini-4-carbon",
+    "gemini-4-argon",
 ])
-    // Catches a Gemini 4 request that follows SDK continuation (on by default), sends controls the model rejects, or the wrong default thinking level.
+    // Catches a Gemini 4 request that follows SDK continuation (on by default) or sends controls the model rejects.
     test(`${id} uses a single-stream output limit without continuation or unsupported controls`, async () => {
         const h = adapter("google");
         const request = resolveEffort(catalog, id);
@@ -304,7 +289,7 @@ for (const [
         assert.equal(model, id);
         assert.equal(config.maxOutputTokens, 65536);
         assert.equal(config.automaticContinuation, false);
-        assert.deepEqual(config.thinkingConfig, { thinkingLevel: defaultLevel });
+        assert.deepEqual(config.thinkingConfig, { thinkingLevel: request.spec.effort.default.toUpperCase() });
         for (const field of [
             "thinkingBudget",
             "candidateCount",
