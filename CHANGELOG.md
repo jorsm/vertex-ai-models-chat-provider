@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- Update Google Gen AI to 3.6.1. Gemini requests are unchanged on both transports; the SDK now requires Node.js 22, which the supported VS Code versions provide.
+
+### Fixed
+
+- Fail a Gemini response with the service's error when Vertex sends an error event in the middle of the stream, instead of ending with a silently truncated answer. Text already shown is kept and the request is not restarted.
+
 ## [0.7.13] — 2026-11-11
 
 ### Added
