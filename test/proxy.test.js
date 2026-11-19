@@ -1367,6 +1367,65 @@ test("pinned Gemini SDK replays signed tool calls on the following gateway reque
     assert.equal(requests[1].body.contents[1].parts[0].thoughtSignature, "gemini-signed");
     assert.equal(requests[1].body.contents[2].parts[0].functionResponse.name, "lookup");
 });
+for (const transport of [
+    "direct",
+    "proxy",
+])
+    // Catches one preceding signature replayed on every parallel call: Gemini 4 Neon and Hydrogen reject a duplicated signature with HTTP 400.
+    test(`Gemini ${transport} replays a preceding thought signature on the first parallel call only`, async (t) => {
+        const requests = streamingFetch(t, [
+            geminiEvent({
+                candidates: [
+                    {
+                        content: {
+                            role: "model",
+                            parts: [
+                                { thought: true, text: "", thoughtSignature: "preceding-signed" },
+                                { functionCall: { id: "call-a", name: "lookup", args: { query: "a" } } },
+                                { functionCall: { id: "call-b", name: "lookup", args: { query: "b" } } },
+                            ],
+                        },
+                    },
+                ],
+                usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 2 },
+            }),
+        ]);
+        const provider = new VertexGoogleProvider();
+        initializeOn(provider, transport);
+        const parts = [];
+        const run = (messages) => provider.provideLanguageModelChatResponse("gemini-test", messages, { tools: [] }, { report: (p) => parts.push(p) }, cancellation().token, {}, model("gemini-test"));
+        await run(userMessage());
+        const calls = parts.filter((p) => p instanceof ToolCallPart);
+        assert.deepEqual(
+            calls.map((c) => c.callId),
+            [
+                "call-a",
+                "call-b",
+            ],
+        );
+        await run([
+            ...userMessage(),
+            { role: 2, content: calls },
+            { role: 1, content: calls.map((c) => new ToolResultPart(c.callId, [new TextPart("{}")])) },
+        ]);
+        const replayed = requests[1].body.contents.find((c) => c.role === "model").parts;
+        assert.deepEqual(
+            replayed.map((p) => [
+                p.functionCall.id,
+                p.thoughtSignature,
+            ]),
+            [
+                [
+                    "call-a",
+                    "preceding-signed",
+                ],
+                [
+                    "call-b",
+                    undefined,
+                ],
+            ],
+        );
+    });
 for (const [
     vendor,
     Provider,

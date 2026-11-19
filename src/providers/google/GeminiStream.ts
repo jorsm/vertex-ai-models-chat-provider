@@ -35,7 +35,7 @@ export interface GeminiStreamUsage {
  *
  * @remarks
  * Inline signatures stay attached to their individual function-call parts, with a pending
- * preceding signature as fallback. API call IDs are retained when present. Signature
+ * preceding signature as fallback for the first call that follows it. API call IDs are retained when present. Signature
  * caches are updated only after the final cancellation check. Token fields carry
  * forward independently when later chunks omit them.
  */
@@ -73,8 +73,9 @@ export async function processGeminiStream(stream: AsyncIterable<any>, context: G
                 const signature = part.thoughtSignature ?? processor.pendingThoughtSignature;
                 logger.log(`  🔧 FunctionCall buffered: name=${callName} callId=${callId} inlineSig=${!!part.thoughtSignature} pendingSig=${!!processor.pendingThoughtSignature}`);
                 bufferedCalls.push({ callId, callName, args: fc.args ?? {}, signature, hasApiId });
+                // A preceding signature belongs to the first call only: Gemini rejects one repeated on parallel calls.
+                processor.pendingThoughtSignature = undefined;
             }
-            processor.pendingThoughtSignature = undefined;
         }
 
         if (chunk.usageMetadata) {

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Replay a Gemini thought signature only on the first of several parallel tool calls that follow it. Gemini 4 Neon and Hydrogen reject a request that repeats one signature on several calls.
+
 ## [0.7.14] — 2026-11-20
 
 ### Added
