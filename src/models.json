@@ -297,6 +297,62 @@
             }
         },
         {
+            "id": "gemini-4-neon",
+            "vendor": "google",
+            "displayName": "Gemini 4 Neon",
+            "family": "gemini",
+            "version": "gemini-4-neon",
+            "maxInputTokens": 983040,
+            "maxOutputTokens": 65536,
+            "capabilities": {
+                "imageInput": true,
+                "toolCalling": true
+            },
+            "pricing": {
+                "input": 3.0,
+                "output": 15.0,
+                "cache_read": 0.15,
+                "cache_create": 0.0
+            },
+            "effort": {
+                "values": [
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh"
+                ],
+                "default": "high"
+            }
+        },
+        {
+            "id": "gemini-4-hydrogen",
+            "vendor": "google",
+            "displayName": "Gemini 4 Hydrogen",
+            "family": "gemini",
+            "version": "gemini-4-hydrogen",
+            "maxInputTokens": 983040,
+            "maxOutputTokens": 65536,
+            "capabilities": {
+                "imageInput": true,
+                "toolCalling": true
+            },
+            "pricing": {
+                "input": 1.5,
+                "output": 7.5,
+                "cache_read": 0.075,
+                "cache_create": 0.0
+            },
+            "effort": {
+                "values": [
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh"
+                ],
+                "default": "high"
+            }
+        },
+        {
             "id": "gemini-4-carbon",
             "vendor": "google",
             "displayName": "Gemini 4 Carbon",

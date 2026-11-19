@@ -81,6 +81,8 @@ for (const modelId of [
     "gemini-3.8-flash",
     "gemini-4-argon",
     "gemini-4-carbon",
+    "gemini-4-neon",
+    "gemini-4-hydrogen",
 ]) {
     test(`${modelId} tool continuation preserves API IDs and signatures for duplicate names and restores result order`, async () => {
         const { context, parts } = createContext(modelId);

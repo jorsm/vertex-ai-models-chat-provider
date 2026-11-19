@@ -275,6 +275,8 @@ for (const alias of legacyAliases) {
 }
 
 for (const id of [
+    "gemini-4-neon",
+    "gemini-4-hydrogen",
     "gemini-4-carbon",
     "gemini-4-argon",
 ])
@@ -287,7 +289,7 @@ for (const id of [
         assert.equal(model, id);
         assert.equal(config.maxOutputTokens, 65536);
         assert.equal(config.automaticContinuation, false);
-        assert.deepEqual(config.thinkingConfig, { thinkingLevel: "MEDIUM" });
+        assert.deepEqual(config.thinkingConfig, { thinkingLevel: request.spec.effort.default.toUpperCase() });
         for (const field of [
             "thinkingBudget",
             "candidateCount",
