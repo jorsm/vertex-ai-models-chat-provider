@@ -1304,6 +1304,39 @@ test("partial Gemini stream failure preserves delivered text and does not restar
     assert.equal(parts[0].value, "partial");
     assert.equal(requests, 1);
 });
+for (const transport of [
+    "direct",
+    "proxy",
+])
+    // Catches a Gemini SDK that ignores an error event sent mid-stream, ending with a silent truncated answer.
+    test(`Gemini ${transport} mid-stream error event fails the request after the delivered text, without retry`, async (t) => {
+        const requests = streamingFetch(t, [
+            geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: "partial" }] } }] }),
+            geminiEvent({ error: { code: 503, message: "The service is currently unavailable.", status: "UNAVAILABLE" } }),
+            geminiEvent({ candidates: [{ content: { role: "model", parts: [{ text: " never shown" }] }, finishReason: "STOP" }] }),
+        ]);
+        const provider = new VertexGoogleProvider();
+        if (transport === "proxy") {
+            provider.initialize("p", "global", undefined, new ProxyGateway("https://gateway.test", async () => "token"));
+        } else {
+            const authClient = new OAuth2Client();
+            authClient.setCredentials({ access_token: "token", expiry_date: Date.now() + 3_600_000 });
+            provider.initialize("p", "global", { authClient });
+        }
+        const parts = [];
+        const run = provider.provideLanguageModelChatResponse("gemini-test", userMessage(), { tools: [] }, { report: (p) => parts.push(p) }, cancellation().token, {}, model("gemini-test"));
+        await assert.rejects(run, (error) => {
+            assert.equal(error.status, 503);
+            assert.match(error.message, /currently unavailable/);
+            return true;
+        });
+        assert.equal(requests.length, 1);
+        assert.ok(requests[0].url.startsWith(transport === "proxy" ? "https://gateway.test/" : "https://aiplatform.googleapis.com/"), requests[0].url);
+        assert.deepEqual(
+            parts.filter((p) => p instanceof TextPart).map((p) => p.value),
+            ["partial"],
+        );
+    });
 
 test("pinned Gemini SDK replays signed tool calls on the following gateway request", async (t) => {
     const requests = streamingFetch(t, [geminiEvent({ candidates: [{ content: { role: "model", parts: [{ functionCall: { name: "lookup", args: { query: "value" } }, thoughtSignature: "gemini-signed" }] } }], usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 } })]);
