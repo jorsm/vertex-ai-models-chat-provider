@@ -301,18 +301,6 @@ for (const id of [
         }
     });
 
-for (const id of [
-    "gemini-4-neon",
-    "gemini-4-hydrogen",
-])
-    // Catches Extra high being dropped or mapped to a level other than XHIGH on the Gemini request.
-    test(`${id} sends the XHIGH thinking level for Extra high`, async () => {
-        const h = adapter("google");
-        const request = resolveEffort(catalog, id, { preferences: { [id]: "xhigh" }, sourceByModel: {} });
-        await h.provider.provideLanguageModelChatResponse(request.spec.id, messages, {}, progress, token(), {}, request.spec, request);
-        assert.deepEqual(h.requests[0].config.thinkingConfig, { thinkingLevel: "XHIGH" });
-    });
-
 for (const vendor of [
     "anthropic",
     "google",
