@@ -98,6 +98,11 @@ An open item has an empty box. The PR that fixes an item ticks its box and adds 
     - Target: a refusal fails the request with an error that names the category and explanation, on both transports, and the billed usage is still recorded.
     - Fixed: the provider throws a `ModelRefusalError` that carries the request's usage, and the dispatcher records that usage before rethrowing. The error bypasses gateway normalization, so both transports show the same message. The error message shows the explanation to the user, while its stack, which the loggers print, carries only the category. A refused turn is not kept for thinking replay. Tested with the Anthropic SDK against a fake `fetch` on the direct and proxy transports, and through the dispatcher for usage recording.
 
+- [x] **B15. One preceding thought signature is replayed on every parallel Gemini call.**
+    - Evidence: `processGeminiStream` gives each function call its inline signature or, failing that, the pending signature of a preceding signed part, and cleared the pending signature only after the whole chunk. Parallel calls in one chunk all received it and replayed it in history. Gemini 4 Neon and Hydrogen (added 20 Nov 2026) document that only the first `functionCall` of a parallel turn carries `thought_signature` and reject a signature duplicated onto sibling calls with HTTP 400.
+    - Target: a preceding signature is replayed on the first following call only, on both transports.
+    - Fixed: the pending signature is cleared as soon as one call takes it. Tested with the Gemini SDK against a fake `fetch` on the direct and proxy transports.
+
 ### Structural follow-up
 
 - [ ] **B10. `VertexChatModelDispatcher.ts` owns too much.**
